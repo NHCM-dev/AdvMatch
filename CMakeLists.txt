@@ -50,7 +50,14 @@ target_link_libraries(advmatch_core PUBLIC AdvMatch::disruptor PRIVATE fmt::fmt 
 # Stable C symbols and plain C data types provide the boundary for JNI/PInvoke.
 add_library(advmatch SHARED
     src/advmatch/c_api.cpp
-    include/advmatch/advmatch.h)
+    include/advmatch/advmatch.h
+        src/advmatch/market/Asset.h
+        src/advmatch/account/User.cpp
+        src/advmatch/account/User.h
+        src/advmatch/util/Utils.h
+        src/advmatch/management/UserManager.cpp
+        src/advmatch/management/UserManager.h
+)
 target_compile_features(advmatch PRIVATE cxx_std_20)
 target_link_libraries(advmatch PRIVATE AdvMatch::core)
 target_include_directories(advmatch PUBLIC
