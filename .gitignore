@@ -1,0 +1,10 @@
+/build/
+/cmake-build-*/
+/out/
+/.idea/
+/CMakeUserPresets.json
+*.dll
+*.so
+*.dylib
+/examples/csharp/bin/
+/examples/csharp/obj/
