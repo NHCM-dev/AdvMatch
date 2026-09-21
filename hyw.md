@@ -1,266 +1,215 @@
-有，而且目前的瓶颈比较明确。当前 400 万挂单规模下约 **15 万成交 TPS**，主要消耗已经不是价格撮合，而是命令对象、内存分配、账户查找和订单留存。
+# AdvMatch 当前性能分析与优化路线
 
-## 最大瓶颈
+本文按当前代码重新整理。早期版本中 `shared_ptr + promise/future`、`std::map` 余额、订单哈希表等结论已经不再适用，不能继续作为当前瓶颈依据。
 
-### 1. 每条命令都有多次堆分配
+## 当前状态
 
-[SingleThreadConsumer.h](D:/CppWorks/AdvMatch/src/advmatch/consuming/SingleThreadConsumer.h:24) 每次 `post()` 都会产生：
+目前的主路径是：多生产者提交命令，`SingleThreadConsumer` 顺序消费，`MatchingEngine` 在一个线程中完成风控、订单簿修改和结算。这个模型能保证同一引擎内的命令顺序，并避免在订单簿内部加锁。
 
-- `std::make_shared<Request>`
-- `std::promise/std::future` 的共享状态
-- `shared_ptr` 原子引用计数
-- `shared_mutex` 加锁
-- future 唤醒和线程同步
-- 一次虚函数调用
+最近一次本机结果可作为调参基线：
 
-这基本抵消了 Disruptor 预分配 RingBuffer 的优势。现在 RingBuffer 里存放的只是一个指向堆对象的 `shared_ptr`。
+- 100 万条命令、4 个 producer、RingBuffer 32、publish batch 8：约 **222 万 TPS**。
+- 同类配置的多次运行约 **217–229 万 TPS**，短压测会受线程调度、CPU 频率和后台进程影响。
+- 中等规模数据集（10 万用户、30 万余额、1000 个 Symbol、10 万挂单）：命令吞吐约 **166 万 TPS**，p99 约 **81 微秒**，工作集约 **54 MiB**。
 
-**建议：**
+这些数字不能直接代表 300 万用户、1000 万账户、10 万订单簿和 400 万挂单的完整目标。数据结构调整后还需要在内存充足、CPU 固定频率的机器上重新跑完整规模测试。旧文档中的“400 万挂单约 15 万 TPS”来自早期实现，不再能说明当前性能。
 
-- Command 直接写进 RingBuffer Event
-- Event 中预留 response、状态和请求序号
-- 返回轻量 `RequestTicket`，避免 `promise/future`
-- 支持回调或批量拉取结果
-- 正常提交路径去掉 `shared_mutex`
-- 生命周期状态用原子变量管理
+## 已完成的关键优化
 
-这是优先级最高的优化。
+### 1. 命令直接进入 RingBuffer
 
----
+[SingleThreadConsumer.h](src/advmatch/consuming/SingleThreadConsumer.h) 的正常路径已经使用：
 
-### 2. 每笔订单都独立分配，而且永远不删除
+- RingBuffer Event 内的 Command；
+- 调用方持有的 `ResponseSlot`；
+- 轻量 `RequestTicket`；
+- `postBatch()` 批量占用和发布连续序号。
 
-[MatchingEngine](D:/CppWorks/AdvMatch/src/advmatch/matching/MatchingEngine.h:19) 当前使用：
+因此，正常提交路径已经没有每条命令的 `make_shared<Request>`、`promise/future` 共享状态和 `shared_mutex`。RingBuffer 的预分配现在能够覆盖命令事件本身。
 
-```cpp
-std::unordered_map<OrderId, std::unique_ptr<OrderNode>> orders;
-```
+文件中仍保留了早期 Future 请求所需的 `Request`、`EventType::Future` 和对应消费分支，但当前公开提交路径没有使用它们。这些代码不会造成每命令分配，不过会增加 Event 大小和维护成本，后续可以单独清理。
 
-每笔订单至少涉及：
+### 2. 连续 ID 使用直接索引
 
-- `OrderNode` 单独堆分配
-- `unordered_map` 节点分配
-- 哈希查找
-- 指针跳转
-- terminal order 永久保留
-
-实际压力测试中，300 万笔成交之后内存增长约 **1.2 GB**，即每 100 万成交增长约 **398 MB**。按这个速度无法 24/7 运行。
-
-**建议：**
-
-- 用固定块对象池分配 `OrderNode`
-- 活跃订单和历史订单分开
-- Filled、Cancelled、Rejected 订单写入异步 journal 后回收
-- 订单查询历史交给外部存储
-- `OrderId` 连续时，可以用分段数组代替 `unordered_map`
-
-这一项同时改善吞吐、缓存命中和长期内存稳定性。
-
----
-
-### 3. 1000 万余额记录使用 `std::map`
-
-[User.h](D:/CppWorks/AdvMatch/src/advmatch/account/User.h:14) 中：
+[MatchingEngine.h](src/advmatch/matching/MatchingEngine.h) 使用：
 
 ```cpp
-std::map<AssetId, AssetBalance> balances;
+std::vector<std::unique_ptr<OrderNode>> orders;
+std::vector<std::unique_ptr<OrderBook>> orderBooks;
 ```
 
-`std::map` 每条余额都是独立红黑树节点。一次查询需要多次指针跳转，缓存局部性很差。成交结算会反复查询买卖双方的多个资产余额。
+连续 ID 通过 `id - 1` 直接定位，查询是 O(1)，同时 `unique_ptr` 指向的对象不会因为 vector 扩容而移动。这里已经不再承担 `unordered_map` 节点分配和哈希查找成本。
 
-对于多数用户只持有少数资产的情况，建议：
+### 3. 用户余额使用小对象优化
+
+[User.h](src/advmatch/account/User.h) 当前在用户对象内保存前 **6** 条余额：
 
 ```cpp
-SmallVector<AssetBalanceEntry, 4>
+SmallVector<AssetBalanceEntry, InlineBalanceCapacity>
 ```
 
-少量资产直接顺序扫描通常比树更快。资产很多的用户再切换到 flat hash table。
+超过内联容量后再迁移到 `DenseMap`。大多数持有少量资产的用户不需要额外哈希表和独立节点，遍历时也有更好的缓存局部性。
 
-可选方案：
+### 4. Manager 已按地址稳定性选择容器
 
-- `boost::container::small_vector`
-- `ankerl::unordered_dense`
-- `absl::flat_hash_map`
-- 自己实现内联 4 或 8 个余额槽
+[Containers.h](src/advmatch/util/Containers.h) 统一提供 `SmallVector`、`DenseMap`、`DenseSet`、`FlatHashMap` 和 `NodeHashMap`。
 
----
+- `UserManager`、`AssetManager`、`SymbolManager` 的主对象表使用 `NodeHashMap`，rehash 后对象地址保持稳定。
+- 名称、交易对等只保存 ID 的二级索引使用 `DenseMap` 或 `DenseSet`，获得更好的局部性。
+- 对外保留的指针只能指向地址稳定的主对象，不能指向 dense 容器里的元素。
 
-### 4. 风控和结算重复哈希查找
+### 5. 订单簿采用排序结构和精确索引的组合
 
-当前一笔成交会重复进行：
+[SpotOrderBook.h](src/advmatch/matching/orderbooks/SpotOrderBook.h) 的每一侧同时维护：
 
-- 查订单
-- 查用户
-- 查 Symbol
-- 查 Hold
-- 查买方余额
-- 查卖方余额
-- 再次 reconcile maker 和 taker
+```cpp
+std::map<Price, PriceLevel, Compare> ordered;
+DenseMap<Price, PriceLevel*> exact;
+```
 
-`SpotRiskEngine` 还用独立的：
+`ordered` 负责最优价格、价格优先级和稳定的 `PriceLevel` 地址；`exact` 负责指定价格 O(1) 平均查找。订单本身在价位内使用侵入式双向链表，撤单和移动已知订单是 O(1)。
+
+这套结构确实为每个价位维护了两份索引，但它解决的是不同问题。没有真实价格分布和 profile 证据前，不应仅为了减少一个容器而破坏最优价查询或地址稳定性。
+
+### 6. 风控 Hold 保留 `std::unordered_map`
+
+[SpotRiskEngine.h](src/advmatch/matching/riskengines/SpotRiskEngine.h) 仍使用：
 
 ```cpp
 std::unordered_map<OrderId, Hold> holds;
 ```
 
-预占信息本来就和订单一一对应。
+这不是遗漏。A/B 测试中，`DenseMap` 约为 156–166 万 TPS，而当前 `std::unordered_map` 约为 199–215 万 TPS。这个负载包含大量删除，dense 容器删除时移动较大的 `Hold` 数据，反而更慢。容器选择应服从当前工作负载，而不是统一替换。
 
-**建议：**
+## 当前主要瓶颈
 
-直接将预占数据放进 `OrderNode`：
+### 1. 结束订单没有回收
 
-```cpp
-AssetId holdAssetId;
-Balance heldAmount;
-User* user;
-const Symbol* symbol;
-```
+虽然订单查询已经改为数组直接索引，但每个成功接纳的 `OrderNode` 仍单独分配，且 Filled、Cancelled 等终态订单继续留在 `orders` 中。长期运行时，吞吐问题最终会转化成内存增长和缓存污染问题。
 
-创建订单时缓存这些指针。单线程撮合期间对象地址稳定，无需每次重新哈希查找。
+建议将订单拆成两个生命周期：
 
-结算接口也可以直接接收 maker 和 taker 节点：
+1. 活跃订单保留完整 `OrderNode`，由订单簿和风控引用。
+2. 终态订单写入异步 journal 或历史服务，确认持久化后回收节点。
 
-```cpp
-settleTrade(OrderNode& maker, OrderNode& taker, Price price, Quantity quantity);
-```
+为了继续支持按 ID 查询近期结果，可以保留固定大小的终态窗口或分段归档索引，而不是无限保存所有完整节点。
 
-避免先创建 `Trade`，再通过 OrderId 反查两个订单。
+节点分配建议改成固定块对象池或 slab。这样能够批量申请内存，减少 allocator 元数据、碎片和随机地址访问。
 
----
+### 2. 每条命令仍创建 `std::vector<Trade>`
 
-### 5. 每条命令都会创建 `std::vector<Trade>`
+订单簿和引擎接口目前都传递 `std::vector<Trade>&`。压测消费者为每条命令创建一个 vector，发生一笔或多笔成交时可能触发堆分配。
 
-压测消费者中，每次命令都会：
+可以按下面的顺序优化：
 
-```cpp
-std::vector<Trade> trades;
-```
+1. 将缓冲区改成 `SmallVector<Trade, 4>` 或专用 `TradeBuffer`。
+2. 在消费线程中复用缓冲区，每条命令只调用 `clear()`。
+3. 给不需要成交明细的调用方提供直接发布 `TradeEvent` 的路径。
 
-一次普通成交通常只有一条 Trade，但 vector 仍可能进行堆分配。
+普通订单通常只产生少量成交，内联容量 4 是较合理的起点；最终容量应根据“一条 taker 命令产生的成交笔数”分布决定。
 
-建议：
+### 3. 风控与结算仍有重复定位
 
-- 使用固定容量的 `SmallVector<Trade, 4>`
-- 由调用方复用 Trade 缓冲区
-- 撮合线程直接发布 TradeEvent
-- 如果调用方不需要成交明细，提供无结果收集路径
+一笔成交需要定位订单、用户、Symbol、Hold 和余额。当前容器已经加快了各次查询，但查询次数仍然存在。
 
-例如：
+可以将与订单生命周期一致的预占信息放入 `OrderNode`，或让 Hold 保存稳定的 `User*`、资产 ID 和剩余冻结量。结算接口直接接收 maker/taker 节点，可以减少先生成 Trade、再按 OrderId 反查订单的过程。
 
-```cpp
-TradeBuffer<8> trades;
-engine.placeOrder(command, trades);
-```
+缓存指针前必须固定生命周期规则：
 
----
+- `UserManager` 和 `SymbolManager` 中的对象在引擎运行期间不能删除或移动；
+- `OrderNode` 只有在订单簿、风控 Hold 和结果发布都不再引用后才能回收；
+- 跨线程只能传递有明确所有权或代际校验的句柄。
 
-## OrderBook 的问题
+### 4. 多 producer 竞争同一个发布游标
 
-当前价位同时存在：
+一个 MPMC RingBuffer 并不会随着 producer 数量增加而线性变快。所有 producer 都会竞争同一个 sequencer；RingBuffer 满时还会等待唯一的消费者推进 gating sequence。
 
-```cpp
-std::map<Price, PriceLevel>
-std::unordered_map<Price, PriceLevel*>
-```
+当 producer 数接近或超过逻辑 CPU 数时，会出现：
 
-优点是 best price 和指定价格查找都方便，但代价是：
+- 消费线程得不到足够运行时间；
+- 多个 producer 争用同一缓存行；
+- 某个 producer 占到序号后被抢占，后续已发布序号也要等待这个缺口；
+- 小 RingBuffer 很快填满，等待和唤醒占据主要时间。
 
-- 每个价位在两个容器中都有记录
-- 多次堆分配
-- 红黑树指针跳转
-- 哈希表额外内存
-- 创建、删除价位需要同步两个容器
+RingBuffer 大小主要吸收突发流量，不能提高单消费者的长期处理上限。producer 过多时继续增大 ring 只能缓解部分抖动。
 
-如果价格有固定 tick，可以将价格转换为 tick index：
+### 5. 单个 MatchingEngine 的吞吐上限是一个核心
 
-```cpp
-priceIndex = price / tickSize;
-```
+当前所有 Symbol 最终由一个消费线程处理。增加 gateway 或 producer 线程只能提升输入并发，不能提升撮合线程的服务率。
 
-然后选择：
-
-1. 价格范围较小：数组价格梯子。
-2. 价格范围较大：分段数组或 radix tree。
-3. 活跃价位稀疏：flat hash map 加 best bid/ask 缓存。
-4. 暂时保留树结构：换成 cache friendly B-tree。
-
-订单 FIFO 链表设计本身可以保留。
-
----
-
-## 单线程架构上限
-
-一个 `MatchingEngine` 当前负责全部 10 万个 Symbol。无论 producers 有多少，所有订单最终都由一个线程处理。
-
-生产者增加只会增加提交竞争，不能提高撮合上限。之前 1 producer 比 4 producers 更快也说明了这一点。
-
-真正扩展的方法是按 Symbol 分片：
+需要更高总吞吐时，应按 Symbol 分片：
 
 ```text
-Gateway threads
-      │
-      ├── shard 0 consumer: BTC/USDT ...
-      ├── shard 1 consumer: ETH/USDT ...
-      ├── shard 2 consumer: ...
-      └── shard N consumer
+Gateway / protocol threads
+          |
+          +-- matching shard 0: hot symbol A
+          +-- matching shard 1: hot symbol B
+          +-- matching shard 2: normal symbols by hash
+          +-- matching shard N: normal symbols by hash
 ```
 
-同一个 Symbol 始终只属于一个撮合线程，因此仍然保持：
+一个 Symbol 始终只属于一个 shard，单个订单簿仍然无锁且顺序确定。热点交易对可以独占线程，低流量交易对按哈希或负载表分配。
 
-- 单线程订单簿
-- 无锁撮合
-- 确定性顺序
-- 无需在 OrderBook 内加锁
+账户余额会跨 Symbol，因此不能让多个 shard 直接修改同一个 `User`。可选方案是先由账户风险分片完成额度预占，再把已经授权的命令交给撮合分片；成交后用有序事件回到账户分片结算。
 
-建议先按 CPU 物理核心部署 **4–8 个撮合分片**。热点交易对可以独占线程，低流量交易对按哈希分配。
+## RingBuffer 与 producer 参数建议
 
-账户风险是跨分片共享状态，需要选择：
+`--batch-size` 和 `--publish-batch` 含义不同：
 
-- 每个账户固定归属一个风险分片；
-- 先在风险线程预占，再把已授权命令发送到撮合分片；
-- 或按交易对维护专用资产额度。
+- `batch-size` 控制 producer 同时保留多少未完成响应，会影响端到端排队延迟。
+- `publish-batch` 控制一次占用并发布多少个连续 RingBuffer 槽位，会减少 sequencer 竞争，但一个 producer 占用过多时会影响公平性。
 
-不能让多个撮合线程直接无锁修改同一个 `User`。
+以当前 8 核 16 线程机器为起点：
 
----
+| Producer | RingBuffer | Publish batch | 用途 |
+| ---: | ---: | ---: | --- |
+| 1–4 | 32–64 | 1–8 | 追求最高稳定吞吐和低延迟 |
+| 4–8 | 256–512 | 8–32 | 输入存在突发流量 |
+| 8–16 | 1024 | 16–64 | 必须接收更多并发来源时的折中 |
+| 32+ | 不建议单 MPMC | 不适用 | 改成入口聚合、每入口 SPSC 或撮合分片 |
 
-## 当前压测延迟的含义
+目前 4 producer、ring 32 的结果最好。16 producer 在 ring 32 下会严重退化，ring 1024 可以恢复到约 150–160 万 TPS；32 producer 即使扩大 ring 也明显低于 4 producer。生产环境中的网络连接数不应直接等于向撮合队列发布的线程数，I/O 线程应先聚合命令，再由少量固定线程发布。
 
-当前 p50 约 3.2 ms、p99 约 4.2 ms，测量的是：
+如果采用每入口 SPSC 队列，消费线程需要确定性的轮询或按全局 sequence 合并，不能因为队列切换改变业务要求的先后顺序。
+
+## 延迟指标应怎样解释
+
+当前端到端延迟包含：
 
 ```text
-生产线程提交
-→ 在批次中排队
-→ RingBuffer 排队
-→ 撮合
-→ 风控结算
-→ future 完成
+producer 准备与提交
+-> 等待 RingBuffer 空位
+-> 队列等待
+-> 风控与撮合
+-> 结算
+-> ResponseSlot 可见
 ```
 
-压测使用 `batchSize=256`，所以这个数字包含明显的排队时间，并不等同于撮合函数自身耗时。
+它不等于订单簿函数本身的耗时。`batch-size` 较大时，producer 主动保留更多在途请求，p50 和 p99 会包含更多排队时间。
 
-建议拆分指标：
+建议分别记录：
 
-- publish latency
-- queue waiting latency
-- matching service time
-- settlement time
-- end to end latency
-- RingBuffer backlog
-- 每次成交产生的 fills 数量
+- publish 等待时间；
+- queue wait；
+- matching service time；
+- risk/settlement time；
+- end-to-end latency；
+- RingBuffer 最大和平均 backlog；
+- 每条命令的成交数量；
+- 对象池使用量和终态订单回收速率。
 
-并使用 HDR Histogram，避免为了算百分位保存并排序全部延迟数据。
+百分位统计建议使用 HDR Histogram，避免为了计算分位数保存和排序全部样本。
 
-## 推荐实施顺序
+## 下一轮实施顺序
 
-1. **移除每条命令的 `shared_ptr + promise + future`。**
-2. **订单对象池和 terminal order 回收。**
-3. **把 Hold、User、Symbol 指针放进 OrderNode。**
-4. **Trade 使用固定容量缓冲区。**
-5. **User 余额从 `std::map` 改成内联小数组或 flat hash。**
-6. **连续 ID 容器改成数组或分段数组。**
-7. **价格档位改为价格梯子、radix tree 或 B-tree。**
-8. **按 Symbol 将 MatchingEngine 分成多个单线程 shard。**
-9. **补充 queue wait、service time 和端到端延迟指标。**
+1. **TradeBuffer 内联与复用。** 改动局部，能直接移除热路径中的小额分配。
+2. **OrderNode 对象池。** 先替换单节点分配，再测分配耗时和内存占用。
+3. **终态订单归档与回收。** 建立清晰的持久化确认、近期查询窗口和安全回收规则，解决 24/7 内存增长。
+4. **合并订单与 Hold 的热数据。** 减少成交结算中的哈希查找，同时明确指针生命周期。
+5. **补齐分段性能指标。** 先确认时间花在排队、撮合、风控还是回收，再决定下一项。
+6. **入口聚合或 SPSC lanes。** producer 数量确实较多时再实施，避免单 MPMC sequencer 竞争。
+7. **按 Symbol 分片 MatchingEngine。** 单核服务率到顶后，用多个独立单线程 shard 扩展总吞吐。
+8. **评估价格梯子、radix tree 或 B-tree。** 只有 profile 显示价位树占比足够高，并且已掌握 tick size、价格范围和稀疏度后再替换。
+9. **清理未使用的 Future 消费路径。** 缩小 Event 并简化状态机，随后重新测量 ring 容量和缓存行为。
 
-其中前四项不用改变撮合语义，风险相对较低，也最适合先实施。当前最先应该处理的是 **Consumer 每命令分配**和**已结束订单不回收**，这两个问题同时限制了 TPS、延迟和 24/7 稳定性。
+当前最值得先做的是 **Trade 缓冲区复用、OrderNode 对象池、终态订单回收**。前两项改善热路径，第三项决定系统能否长期稳定运行。RingBuffer 调参可以改善特定并发组合，但不能替代对象生命周期管理或多撮合分片。

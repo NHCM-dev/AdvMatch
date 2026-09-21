@@ -1,8 +1,11 @@
 #include "advmatch/account/User.h"
 #include "advmatch/management/UserManager.h"
+#include "advmatch/util/BigAllocs.h"
 #include "advmatch/util/Containers.h"
 
+#include <cstdint>
 #include <cstdlib>
+#include <vector>
 
 #define CHECK(condition) \
     do \
@@ -12,6 +15,36 @@
             std::abort(); \
         } \
     } while (false)
+
+namespace
+{
+    struct TrackedValue
+    {
+        static inline int alive = 0;
+
+        explicit TrackedValue(int value)
+            : value(value)
+        {
+            ++alive;
+        }
+
+        ~TrackedValue()
+        {
+            --alive;
+        }
+
+        int value;
+    };
+
+    struct alignas(64) CacheLineValue
+    {
+        explicit CacheLineValue(std::uint64_t value)
+            : value(value)
+        {}
+
+        std::uint64_t value;
+    };
+}
 
 int main()
 {
@@ -82,4 +115,44 @@ int main()
     CHECK(user.getAssetBalanceCount() == 0);
     CHECK(user.updateBalance(99, 100));
     CHECK(user.queryActiveBalance(99) == 100);
+
+    BigAllocs<TrackedValue, 2, 4> values;
+    CHECK(values.capacity() == 8);
+    CHECK(values.empty());
+
+    std::vector<TrackedValue*> allocated;
+    for (int value = 0; value < 9; ++value)
+    {
+        allocated.push_back(values.emplace(value));
+    }
+
+    CHECK(values.size() == 9);
+    CHECK(values.capacity() == 12);
+    CHECK(TrackedValue::alive == 9);
+
+    TrackedValue* released = allocated[3];
+    CHECK(values.release(released));
+    CHECK(!values.release(released));
+    CHECK(values.size() == 8);
+    CHECK(TrackedValue::alive == 8);
+
+    TrackedValue* reused = values.emplace(99);
+    CHECK(reused == released);
+    CHECK(reused->value == 99);
+
+    values.reserve(25);
+    CHECK(values.capacity() == 28);
+    CHECK(allocated.front()->value == 0);
+
+    values.clear();
+    CHECK(values.empty());
+    CHECK(TrackedValue::alive == 0);
+
+    CacheLineValue* aligned = nullptr;
+    {
+        BigAllocs<CacheLineValue, 1, 2> alignedValues;
+        aligned = alignedValues.emplace(42);
+        CHECK(reinterpret_cast<std::uintptr_t>(aligned) % alignof(CacheLineValue) == 0);
+        CHECK(aligned->value == 42);
+    }
 }

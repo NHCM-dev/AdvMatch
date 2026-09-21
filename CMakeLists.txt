@@ -112,6 +112,8 @@ add_library(advmatch_core STATIC
     src/advmatch/market/Asset.h
     src/advmatch/account/User.cpp
     src/advmatch/account/User.h
+    src/advmatch/util/BigAllocs.cpp
+    src/advmatch/util/BigAllocs.h
     src/advmatch/util/Utils.h
     src/advmatch/util/Containers.h
     src/advmatch/management/UserManager.cpp
@@ -204,6 +206,9 @@ if(BUILD_TESTING)
         target_link_libraries(advmatch_scale_benchmark PRIVATE Psapi)
     endif()
     add_test(NAME advmatch_scale_smoke COMMAND advmatch_scale_benchmark)
+
+    add_executable(advmatch_big_allocs_benchmark benchmarks/big_allocs.cpp)
+    target_link_libraries(advmatch_big_allocs_benchmark PRIVATE AdvMatch::core)
 endif()
 
 install(TARGETS advmatch LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}

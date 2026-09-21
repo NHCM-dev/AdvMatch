@@ -26,6 +26,7 @@ namespace advmatch
                 return it == this->byPrice.end() ? nullptr : it->second;
             }
 
+            [[nodiscard]]
             const PriceLevel* find(Price price) const noexcept
             {
                 auto it = this->byPrice.find(price);

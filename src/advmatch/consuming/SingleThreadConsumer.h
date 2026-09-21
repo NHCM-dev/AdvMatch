@@ -196,7 +196,7 @@ namespace advmatch::consuming
         SingleThreadConsumer(const SingleThreadConsumer&) = delete;
         SingleThreadConsumer& operator=(const SingleThreadConsumer&) = delete;
 
-        void start(int ringSize = 32)
+        void start(int ringSize)
         {
             std::lock_guard lock(this->lifecycleMutex);
             if (this->lifecycle.load(std::memory_order_relaxed) != Lifecycle::Created)
