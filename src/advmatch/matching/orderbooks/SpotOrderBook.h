@@ -75,7 +75,7 @@ namespace advmatch
         static std::optional<Quote> quote(const PriceLevel* level) noexcept;
         static bool crosses(const BasicOrder& taker, Price makerPrice) noexcept;
         bool canFillAll(const BasicOrder& order) const noexcept;
-        void match(OrderNode& taker, Timestamp timestamp, Sequence sequence, std::vector<Trade>& trades);
+        void match(OrderNode& taker, Timestamp timestamp, Sequence sequence, TradeBuffer& trades);
         void append(OrderNode& node);
         void unlink(OrderNode& node, Quantity remaining) noexcept;
 
@@ -88,8 +88,8 @@ namespace advmatch
         {
             return this->bookSymbolId;
         }
-        PlaceOrderResult place(OrderNode& order, Timestamp timestamp, Sequence sequence, std::vector<Trade>& trades) override;
-        ModifyOrderResult modifyPrice(OrderNode& order, Price price, Timestamp timestamp, Sequence sequence, std::vector<Trade>& trades) override;
+        PlaceOrderResult place(OrderNode& order, Timestamp timestamp, Sequence sequence, TradeBuffer& trades) override;
+        ModifyOrderResult modifyPrice(OrderNode& order, Price price, Timestamp timestamp, Sequence sequence, TradeBuffer& trades) override;
         ModifyOrderResult modifyQuantity(OrderNode& order, QuantityChange change, Timestamp timestamp, Sequence sequence) override;
         CancelOrderResult cancel(OrderNode& order, Timestamp timestamp, Sequence sequence) override;
 

@@ -97,42 +97,35 @@ namespace advmatch
 
         [[nodiscard]]
         Price getPrice() const noexcept;
-
         [[nodiscard]]
         Quantity getQuantity() const noexcept;
 
         [[nodiscard]]
         Quantity getFilledQuantity() const noexcept;
-
         [[nodiscard]]
         Quantity getUnfilledQuantity() const noexcept;
 
         [[nodiscard]]
         OrderStatus getStatus() const noexcept;
-
         [[nodiscard]]
         const OrderFillingStatus& getFillingStatus() const noexcept;
 
         [[nodiscard]]
         Timestamp getCreatedTimestamp() const noexcept;
-
         [[nodiscard]]
         Timestamp getUpdatedTimestamp() const noexcept;
-
         [[nodiscard]]
         Timestamp getFirstFilledTimestamp() const noexcept;
-
         [[nodiscard]]
         Timestamp getLastFilledTimestamp() const noexcept;
-
         [[nodiscard]]
         Timestamp getCompletedTimestamp() const noexcept;
 
         [[nodiscard]]
         Sequence getCreatedSequence() const noexcept;
-
         [[nodiscard]]
         Sequence getUpdatedSequence() const noexcept;
+
     };
 } // advmatch
 

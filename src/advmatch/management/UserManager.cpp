@@ -15,23 +15,34 @@ namespace advmatch
             userId
         );
 
+        ++this->activeUserCount;
+
         return userId;
     }
 
     bool UserManager::removeUser(UserId userId)
     {
-        return this->users.erase(userId) != 0;
+        const auto iterator = this->users.find(userId);
+        if (iterator == this->users.end() || !iterator->second.isActive())
+        {
+            return false;
+        }
+
+        iterator->second.deactivate();
+        --this->activeUserCount;
+        return true;
     }
 
     bool UserManager::containsUser(UserId userId) const noexcept
     {
-        return this->users.contains(userId);
+        const auto iterator = this->users.find(userId);
+        return iterator != this->users.end() && iterator->second.isActive();
     }
 
     User* UserManager::getUser(UserId userId) noexcept
     {
         const auto iterator = this->users.find(userId);
-        if (iterator == this->users.end())
+        if (iterator == this->users.end() || !iterator->second.isActive())
         {
             return nullptr;
         }
@@ -41,7 +52,7 @@ namespace advmatch
     const User* UserManager::getUser(UserId userId) const noexcept
     {
         const auto iterator = this->users.find(userId);
-        if (iterator == this->users.end())
+        if (iterator == this->users.end() || !iterator->second.isActive())
         {
             return nullptr;
         }
@@ -50,6 +61,6 @@ namespace advmatch
 
     std::size_t UserManager::getUserCount() const noexcept
     {
-        return this->users.size();
+        return this->activeUserCount;
     }
 } // advmatch

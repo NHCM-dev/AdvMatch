@@ -124,13 +124,13 @@ struct PlaceCommand
 class PlaceConsumer final : public advmatch::consuming::SingleThreadConsumer<PlaceCommand, advmatch::PlaceOrderResult>
 {
     advmatch::MatchingEngine engine;
+    advmatch::TradeBuffer trades;
 
 protected:
     advmatch::PlaceOrderResult consume(PlaceCommand&& command) override
     {
-        std::vector<advmatch::Trade> trades;
         return this->engine.placeOrder(command.userId, command.symbolId, advmatch::OrderSide::Bid,
-            advmatch::OrderType::Limit, advmatch::TimeInForce::GTC, command.price, command.quantity, 1, trades);
+            advmatch::OrderType::Limit, advmatch::TimeInForce::GTC, command.price, command.quantity, 1, this->trades);
     }
 
 public:

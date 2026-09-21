@@ -35,6 +35,7 @@ namespace advmatch
         DenseMap<std::string, SymbolId> symbolsByName;
         DenseSet<SymbolKey, SymbolKeyHash> symbolPairs;
         SymbolId nextSymbolId = 1;
+        std::size_t activeSymbolCount = 0;
 
     public:
         SymbolManager() = default;
@@ -56,7 +57,9 @@ namespace advmatch
         bool containsSymbol(SymbolId symbolId) const noexcept;
 
         // NodeHashMap keeps Symbol addresses valid across insertions and
-        // rehashes. Removing that symbol invalidates its address.
+        // rehashes. Removal deactivates the Symbol without destroying it, so
+        // accepted orders can safely retain its address. New lookups do not
+        // return deactivated symbols.
         [[nodiscard]]
         Symbol* getSymbol(SymbolId symbolId) noexcept;
 

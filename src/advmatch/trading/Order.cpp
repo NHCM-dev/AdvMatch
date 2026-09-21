@@ -9,29 +9,12 @@ namespace advmatch
 {
     BasicOrder::BasicOrder(OrderId orderId, UserId userId, SymbolId symbolId,
                            OrderSide orderSide, OrderType orderType, TimeInForce timeInForce,
-                           Price price, Quantity quantity,
-                           Timestamp timestamp, Sequence sequence)
-
-        : price(orderType == OrderType::Market ? 0 : price),
-          requestedQuantity(quantity),
-          fillingStatus{
-              OrderStatus::NotFilled,
-              0,
-              quantity
-          },
-          createdTimestamp(timestamp),
-          updatedTimestamp(timestamp),
-          firstFilledTimestamp(0),
-          lastFilledTimestamp(0),
-          completedTimestamp(0),
-          createdSequence(sequence),
-          updatedSequence(sequence),
-          orderId(orderId),
-          userId(userId),
-          symbolId(symbolId),
-          orderSide(orderSide),
-          orderType(orderType),
-          timeInForce(timeInForce)
+                           Price price, Quantity quantity, Timestamp timestamp, Sequence sequence)
+        : price(orderType == OrderType::Market ? 0 : price), requestedQuantity(quantity),
+          fillingStatus{OrderStatus::NotFilled, 0, quantity}, createdTimestamp(timestamp), updatedTimestamp(timestamp),
+          firstFilledTimestamp(0), lastFilledTimestamp(0), completedTimestamp(0), createdSequence(sequence),
+          updatedSequence(sequence), orderId(orderId), userId(userId), symbolId(symbolId), orderSide(orderSide),
+          orderType(orderType), timeInForce(timeInForce)
     {
         if (util::willMultiplyOverflow(price, quantity))
         {
@@ -273,66 +256,71 @@ namespace advmatch
         return {OrderFillState::Success};
     }
 
+
+
     Price BasicOrder::getPrice() const noexcept
     {
         return this->price;
     }
-
     Quantity BasicOrder::getQuantity() const noexcept
     {
         return this->requestedQuantity;
     }
 
+
+
     Quantity BasicOrder::getFilledQuantity() const noexcept
     {
         return this->fillingStatus.filled;
     }
-
     Quantity BasicOrder::getUnfilledQuantity() const noexcept
     {
         return this->fillingStatus.unfilled;
     }
+
+
 
     OrderStatus BasicOrder::getStatus() const noexcept
     {
         return this->fillingStatus.status;
     }
 
+
+
     const OrderFillingStatus& BasicOrder::getFillingStatus() const noexcept
     {
         return this->fillingStatus;
     }
 
+
+
     Timestamp BasicOrder::getCreatedTimestamp() const noexcept
     {
         return this->createdTimestamp;
     }
-
     Timestamp BasicOrder::getUpdatedTimestamp() const noexcept
     {
         return this->updatedTimestamp;
     }
-
     Timestamp BasicOrder::getFirstFilledTimestamp() const noexcept
     {
         return this->firstFilledTimestamp;
     }
-
     Timestamp BasicOrder::getLastFilledTimestamp() const noexcept
     {
         return this->lastFilledTimestamp;
     }
-
     Timestamp BasicOrder::getCompletedTimestamp() const noexcept
     {
         return this->completedTimestamp;
     }
 
+
+
     Sequence BasicOrder::getCreatedSequence() const noexcept
     {
         return this->createdSequence;
     }
-
     Sequence BasicOrder::getUpdatedSequence() const noexcept
     {
         return this->updatedSequence;

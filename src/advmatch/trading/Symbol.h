@@ -7,11 +7,13 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include "../market/Asset.h"
 
 namespace advmatch
 {
     using SymbolId = uint32_t;
+    class SymbolManager;
 
     enum class SymbolType : uint8_t
     {
@@ -23,6 +25,11 @@ namespace advmatch
 
     struct Symbol
     {
+        Symbol(std::string name, SymbolId symbolId, SymbolType symbolType, AssetId baseAssetId, AssetId quoteAssetId)
+            : name(std::move(name)), symbolId(symbolId), symbolType(symbolType), baseAssetId(baseAssetId),
+              quoteAssetId(quoteAssetId)
+        {}
+
         std::string name;
         SymbolId symbolId;
 
@@ -30,6 +37,17 @@ namespace advmatch
 
         AssetId baseAssetId;   // Example: BTC
         AssetId quoteAssetId;  // Example: USDT
+
+        [[nodiscard]]
+        bool isActive() const noexcept
+        {
+            return this->active;
+        }
+
+    private:
+        bool active = true;
+
+        friend class SymbolManager;
     };
 
 } // advmatch

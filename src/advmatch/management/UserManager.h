@@ -13,6 +13,7 @@ namespace advmatch
     {
         NodeHashMap<UserId, User> users;
         UserId nextUserId = 1;
+        std::size_t activeUserCount = 0;
     public:
 
         void reserve(std::size_t userCount)
@@ -30,9 +31,9 @@ namespace advmatch
         bool containsUser(UserId userId) const noexcept;
 
         // NodeHashMap keeps the returned address valid across insertions and
-        // rehashes. It becomes invalid when that user is removed or this
-        // manager dies. Concurrent access still requires external
-        // synchronization.
+        // rehashes. Removal only deactivates the User, so addresses cached by
+        // accepted orders remain valid until this manager dies. New lookups do
+        // not return deactivated users.
         [[nodiscard]]
         User* getUser(UserId userId) noexcept;
 

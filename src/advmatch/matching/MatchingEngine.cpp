@@ -29,22 +29,31 @@ namespace advmatch
         return true;
     }
 
-    void MatchingEngine::settleTrades(const std::vector<Trade>& trades)
+    void MatchingEngine::settleTrades(TradeBuffer& trades)
     {
-        for (const Trade& trade : trades)
+        try
         {
-            const OrderNode* makerNode = this->findNode(trade.makerOrderId);
-            const OrderNode* takerNode = this->findNode(trade.takerOrderId);
-            if (!makerNode || !takerNode)
+            for (std::size_t index = 0; index < trades.size(); ++index)
             {
-                throw std::logic_error("trade references an unknown order");
-            }
+                const Trade& trade = trades[index];
+                OrderNode& maker = trades.maker(index);
+                OrderNode& taker = trades.taker(index);
+                if (trade.makerOrderId != maker.order.orderId || trade.takerOrderId != taker.order.orderId)
+                {
+                    throw std::logic_error("trade node reference does not match its order id");
+                }
 
-            const BasicOrder& maker = makerNode->order;
-            const BasicOrder& taker = takerNode->order;
-            this->riskEngine.settleTrade(trade, maker, taker);
-            this->riskEngine.reconcileOrder(maker);
+                this->riskEngine.settleTrade(trade, maker, taker);
+                this->riskEngine.reconcileOrder(maker);
+            }
         }
+        catch (...)
+        {
+            trades.clearNodeReferences();
+            throw;
+        }
+
+        trades.clearNodeReferences();
     }
 
     OrderNode* MatchingEngine::findNode(OrderId orderId) noexcept
@@ -54,7 +63,7 @@ namespace advmatch
             return nullptr;
         }
 
-        return this->orders[orderId - 1].get();
+        return this->orders[orderId - 1];
     }
 
     const OrderNode* MatchingEngine::findNode(OrderId orderId) const noexcept
@@ -64,7 +73,7 @@ namespace advmatch
             return nullptr;
         }
 
-        return this->orders[orderId - 1].get();
+        return this->orders[orderId - 1];
     }
 
     OrderBook* MatchingEngine::findBook(SymbolId symbolId) noexcept
@@ -88,7 +97,7 @@ namespace advmatch
     }
 
     PlaceOrderResult MatchingEngine::placeOrder(UserId userId, SymbolId symbolId, OrderSide side, OrderType type, TimeInForce timeInForce, Price price,
-                                                Quantity quantity, Timestamp timestamp, std::vector<Trade>& trades)
+                                                Quantity quantity, Timestamp timestamp, TradeBuffer& trades)
     {
         trades.clear();
 
@@ -97,9 +106,16 @@ namespace advmatch
             return PlaceOrderResult(0, {OrderStatus::Rejected, 0, quantity}, reason);
         };
 
-        if (!this->userManager.containsUser(userId))
+        User* user = this->userManager.getUser(userId);
+        if (!user)
         {
             return reject(PlaceOrderRejectReason::UserNotFound);
+        }
+
+        const Symbol* symbol = this->symbolManager.getSymbol(symbolId);
+        if (!symbol)
+        {
+            return reject(PlaceOrderRejectReason::InvalidSymbol);
         }
 
         OrderBook* book = findBook(symbolId);
@@ -160,39 +176,43 @@ namespace advmatch
 
         if (this->orders.size() < id)
         {
-            this->orders.resize(id);
+            this->orders.resize(id, nullptr);
         }
 
-        auto node = std::make_unique<OrderNode>(BasicOrder(id, userId, symbolId, side, type, timeInForce, price, quantity, timestamp, sequence));
-        OrderNode& order = *node;
+        OrderNode* node = this->orderPool.emplace(
+            BasicOrder(id, userId, symbolId, side, type, timeInForce, price, quantity, timestamp, sequence),
+            *user, *symbol, symbol->baseAssetId, symbol->quoteAssetId);
 
-        if (auto reason = this->riskEngine.checkPlaceOrder(order.order))
+        if (auto reason = this->riskEngine.checkPlaceOrder(*node))
         {
+            this->orderPool.release(node);
             return reject(*reason);
         }
 
-        this->orders[id - 1] = std::move(node);
-        if (auto reason = this->riskEngine.reservePlaceOrder(order.order, marketBuyCost))
+        this->orders[id - 1] = node;
+        if (auto reason = this->riskEngine.reservePlaceOrder(*node, marketBuyCost))
         {
-            this->orders[id - 1].reset();
+            this->orders[id - 1] = nullptr;
+            this->orderPool.release(node);
             return reject(*reason);
         }
 
-        auto result = book->place(order, timestamp, sequence, trades);
+        auto result = book->place(*node, timestamp, sequence, trades);
 
         if (!result)
         {
-            this->riskEngine.releaseOrder(order.order);
-            this->orders[id - 1].reset();
+            this->riskEngine.releaseOrder(*node);
+            this->orders[id - 1] = nullptr;
+            this->orderPool.release(node);
             return result;
         }
 
         settleTrades(trades);
-        this->riskEngine.reconcileOrder(order.order);
+        this->riskEngine.reconcileOrder(*node);
         return result;
     }
 
-    ModifyOrderResult MatchingEngine::modifyPrice(UserId userId, OrderId orderId, Price price, Timestamp timestamp, std::vector<Trade>& trades)
+    ModifyOrderResult MatchingEngine::modifyPrice(UserId userId, OrderId orderId, Price price, Timestamp timestamp, TradeBuffer& trades)
     {
         trades.clear();
 
@@ -234,12 +254,12 @@ namespace advmatch
             return {ModifyOrderState::InvalidPrice};
         }
 
-        if (auto reason = this->riskEngine.checkModifyPrice(order, price))
+        if (auto reason = this->riskEngine.checkModifyPrice(*node, price))
         {
             return {*reason};
         }
 
-        if (auto reason = this->riskEngine.reserveModifyOrder(order, price, order.getUnfilledQuantity()))
+        if (auto reason = this->riskEngine.reserveModifyOrder(*node, price, order.getUnfilledQuantity()))
         {
             return {*reason};
         }
@@ -250,7 +270,7 @@ namespace advmatch
             settleTrades(trades);
         }
 
-        this->riskEngine.reconcileOrder(order);
+        this->riskEngine.reconcileOrder(*node);
         return result;
     }
 
@@ -296,18 +316,18 @@ namespace advmatch
         }
 
         const Quantity remaining = change < 0 ? order.getUnfilledQuantity() - decrease : order.getUnfilledQuantity() + static_cast<Quantity>(change);
-        if (auto reason = this->riskEngine.checkModifyQuantity(order, change))
+        if (auto reason = this->riskEngine.checkModifyQuantity(*node, change))
         {
             return {*reason};
         }
 
-        if (auto reason = this->riskEngine.reserveModifyOrder(order, order.getPrice(), remaining))
+        if (auto reason = this->riskEngine.reserveModifyOrder(*node, order.getPrice(), remaining))
         {
             return {*reason};
         }
 
         auto result = book->modifyQuantity(*node, change, timestamp, this->nextSequence++);
-        this->riskEngine.reconcileOrder(order);
+        this->riskEngine.reconcileOrder(*node);
         return result;
     }
 
@@ -333,7 +353,7 @@ namespace advmatch
         auto result = book->cancel(*node, timestamp, this->nextSequence++);
         if (result)
         {
-            this->riskEngine.reconcileOrder(node->order);
+            this->riskEngine.reconcileOrder(*node);
         }
 
         return result;

@@ -52,14 +52,14 @@ namespace
     class BenchmarkConsumer final : public advmatch::consuming::SingleThreadConsumer<PlaceCommand, PlaceResponse>
     {
         advmatch::MatchingEngine engine;
+        advmatch::TradeBuffer trades;
 
     protected:
         PlaceResponse consume(PlaceCommand&& command) override
         {
-            std::vector<advmatch::Trade> trades;
             auto result = this->engine.placeOrder(command.userId, command.symbolId, command.side, command.type,
-                command.timeInForce, command.price, command.quantity, command.timestamp, trades);
-            return {static_cast<bool>(result), result.state.status == advmatch::OrderStatus::Filled, trades.size()};
+                command.timeInForce, command.price, command.quantity, command.timestamp, this->trades);
+            return {static_cast<bool>(result), result.state.status == advmatch::OrderStatus::Filled, this->trades.size()};
         }
 
     public:

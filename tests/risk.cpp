@@ -1,7 +1,6 @@
 #include "advmatch/matching/MatchingEngine.h"
 
 #include <cstdlib>
-#include <vector>
 
 #define CHECK(condition) \
     do \
@@ -33,7 +32,7 @@ int main()
     CHECK(!symbols.createSymbol("INVALID", SymbolType::Spot, 1, 1));
     CHECK(engine.addSpotBook(symbol->symbolId));
 
-    std::vector<Trade> trades;
+    TradeBuffer trades;
     const auto insufficientBuy = engine.placeOrder(buyerId, 1, OrderSide::Bid, OrderType::Limit, TimeInForce::GTC, 100, 20, 1, trades);
     CHECK(insufficientBuy.rejectReason == PlaceOrderRejectReason::InsufficientBalance);
     const auto insufficientSell = engine.placeOrder(sellerId, 1, OrderSide::Ask, OrderType::Limit, TimeInForce::GTC, 8, 21, 2, trades);
@@ -71,4 +70,20 @@ int main()
     CHECK(buyer->queryActiveBalance(1) == 5);
     CHECK(seller->queryActiveBalance(1) == 15 && seller->queryLockedBalance(1).value_or(0) == 0);
     CHECK(seller->queryActiveBalance(2) == 40);
+
+    const auto retained = engine.placeOrder(buyerId, 1, OrderSide::Bid, OrderType::Limit, TimeInForce::GTC, 5, 1, 13, trades);
+    CHECK(retained && buyer->queryLockedBalance(2) == 5);
+    CHECK(users.removeUser(buyerId));
+    CHECK(symbols.removeSymbol(1));
+    CHECK(!users.getUser(buyerId));
+    CHECK(!symbols.getSymbol(1));
+    CHECK(!users.containsUser(buyerId) && users.getUserCount() == 1);
+    CHECK(!symbols.containsSymbol(1) && symbols.getSymbolCount() == 0);
+    CHECK(engine.cancelOrder(buyerId, retained.orderId, 14));
+    CHECK(buyer->queryLockedBalance(2).value_or(0) == 0);
+
+    const auto inactiveUser = engine.placeOrder(buyerId, 1, OrderSide::Bid, OrderType::Limit, TimeInForce::GTC, 5, 1, 15, trades);
+    CHECK(!inactiveUser && inactiveUser.rejectReason == PlaceOrderRejectReason::UserNotFound);
+    const auto inactiveSymbol = engine.placeOrder(sellerId, 1, OrderSide::Ask, OrderType::Limit, TimeInForce::GTC, 5, 1, 16, trades);
+    CHECK(!inactiveSymbol && inactiveSymbol.rejectReason == PlaceOrderRejectReason::InvalidSymbol);
 }

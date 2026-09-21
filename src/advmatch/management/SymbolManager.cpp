@@ -49,20 +49,22 @@ namespace advmatch
         }
 
         ++this->nextSymbolId;
+        ++this->activeSymbolCount;
 
         return &result.first->second;
     }
 
     bool SymbolManager::containsSymbol(SymbolId symbolId) const noexcept
     {
-        return this->symbols.contains(symbolId);
+        const auto iterator = this->symbols.find(symbolId);
+        return iterator != this->symbols.end() && iterator->second.active;
     }
 
     const Symbol* SymbolManager::getSymbol(SymbolId symbolId) const noexcept
     {
         const auto iterator = this->symbols.find(symbolId);
 
-        if (iterator == this->symbols.end())
+        if (iterator == this->symbols.end() || !iterator->second.active)
         {
             return nullptr;
         }
@@ -74,7 +76,7 @@ namespace advmatch
     {
         const auto iterator = this->symbols.find(symbolId);
 
-        if (iterator == this->symbols.end())
+        if (iterator == this->symbols.end() || !iterator->second.active)
         {
             return nullptr;
         }
@@ -86,20 +88,21 @@ namespace advmatch
     {
         const auto iterator = this->symbols.find(symbolId);
 
-        if (iterator == this->symbols.end())
+        if (iterator == this->symbols.end() || !iterator->second.active)
         {
             return false;
         }
 
         this->symbolsByName.erase(iterator->second.name);
         this->symbolPairs.erase(SymbolKey{iterator->second.symbolType, iterator->second.baseAssetId, iterator->second.quoteAssetId});
-        this->symbols.erase(iterator);
+        iterator->second.active = false;
+        --this->activeSymbolCount;
 
         return true;
     }
 
     std::size_t SymbolManager::getSymbolCount() const noexcept
     {
-        return this->symbols.size();
+        return this->activeSymbolCount;
     }
 } // advmatch

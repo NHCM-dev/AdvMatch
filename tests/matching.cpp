@@ -1,7 +1,6 @@
 #include "advmatch/matching/MatchingEngine.h"
 
 #include <cstdlib>
-#include <vector>
 
 #define CHECK(condition) \
     do \
@@ -30,7 +29,7 @@ int main()
     CHECK(engine.addSpotBook(1));
     CHECK(!engine.addSpotBook(1));
 
-    std::vector<Trade> trades;
+    TradeBuffer trades;
     const auto ask1 = engine.placeOrder(seller, 1, OrderSide::Ask, OrderType::Limit, TimeInForce::GTC, 100, 10, 1, trades);
     const auto ask2 = engine.placeOrder(seller, 1, OrderSide::Ask, OrderType::Limit, TimeInForce::GTC, 100, 5, 2, trades);
     const auto ask3 = engine.placeOrder(seller, 1, OrderSide::Ask, OrderType::Limit, TimeInForce::GTC, 101, 4, 3, trades);
@@ -104,4 +103,22 @@ int main()
     CHECK(cases.cancelOrder(buyer, cancelled.orderId, 25).state == CancelOrderState::OrderCancelled);
     const auto invalid = cases.placeOrder(buyer, 3, OrderSide::Bid, OrderType::Market, TimeInForce::GTC, 0, 1, 26, trades);
     CHECK(!invalid && invalid.rejectReason == PlaceOrderRejectReason::InvalidTimeInForce);
+
+    CHECK(symbols.createSymbol("BASE4/QUOTE", SymbolType::Spot, 5, 2));
+    CHECK(users.getUser(seller)->updateBalance(5, 10));
+    MatchingEngine spill(users, symbols);
+    CHECK(spill.addSpotBook(4));
+    for (Timestamp timestamp = 27; timestamp < 32; ++timestamp)
+    {
+        CHECK(spill.placeOrder(seller, 4, OrderSide::Ask, OrderType::Limit, TimeInForce::GTC, 100, 1, timestamp, trades));
+    }
+
+    const auto fiveFills = spill.placeOrder(buyer, 4, OrderSide::Bid, OrderType::Limit, TimeInForce::FOK, 100, 5, 32, trades);
+    CHECK(fiveFills && trades.size() == 5);
+    const std::size_t expandedTradeCapacity = trades.capacity();
+    CHECK(expandedTradeCapacity >= 5);
+
+    const auto afterExpansion = spill.placeOrder(seller, 4, OrderSide::Ask, OrderType::Limit, TimeInForce::GTC, 101, 1, 33, trades);
+    CHECK(afterExpansion && trades.empty());
+    CHECK(trades.capacity() == expandedTradeCapacity);
 }

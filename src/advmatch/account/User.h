@@ -10,6 +10,7 @@
 namespace advmatch
 {
     using UserId = std::uint64_t;
+    class UserManager;
 
     class User
     {
@@ -26,6 +27,14 @@ namespace advmatch
         std::unique_ptr<OverflowBalances> overflowBalances;
 
         const UserId userId;
+        bool active = true;
+
+        friend class UserManager;
+
+        void deactivate() noexcept
+        {
+            this->active = false;
+        }
 
         // Returned pointers remain valid only until the next operation that can
         // add or remove an asset balance from this User.
@@ -78,6 +87,13 @@ namespace advmatch
 
             return this->inlineBalances.size();
         }
+
+        [[nodiscard]]
+        bool isActive() const noexcept
+        {
+            return this->active;
+        }
+
     };
 } // advmatch
 

@@ -165,7 +165,7 @@ namespace advmatch
         ++level.orderCount;
     }
 
-    void SpotOrderBook::match(OrderNode& taker, Timestamp timestamp, Sequence sequence, std::vector<Trade>& trades)
+    void SpotOrderBook::match(OrderNode& taker, Timestamp timestamp, Sequence sequence, TradeBuffer& trades)
     {
         while (taker.order.getUnfilledQuantity() != 0)
         {
@@ -178,7 +178,7 @@ namespace advmatch
             OrderNode& maker = *level->head;
             const Quantity quantity = std::min(taker.order.getUnfilledQuantity(), maker.order.getUnfilledQuantity());
 
-            trades.push_back({maker.order.orderId, taker.order.orderId, level->price, quantity, sequence});
+            trades.append({maker.order.orderId, taker.order.orderId, level->price, quantity, sequence}, maker, taker);
             [[maybe_unused]] auto makerResult = maker.order.fill(quantity, timestamp, sequence);
             [[maybe_unused]] auto takerResult = taker.order.fill(quantity, timestamp, sequence);
             level->totalQuantity -= quantity;
@@ -190,7 +190,7 @@ namespace advmatch
         }
     }
 
-    PlaceOrderResult SpotOrderBook::place(OrderNode& node, Timestamp timestamp, Sequence sequence, std::vector<Trade>& trades)
+    PlaceOrderResult SpotOrderBook::place(OrderNode& node, Timestamp timestamp, Sequence sequence, TradeBuffer& trades)
     {
         BasicOrder& order = node.order;
         const auto reject = [&](PlaceOrderRejectReason reason)
@@ -254,7 +254,7 @@ namespace advmatch
         return {order.orderId, order.getFillingStatus()};
     }
 
-    ModifyOrderResult SpotOrderBook::modifyPrice(OrderNode& node, Price price, Timestamp timestamp, Sequence sequence, std::vector<Trade>& trades)
+    ModifyOrderResult SpotOrderBook::modifyPrice(OrderNode& node, Price price, Timestamp timestamp, Sequence sequence, TradeBuffer& trades)
     {
         BasicOrder& order = node.order;
         if (!node.level)

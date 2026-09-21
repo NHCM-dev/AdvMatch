@@ -63,15 +63,15 @@ namespace
     class ScaleConsumer final : public advmatch::consuming::SingleThreadConsumer<PlaceCommand, PlaceResponse>
     {
         advmatch::MatchingEngine engine;
+        advmatch::TradeBuffer trades;
 
     protected:
         PlaceResponse consume(PlaceCommand&& command) override
         {
-            std::vector<advmatch::Trade> trades;
             auto result = this->engine.placeOrder(command.userId, command.symbolId, command.side, advmatch::OrderType::Limit,
-                command.timeInForce, 100, 1, 0, trades);
+                command.timeInForce, 100, 1, 0, this->trades);
             const auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(Clock::now() - command.submittedAt).count();
-            return {static_cast<bool>(result), result.state.status, trades.size(), static_cast<std::uint64_t>(elapsed)};
+            return {static_cast<bool>(result), result.state.status, this->trades.size(), static_cast<std::uint64_t>(elapsed)};
         }
 
     public:
