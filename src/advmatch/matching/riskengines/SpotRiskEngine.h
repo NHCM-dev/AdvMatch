@@ -5,6 +5,7 @@
 #ifndef ADVMATCH_SPOTRISKENGINE_H
 #define ADVMATCH_SPOTRISKENGINE_H
 #include "../abstract/RiskEngine.h"
+
 #include <unordered_map>
 
 namespace advmatch
@@ -17,6 +18,9 @@ namespace advmatch
             Balance amount;
         };
 
+        // This table has heavy insert-and-erase churn during settlement.
+        // std::unordered_map avoids DenseMap's erase-time payload relocation and
+        // is measurably faster for this workload when capacity is reserved.
         std::unordered_map<OrderId, Hold> holds;
 
         [[nodiscard]]
@@ -33,6 +37,11 @@ namespace advmatch
         SpotRiskEngine(UserManager& userManager, SymbolManager& symbolManager)
             : RiskEngine(userManager, symbolManager)
         {}
+
+        void reserve(std::size_t orderCount)
+        {
+            this->holds.reserve(orderCount);
+        }
 
         std::optional<PlaceOrderRejectReason> checkPlaceOrder(BasicOrder& order) override;
 

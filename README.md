@@ -8,9 +8,9 @@ only the ABI version.
 ## Requirements
 
 - CMake 3.20+, Git, Ninja, and a C++20 compiler (MSVC 2019+, GCC 11+, or Clang 14+).
-- Network access on first configure for fmt/spdlog unless they are installed or
-  supplied through `FETCHCONTENT_SOURCE_DIR_FMT` and
-  `FETCHCONTENT_SOURCE_DIR_SPDLOG`. Disruptor is included in the repository.
+- Network access on first configure for fmt, spdlog, Boost.Container,
+  unordered_dense, and Abseil unless installed packages or FetchContent source
+  overrides are supplied. Disruptor is included in the repository.
 - A JDK only when `ADVMATCH_BUILD_JNI=ON`.
 
 ## CLion
@@ -62,12 +62,38 @@ and set `JAVA_HOME` to the JDK if CMake cannot locate it. The C ABI library is
 - [{fmt}](https://github.com/fmtlib/fmt) 11.2.0 for formatting.
 - [spdlog](https://github.com/gabime/spdlog) 1.15.3 for diagnostics. Keep
   formatting and logging outside latency-critical matching paths.
+- [Boost.Container](https://github.com/boostorg/container) 1.92.0 for inline
+  balance storage.
+- [unordered_dense](https://github.com/martinus/unordered_dense) 5.0.1 for
+  large balance sets.
+- [Abseil](https://github.com/abseil/abseil-cpp) 20250814.2, exposing
+  `flat_hash_map` as an alternative flat hash container.
 
-CMake first uses installed fmt/spdlog packages, then fetches the pinned
-versions. Disruptor is built from the vendored headers without a network
-request or its upstream global compiler flags, tests, benchmarks, or examples.
-The `AdvMatch::disruptor` target is available to the C++ core. Any fmt/spdlog
-downloads live under the ignored build directory.
+CMake first uses installed packages, then fetches pinned versions. Disruptor is
+built from the vendored headers without a network request or its upstream
+global compiler flags, tests, benchmarks, or examples. The
+`AdvMatch::disruptor` target is available to the C++ core. Downloads live under
+the ignored build directory.
+
+`advmatch/util/Containers.h` provides the project aliases `SmallVector`,
+`DenseMap`, `DenseSet`, `FlatHashMap`, and `NodeHashMap`. Managers use
+`NodeHashMap` for objects whose addresses are returned to callers, while their
+secondary indexes use contiguous dense containers. A `User` currently keeps its first six asset
+balances inside the object through `SmallVector`; exceeding the configured
+inline capacity migrates the entries once to `DenseMap`. Existing balance APIs
+do not expose the selected storage mode. Balance element addresses are not
+stable across insertion, deletion, promotion, or hash-table reallocation. Code
+must retain `AssetId` rather than an `AssetBalance` pointer or reference and
+perform another lookup after a balance mutation.
+
+`MatchingEngine` stores monotonically numbered orders and books in vectors and
+uses `id - 1` as a direct index. The pointed-to `OrderNode` and `OrderBook`
+objects remain stable when those vectors grow. `SpotOrderBook` keeps price
+levels in `std::map` for ordered traversal and stable node addresses, with a
+`DenseMap` secondary index for exact-price lookup. The spot risk hold table
+keeps `std::unordered_map`: its settlement workload erases entries frequently,
+and local A/B measurements showed that avoiding dense-vector relocation was
+faster for this access pattern.
 
 ## Matching engine
 
@@ -173,6 +199,24 @@ Build and run the standalone benchmark in Release mode:
 cmake --build build/release --target advmatch_tps_benchmark
 .\build\release\advmatch_tps_benchmark.exe --orders 100000 --producers 4 --batch-size 256 --ring-size 1024
 ```
+
+`--batch-size` controls how many asynchronous responses each producer keeps in
+flight before waiting. `--publish-batch` controls how many adjacent Disruptor
+entries are claimed and published with one cursor operation; omission selects a
+bounded value from the ring size and producer count. For example:
+
+```powershell
+.\build\release\advmatch_tps_benchmark.exe --orders 1000000 --producers 8 --batch-size 256 --publish-batch 16 --ring-size 512
+```
+
+More producer threads do not imply more matching throughput because all of them
+contend for one multi-producer cursor and feed one matching thread. Leave at
+least one logical CPU for the consumer and usually start with two to four
+producer threads. Ring capacity absorbs bursts; it does not increase steady
+state processing capacity. Start with 32-256 entries for a few producers and
+512-1024 for a larger ingress pool, then measure on the deployment hardware.
+Avoid assigning one producer thread per connection. Network event-loop threads
+should aggregate client commands before posting them to the matching queue.
 
 The program first posts one resting sell order per requested trade. Preloading
 is reported separately and excluded from TPS. During the timed phase, producer

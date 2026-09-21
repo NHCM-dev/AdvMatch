@@ -7,8 +7,7 @@
 
 #include "advmatch/account/User.h"
 #include "advmatch/trading/Symbol.h"
-#include <unordered_map>
-#include <unordered_set>
+#include "advmatch/util/Containers.h"
 
 namespace advmatch
 {
@@ -32,13 +31,20 @@ namespace advmatch
             }
         };
 
-        std::unordered_map<SymbolId, Symbol> symbols;
-        std::unordered_map<std::string, SymbolId> symbolsByName;
-        std::unordered_set<SymbolKey, SymbolKeyHash> symbolPairs;
+        NodeHashMap<SymbolId, Symbol> symbols;
+        DenseMap<std::string, SymbolId> symbolsByName;
+        DenseSet<SymbolKey, SymbolKeyHash> symbolPairs;
         SymbolId nextSymbolId = 1;
 
     public:
         SymbolManager() = default;
+
+        void reserve(std::size_t symbolCount)
+        {
+            this->symbols.reserve(symbolCount);
+            this->symbolsByName.reserve(symbolCount);
+            this->symbolPairs.reserve(symbolCount);
+        }
 
         [[nodiscard]]
         Symbol* createSymbol(std::string name, SymbolType symbolType, AssetId base, AssetId quote);
@@ -49,6 +55,8 @@ namespace advmatch
         [[nodiscard]]
         bool containsSymbol(SymbolId symbolId) const noexcept;
 
+        // NodeHashMap keeps Symbol addresses valid across insertions and
+        // rehashes. Removing that symbol invalidates its address.
         [[nodiscard]]
         Symbol* getSymbol(SymbolId symbolId) noexcept;
 
@@ -68,11 +76,13 @@ namespace advmatch
             return symbols.end();
         }
 
+        [[nodiscard]]
         auto begin() const
         {
             return symbols.begin();
         }
 
+        [[nodiscard]]
         auto end() const
         {
             return symbols.end();

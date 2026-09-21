@@ -1,9 +1,10 @@
 #ifndef ADVMATCH_USER_H
 #define ADVMATCH_USER_H
-#include <map>
+#include <memory>
 #include <optional>
 
 #include "../market/Asset.h"
+#include "../util/Containers.h"
 #include "../util/Utils.h"
 
 namespace advmatch
@@ -12,9 +13,29 @@ namespace advmatch
 
     class User
     {
+        // Balance addresses are intentionally private and temporary. Adding or
+        // removing an asset can move balances in either storage mode. Never
+        // cache an AssetBalance pointer, reference, or iterator across a balance
+        // mutation; find it again by AssetId after the mutation.
+        static constexpr std::size_t InlineBalanceCapacity = 6;
 
-        std::map<AssetId, AssetBalance> balances;
+        using InlineBalances = SmallVector<AssetBalanceEntry, InlineBalanceCapacity>;
+        using OverflowBalances = DenseMap<AssetId, AssetBalance>;
+
+        InlineBalances inlineBalances;
+        std::unique_ptr<OverflowBalances> overflowBalances;
+
         const UserId userId;
+
+        // Returned pointers remain valid only until the next operation that can
+        // add or remove an asset balance from this User.
+        [[nodiscard]]
+        AssetBalance* findBalance(AssetId assetId) noexcept;
+        [[nodiscard]]
+        const AssetBalance* findBalance(AssetId assetId) const noexcept;
+
+        AssetBalance& addBalance(AssetId assetId, AssetBalance balance);
+        void removeBalance(AssetId assetId) noexcept;
 
     public:
         explicit User(UserId userId)
@@ -50,7 +71,12 @@ namespace advmatch
         [[nodiscard]]
         std::size_t getAssetBalanceCount() const noexcept
         {
-            return this->balances.size();
+            if (this->overflowBalances)
+            {
+                return this->overflowBalances->size();
+            }
+
+            return this->inlineBalances.size();
         }
     };
 } // advmatch

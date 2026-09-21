@@ -8,7 +8,6 @@
 
 #include <memory>
 #include <optional>
-#include <unordered_map>
 #include <vector>
 
 #include "advmatch/management/SymbolManager.h"
@@ -23,12 +22,15 @@ namespace advmatch
         SymbolManager& symbolManager;
         SpotRiskEngine riskEngine;
 
-        std::unordered_map<OrderId, std::unique_ptr<OrderNode>> orders;
-        std::unordered_map<SymbolId, std::unique_ptr<OrderBook>> orderBooks;
+        // IDs are monotonically allocated from one, so id - 1 is a direct O(1)
+        // index. unique_ptr keeps nodes and books stable when vectors grow.
+        std::vector<std::unique_ptr<OrderNode>> orders;
+        std::vector<std::unique_ptr<OrderBook>> orderBooks;
         OrderId nextOrderId = 1;
         Sequence nextSequence = 1;
 
         OrderNode* findNode(OrderId orderId) noexcept;
+        const OrderNode* findNode(OrderId orderId) const noexcept;
         const OrderBook* findBook(SymbolId symbolId) const noexcept;
         OrderBook* findBook(SymbolId symbolId) noexcept;
         void settleTrades(const std::vector<Trade>& trades);
@@ -37,6 +39,15 @@ namespace advmatch
         explicit MatchingEngine(UserManager& userManager, SymbolManager& symbolManager)
         : userManager(userManager), symbolManager(symbolManager), riskEngine(userManager, symbolManager)
         {}
+
+        // activeOrderCount sizes the risk reservation table independently from
+        // retained order history, which can be substantially larger.
+        void reserve(std::size_t orderCount, std::size_t bookCount, std::size_t activeOrderCount)
+        {
+            this->orders.reserve(orderCount);
+            this->orderBooks.reserve(bookCount);
+            this->riskEngine.reserve(activeOrderCount);
+        }
 
         bool addSpotBook(SymbolId symbolId);
 

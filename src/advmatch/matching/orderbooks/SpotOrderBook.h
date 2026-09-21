@@ -3,10 +3,10 @@
 
 #include "../Matching.h"
 #include "../abstract/OrderBook.h"
+#include "../../util/Containers.h"
 
 #include <functional>
 #include <map>
-#include <unordered_map>
 
 namespace advmatch
 {
@@ -15,8 +15,10 @@ namespace advmatch
         template <typename Compare>
         struct Levels
         {
+            // The tree supplies price ordering and stable PriceLevel addresses.
+            // DenseMap is only a fast exact-price index into those tree nodes.
             std::map<Price, PriceLevel, Compare> ordered;
-            std::unordered_map<Price, PriceLevel*> byPrice;
+            DenseMap<Price, PriceLevel*> byPrice;
 
             PriceLevel* find(Price price) noexcept
             {
@@ -70,7 +72,7 @@ namespace advmatch
         Levels<std::less<Price>> asks;
 
         static std::optional<Quote> quote(const PriceLevel* level) noexcept;
-        bool crosses(const BasicOrder& taker, Price makerPrice) const noexcept;
+        static bool crosses(const BasicOrder& taker, Price makerPrice) noexcept;
         bool canFillAll(const BasicOrder& order) const noexcept;
         void match(OrderNode& taker, Timestamp timestamp, Sequence sequence, std::vector<Trade>& trades);
         void append(OrderNode& node);
@@ -89,18 +91,23 @@ namespace advmatch
         ModifyOrderResult modifyPrice(OrderNode& order, Price price, Timestamp timestamp, Sequence sequence, std::vector<Trade>& trades) override;
         ModifyOrderResult modifyQuantity(OrderNode& order, QuantityChange change, Timestamp timestamp, Sequence sequence) override;
         CancelOrderResult cancel(OrderNode& order, Timestamp timestamp, Sequence sequence) override;
+
+        [[nodiscard]]
         std::optional<Quote> bestBid() const noexcept override
         {
             return quote(this->bids.best());
         }
+        [[nodiscard]]
         std::optional<Quote> bestAsk() const noexcept override
         {
             return quote(this->asks.best());
         }
+        [[nodiscard]]
         std::optional<Quote> bidAt(Price price) const noexcept override
         {
             return quote(this->bids.find(price));
         }
+        [[nodiscard]]
         std::optional<Quote> askAt(Price price) const noexcept override
         {
             return quote(this->asks.find(price));

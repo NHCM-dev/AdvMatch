@@ -89,6 +89,11 @@ namespace
             return this->engine.addSpotBook(symbolId);
         }
 
+        void reserve(std::size_t orderCount, std::size_t bookCount, std::size_t activeOrderCount)
+        {
+            this->engine.reserve(orderCount, bookCount, activeOrderCount);
+        }
+
         std::optional<advmatch::Quote> bestAsk(advmatch::SymbolId symbolId) const noexcept
         {
             return this->engine.bestAsk(symbolId);
@@ -453,8 +458,8 @@ int main(int argumentCount, char** arguments)
         using namespace advmatch;
 
         const Options options = parseOptions(argumentCount, arguments);
-        const std::uint64_t estimatedBytes = options.users * 128 + options.accounts * 96 + options.symbols * 640 +
-            options.pendingOrders * 360 + options.cycles * options.rounds * 512;
+        const std::uint64_t estimatedBytes = options.users * (sizeof(User) + 64) + options.accounts * sizeof(AssetBalanceEntry) +
+            options.symbols * 640 + options.pendingOrders * 360 + options.cycles * options.rounds * 512;
         const std::uint64_t availableBytes = availablePhysicalMemory();
         std::cout << "users=" << options.users << " asset_balance_records=" << options.accounts;
         std::cout << " symbols=" << options.symbols << " pending_orders=" << options.pendingOrders << '\n';
@@ -470,6 +475,9 @@ int main(int argumentCount, char** arguments)
         const auto setupStart = Clock::now();
         UserManager users;
         SymbolManager symbols;
+        users.reserve(options.users);
+        symbols.reserve(options.symbols);
+
         for (std::uint32_t index = 0; index < options.symbols; ++index)
         {
             if (!symbols.createSymbol("BASE" + std::to_string(index) + "/QUOTE", SymbolType::Spot, index + 2, 1))
@@ -539,6 +547,7 @@ int main(int argumentCount, char** arguments)
         std::cout << "setup_phase=balances_done\n" << std::flush;
 
         ScaleConsumer consumer(users, symbols);
+        consumer.reserve(options.pendingOrders + totalCycles * 2, options.symbols, options.pendingOrders);
         for (std::uint32_t symbol = 0; symbol < options.symbols; ++symbol)
         {
             if (!consumer.addSpotBook(symbol + 1))

@@ -47,6 +47,12 @@ namespace advmatch
         Balance locked;
     };
 
+    struct AssetBalanceEntry
+    {
+        AssetId assetId;
+        AssetBalance balance;
+    };
+
     enum class BalanceOpResult : std::uint8_t
     {
         Success,

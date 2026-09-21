@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.20)
 project(AdvMatch VERSION 0.0.1 LANGUAGES C CXX)
 
+if(POLICY CMP0167)
+    cmake_policy(SET CMP0167 NEW)
+endif()
+
 # Keep the IDE's compilation database explicit. GCC 16 defaults to C++20,
 # but Clangd may otherwise infer an older language mode for headers.
 set(CMAKE_CXX_STANDARD 20)
@@ -64,6 +68,44 @@ if(NOT spdlog_FOUND)
     FetchContent_MakeAvailable(spdlog)
 endif()
 
+find_package(Boost 1.92 QUIET)
+add_library(advmatch_boost_headers INTERFACE)
+add_library(AdvMatch::boost_headers ALIAS advmatch_boost_headers)
+if(Boost_FOUND)
+    target_include_directories(advmatch_boost_headers SYSTEM INTERFACE ${Boost_INCLUDE_DIRS})
+else()
+    FetchContent_Declare(advmatch_boost
+        URL https://archives.boost.io/release/1.92.0/source/boost_1_92_0.tar.gz
+        URL_HASH SHA256=c4a3b310ddd2472416e091067166b0713be97c63f38c212c484ada022fd296ce
+        DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        SOURCE_SUBDIR __advmatch_headers_only)
+    FetchContent_MakeAvailable(advmatch_boost)
+    target_include_directories(advmatch_boost_headers SYSTEM INTERFACE ${advmatch_boost_SOURCE_DIR})
+endif()
+
+find_package(unordered_dense 5.0.1 QUIET CONFIG)
+if(NOT unordered_dense_FOUND)
+    FetchContent_Declare(unordered_dense
+        GIT_REPOSITORY https://github.com/martinus/unordered_dense.git
+        GIT_TAG 1c8636e810d7e4a485d17bb9cbd6dccb5fe4e284)
+    FetchContent_MakeAvailable(unordered_dense)
+endif()
+
+find_package(absl 20250814 QUIET CONFIG)
+if(NOT absl_FOUND)
+    set(ABSL_BUILD_TESTING OFF CACHE BOOL "Do not build Abseil tests" FORCE)
+    set(ABSL_ENABLE_INSTALL OFF CACHE BOOL "Do not install vendored Abseil" FORCE)
+    set(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "Use the parent C++ standard" FORCE)
+    if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
+        set(ADVMATCH_ABSL_EXCLUDE_FROM_ALL EXCLUDE_FROM_ALL)
+    endif()
+    FetchContent_Declare(absl
+        GIT_REPOSITORY https://github.com/abseil/abseil-cpp.git
+        GIT_TAG 0cf0a5c9d12cc3783363ab20f11613e69fd04c9a
+        ${ADVMATCH_ABSL_EXCLUDE_FROM_ALL})
+    FetchContent_MakeAvailable(absl)
+endif()
+
 add_library(advmatch_core STATIC
     src/advmatch/core.cpp
     include/advmatch/core.hpp
@@ -71,6 +113,7 @@ add_library(advmatch_core STATIC
     src/advmatch/account/User.cpp
     src/advmatch/account/User.h
     src/advmatch/util/Utils.h
+    src/advmatch/util/Containers.h
     src/advmatch/management/UserManager.cpp
     src/advmatch/management/UserManager.h
     src/advmatch/management/AssetManager.cpp
@@ -100,7 +143,9 @@ target_include_directories(advmatch_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
-target_link_libraries(advmatch_core PUBLIC AdvMatch::disruptor PRIVATE fmt::fmt spdlog::spdlog)
+target_link_libraries(advmatch_core
+    PUBLIC AdvMatch::disruptor AdvMatch::boost_headers unordered_dense::unordered_dense absl::flat_hash_map absl::node_hash_map
+    PRIVATE fmt::fmt spdlog::spdlog)
 
 # Stable C symbols and plain C data types provide the boundary for JNI/PInvoke.
 add_library(advmatch SHARED
@@ -144,6 +189,10 @@ if(BUILD_TESTING)
     add_executable(advmatch_asset_management_tests tests/asset_management.cpp)
     target_link_libraries(advmatch_asset_management_tests PRIVATE AdvMatch::core)
     add_test(NAME advmatch_asset_management_tests COMMAND advmatch_asset_management_tests)
+
+    add_executable(advmatch_container_tests tests/containers.cpp)
+    target_link_libraries(advmatch_container_tests PRIVATE AdvMatch::core)
+    add_test(NAME advmatch_container_tests COMMAND advmatch_container_tests)
 
     add_executable(advmatch_tps_benchmark benchmarks/tps.cpp)
     target_link_libraries(advmatch_tps_benchmark PRIVATE AdvMatch::core)

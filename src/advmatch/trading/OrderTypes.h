@@ -13,8 +13,8 @@ namespace advmatch
 
     enum class OrderType : bool
     {
-        Market,
-        Limit
+        Limit = true,
+        Market = false
     };
 
     enum class TimeInForce : std::uint8_t

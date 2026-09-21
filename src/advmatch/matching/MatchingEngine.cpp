@@ -14,15 +14,34 @@ namespace advmatch
             return false;
         }
 
-        return this->orderBooks.try_emplace(symbolId, std::make_unique<SpotOrderBook>(symbolId)).second;
+        if (this->orderBooks.size() < symbolId)
+        {
+            this->orderBooks.resize(symbolId);
+        }
+
+        std::unique_ptr<OrderBook>& book = this->orderBooks[symbolId - 1];
+        if (book)
+        {
+            return false;
+        }
+
+        book = std::make_unique<SpotOrderBook>(symbolId);
+        return true;
     }
 
     void MatchingEngine::settleTrades(const std::vector<Trade>& trades)
     {
         for (const Trade& trade : trades)
         {
-            const BasicOrder& maker = this->orders.at(trade.makerOrderId)->order;
-            const BasicOrder& taker = this->orders.at(trade.takerOrderId)->order;
+            const OrderNode* makerNode = this->findNode(trade.makerOrderId);
+            const OrderNode* takerNode = this->findNode(trade.takerOrderId);
+            if (!makerNode || !takerNode)
+            {
+                throw std::logic_error("trade references an unknown order");
+            }
+
+            const BasicOrder& maker = makerNode->order;
+            const BasicOrder& taker = takerNode->order;
             this->riskEngine.settleTrade(trade, maker, taker);
             this->riskEngine.reconcileOrder(maker);
         }
@@ -30,20 +49,42 @@ namespace advmatch
 
     OrderNode* MatchingEngine::findNode(OrderId orderId) noexcept
     {
-        auto it = this->orders.find(orderId);
-        return it == this->orders.end() ? nullptr : it->second.get();
+        if (orderId == 0 || orderId > this->orders.size())
+        {
+            return nullptr;
+        }
+
+        return this->orders[orderId - 1].get();
+    }
+
+    const OrderNode* MatchingEngine::findNode(OrderId orderId) const noexcept
+    {
+        if (orderId == 0 || orderId > this->orders.size())
+        {
+            return nullptr;
+        }
+
+        return this->orders[orderId - 1].get();
     }
 
     OrderBook* MatchingEngine::findBook(SymbolId symbolId) noexcept
     {
-        auto it = this->orderBooks.find(symbolId);
-        return it == this->orderBooks.end() ? nullptr : it->second.get();
+        if (symbolId == 0 || symbolId > this->orderBooks.size())
+        {
+            return nullptr;
+        }
+
+        return this->orderBooks[symbolId - 1].get();
     }
 
     const OrderBook* MatchingEngine::findBook(SymbolId symbolId) const noexcept
     {
-        auto it = this->orderBooks.find(symbolId);
-        return it == this->orderBooks.end() ? nullptr : it->second.get();
+        if (symbolId == 0 || symbolId > this->orderBooks.size())
+        {
+            return nullptr;
+        }
+
+        return this->orderBooks[symbolId - 1].get();
     }
 
     PlaceOrderResult MatchingEngine::placeOrder(UserId userId, SymbolId symbolId, OrderSide side, OrderType type, TimeInForce timeInForce, Price price,
@@ -117,6 +158,11 @@ namespace advmatch
         const OrderId id = this->nextOrderId++;
         const Sequence sequence = this->nextSequence++;
 
+        if (this->orders.size() < id)
+        {
+            this->orders.resize(id);
+        }
+
         auto node = std::make_unique<OrderNode>(BasicOrder(id, userId, symbolId, side, type, timeInForce, price, quantity, timestamp, sequence));
         OrderNode& order = *node;
 
@@ -125,10 +171,10 @@ namespace advmatch
             return reject(*reason);
         }
 
-        this->orders.emplace(id, std::move(node));
+        this->orders[id - 1] = std::move(node);
         if (auto reason = this->riskEngine.reservePlaceOrder(order.order, marketBuyCost))
         {
-            this->orders.erase(id);
+            this->orders[id - 1].reset();
             return reject(*reason);
         }
 
@@ -137,7 +183,7 @@ namespace advmatch
         if (!result)
         {
             this->riskEngine.releaseOrder(order.order);
-            this->orders.erase(id);
+            this->orders[id - 1].reset();
             return result;
         }
 
@@ -295,13 +341,13 @@ namespace advmatch
 
     std::optional<BasicOrder> MatchingEngine::queryOrder(OrderId orderId) const
     {
-        auto it = this->orders.find(orderId);
-        if (it == this->orders.end())
+        const OrderNode* node = this->findNode(orderId);
+        if (!node)
         {
             return std::nullopt;
         }
 
-        return it->second->order;
+        return node->order;
     }
 
     std::optional<Quote> MatchingEngine::bestBid(SymbolId symbolId) const noexcept

@@ -26,6 +26,7 @@ namespace
         std::uint64_t orders = 1000000;
         std::uint32_t producers = 4;
         std::uint32_t batchSize = 256;
+        std::uint32_t publishBatchSize = 0;
         int ringSize = 32;
     };
 
@@ -76,6 +77,11 @@ namespace
             return this->engine.addSpotBook(symbolId);
         }
 
+        void reserve(std::size_t orderCount, std::size_t bookCount, std::size_t activeOrderCount)
+        {
+            this->engine.reserve(orderCount, bookCount, activeOrderCount);
+        }
+
         std::optional<advmatch::Quote> bestAsk(advmatch::SymbolId symbolId) const noexcept
         {
             return this->engine.bestAsk(symbolId);
@@ -110,7 +116,8 @@ namespace
             const std::string_view name(arguments[index]);
             if (name == "--help")
             {
-                std::cout << "Usage: advmatch_tps_benchmark [--orders N] [--producers N] [--batch-size N] [--ring-size N]\n";
+                std::cout << "Usage: advmatch_tps_benchmark [--orders N] [--producers N] [--batch-size N]";
+                std::cout << " [--publish-batch N] [--ring-size N]\n";
                 std::exit(0);
             }
 
@@ -132,6 +139,10 @@ namespace
             {
                 options.batchSize = static_cast<std::uint32_t>(value);
             }
+            else if (name == "--publish-batch" && value <= std::numeric_limits<std::uint32_t>::max())
+            {
+                options.publishBatchSize = static_cast<std::uint32_t>(value);
+            }
             else if (name == "--ring-size" && value <= static_cast<std::uint64_t>(std::numeric_limits<int>::max()))
             {
                 options.ringSize = static_cast<int>(value);
@@ -152,6 +163,11 @@ namespace
             throw std::invalid_argument("ring size must be a power of two");
         }
 
+        if (options.publishBatchSize > static_cast<std::uint32_t>(options.ringSize))
+        {
+            throw std::invalid_argument("publish batch size must not exceed ring size");
+        }
+
         return options;
     }
 
@@ -168,8 +184,25 @@ int main(int argumentCount, char** arguments)
         using namespace advmatch;
 
         const Options options = parseOptions(argumentCount, arguments);
+        const std::uint32_t automaticPublishBatch = std::max(1U, std::min({64U, options.batchSize,
+            static_cast<std::uint32_t>(options.ringSize) / options.producers}));
+        const std::uint32_t publishBatchSize = options.publishBatchSize == 0 ? automaticPublishBatch : options.publishBatchSize;
+        const unsigned int logicalThreads = std::thread::hardware_concurrency();
+
+        if (logicalThreads != 0 && options.producers + 1 >= logicalThreads)
+        {
+            std::cerr << "configuration_warning=producer threads plus the consumer saturate available logical CPUs\n";
+        }
+
+        if (static_cast<std::uint64_t>(options.ringSize) <= static_cast<std::uint64_t>(options.producers) * 2)
+        {
+            std::cerr << "configuration_warning=ring size leaves too little burst capacity per producer\n";
+        }
         UserManager users;
         SymbolManager symbols;
+        users.reserve(2);
+        symbols.reserve(1);
+
         const UserId sellerId = users.createUser();
         const UserId buyerId = users.createUser();
         const Symbol* symbol = symbols.createSymbol("BASE/QUOTE", SymbolType::Spot, 1, 2);
@@ -180,6 +213,7 @@ int main(int argumentCount, char** arguments)
         }
 
         BenchmarkConsumer consumer(users, symbols);
+        consumer.reserve(options.orders * 2, 1, options.orders);
         if (!consumer.addSpotBook(symbol->symbolId))
         {
             throw std::runtime_error("spot book registration failed");
@@ -226,17 +260,22 @@ int main(int argumentCount, char** arguments)
                 {
                     const std::uint64_t count = options.orders / options.producers + (producer < options.orders % options.producers ? 1 : 0);
                     auto responseSlots = std::make_unique<consuming::ResponseSlot<PlaceResponse>[]>(options.batchSize);
+                    std::vector<PlaceCommand> commands;
+                    commands.reserve(options.batchSize);
                     std::vector<consuming::RequestTicket<PlaceResponse>> responses;
                     responses.reserve(options.batchSize);
 
                     for (std::uint64_t index = 0; index < count;)
                     {
                         responses.clear();
+                        commands.clear();
                         for (std::uint32_t batchIndex = 0; batchIndex < options.batchSize && index < count; ++batchIndex, ++index)
                         {
-                            responses.push_back(consumer.post({buyerId, symbol->symbolId, OrderSide::Bid, OrderType::Limit,
-                                TimeInForce::IOC, 100, 1, index + 1}, responseSlots[batchIndex]));
+                            commands.push_back({buyerId, symbol->symbolId, OrderSide::Bid, OrderType::Limit,
+                                TimeInForce::IOC, 100, 1, index + 1});
                         }
+
+                        consumer.postBatch(commands, {responseSlots.get(), commands.size()}, responses, publishBatchSize);
 
                         for (auto& response : responses)
                         {
@@ -293,8 +332,9 @@ int main(int argumentCount, char** arguments)
 
         const double elapsed = secondsBetween(matchingStart, matchingEnd);
         std::cout << "scenario=preloaded_asks_then_limit_bids\n";
+        std::cout << "logical_threads=" << logicalThreads << '\n';
         std::cout << "orders=" << options.orders << " producers=" << options.producers << " batch_size=" << options.batchSize;
-        std::cout << " ring_size=" << options.ringSize << '\n';
+        std::cout << " publish_batch=" << publishBatchSize << " ring_size=" << options.ringSize << '\n';
         std::cout << "preload_seconds=" << secondsBetween(preloadStart, preloadEnd) << '\n';
         std::cout << "matched=" << filled << " trades=" << trades << " elapsed_seconds=" << elapsed << '\n';
         std::cout << "tps=" << static_cast<double>(filled) / elapsed << '\n';

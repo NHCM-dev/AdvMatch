@@ -4,16 +4,21 @@
 
 #ifndef ADVMATCH_USERMANAGER_H
 #define ADVMATCH_USERMANAGER_H
-#include <unordered_map>
 #include "../account/User.h"
+#include "../util/Containers.h"
 
 namespace advmatch
 {
     class UserManager
     {
-        std::unordered_map<UserId, User> users;
+        NodeHashMap<UserId, User> users;
         UserId nextUserId = 1;
     public:
+
+        void reserve(std::size_t userCount)
+        {
+            this->users.reserve(userCount);
+        }
 
         [[nodiscard]]
         UserId createUser();
@@ -24,6 +29,10 @@ namespace advmatch
         [[nodiscard]]
         bool containsUser(UserId userId) const noexcept;
 
+        // NodeHashMap keeps the returned address valid across insertions and
+        // rehashes. It becomes invalid when that user is removed or this
+        // manager dies. Concurrent access still requires external
+        // synchronization.
         [[nodiscard]]
         User* getUser(UserId userId) noexcept;
 

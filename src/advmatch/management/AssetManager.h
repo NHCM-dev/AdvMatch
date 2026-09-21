@@ -2,20 +2,26 @@
 #define ADVMATCH_ASSETMANAGER_H
 
 #include "advmatch/market/Asset.h"
+#include "advmatch/util/Containers.h"
 
 #include <string>
-#include <unordered_map>
 
 namespace advmatch
 {
     class AssetManager
     {
-        std::unordered_map<AssetId, Asset> assets;
-        std::unordered_map<std::string, AssetId> assetsByName;
+        NodeHashMap<AssetId, Asset> assets;
+        DenseMap<std::string, AssetId> assetsByName;
         AssetId nextAssetId = 1;
 
     public:
         AssetManager() = default;
+
+        void reserve(std::size_t assetCount)
+        {
+            this->assets.reserve(assetCount);
+            this->assetsByName.reserve(assetCount);
+        }
 
         [[nodiscard]]
         Asset* createAsset(std::string displayName, std::string assetName, Scale scale);
@@ -29,6 +35,8 @@ namespace advmatch
         [[nodiscard]]
         bool containsAssetName(const std::string& assetName) const noexcept;
 
+        // NodeHashMap keeps Asset addresses valid across insertions and
+        // rehashes. Removing that asset invalidates its address.
         [[nodiscard]]
         Asset* getAsset(AssetId assetId) noexcept;
 

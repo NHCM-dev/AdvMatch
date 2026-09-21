@@ -1,9 +1,10 @@
 #ifndef ADVMATCH_SINGLE_THREAD_CONSUMER_H
 #define ADVMATCH_SINGLE_THREAD_CONSUMER_H
 
-#include <disruptor/BusySpinWaitStrategy.h>
+#include <disruptor/BlockingWaitStrategy.h>
 #include <disruptor/RingBuffer.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <exception>
@@ -11,14 +12,14 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <stdexcept>
 #include <thread>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 #include "advmatch/consuming/RequestTicket.h"
-#include "disruptor/BlockingWaitStrategy.h"
-
 namespace advmatch::consuming
 {
     // Derive from this class and implement consume(). All calls to consume()
@@ -108,6 +109,11 @@ namespace advmatch::consuming
             {
                 this->activeSubmitters.notify_all();
             }
+        }
+
+        std::int64_t claimNext() noexcept
+        {
+            return this->ring->next();
         }
 
         void run() noexcept
@@ -215,7 +221,7 @@ namespace advmatch::consuming
             {
                 responseSlot.prepare();
 
-                const auto sequence = this->ring->next();
+                const auto sequence = this->claimNext();
                 Event& event = this->ring->get(sequence);
                 event.request.reset();
                 event.command.emplace(std::move(command));
@@ -231,6 +237,81 @@ namespace advmatch::consuming
                 this->endSubmit();
                 throw;
             }
+        }
+
+        // Claims and publishes several adjacent ring entries at once. This
+        // reduces cursor contention and consumer wakeups under many producers.
+        // Commands and response slots must remain alive until every ticket is
+        // consumed. Keep publishBatchSize well below the ring size so one
+        // producer cannot monopolize the complete queue.
+        void postBatch(std::span<Command> commands, std::span<ResponseSlot<Response>> responseSlots,
+            std::vector<RequestTicket<Response>>& tickets, std::size_t publishBatchSize)
+        {
+            static_assert(std::is_nothrow_move_constructible_v<Command>, "fast commands must be nothrow move constructible");
+
+            if (commands.size() != responseSlots.size())
+            {
+                throw std::invalid_argument("commands and response slots must have the same size");
+            }
+
+            if (!tickets.empty())
+            {
+                throw std::invalid_argument("ticket output must be empty");
+            }
+
+            if (commands.empty())
+            {
+                return;
+            }
+
+            if (publishBatchSize == 0 || publishBatchSize > static_cast<std::size_t>(this->ring->getBufferSize()))
+            {
+                throw std::invalid_argument("publish batch size must fit in the ring buffer");
+            }
+
+            tickets.reserve(commands.size());
+            this->beginSubmit();
+            std::size_t prepared = 0;
+            try
+            {
+                for (; prepared < responseSlots.size(); ++prepared)
+                {
+                    responseSlots[prepared].prepare();
+                }
+            }
+            catch (...)
+            {
+                for (std::size_t index = 0; index < prepared; ++index)
+                {
+                    responseSlots[index].release();
+                }
+
+                this->endSubmit();
+                throw;
+            }
+
+            std::size_t offset = 0;
+            while (offset < commands.size())
+            {
+                const std::size_t count = std::min(publishBatchSize, commands.size() - offset);
+                const std::int64_t highSequence = this->ring->next(static_cast<int>(count));
+                const std::int64_t lowSequence = highSequence - static_cast<std::int64_t>(count) + 1;
+
+                for (std::size_t index = 0; index < count; ++index)
+                {
+                    Event& event = this->ring->get(lowSequence + static_cast<std::int64_t>(index));
+                    event.request.reset();
+                    event.command.emplace(std::move(commands[offset + index]));
+                    event.responseSlot = &responseSlots[offset + index];
+                    event.type = EventType::Ticket;
+                    tickets.push_back(RequestTicket<Response>(&responseSlots[offset + index]));
+                }
+
+                this->ring->publish(lowSequence, highSequence);
+                offset += count;
+            }
+
+            this->endSubmit();
         }
 
         void stop()
@@ -254,7 +335,7 @@ namespace advmatch::consuming
                 submitters = this->activeSubmitters.load(std::memory_order_acquire);
             }
 
-            const auto sequence = this->ring->next();
+            const auto sequence = this->claimNext();
             Event& event = this->ring->get(sequence);
             event.command.reset();
             event.request.reset();

@@ -39,7 +39,7 @@ namespace advmatch
         return Quote{level->price, level->totalQuantity, level->orderCount};
     }
 
-    bool SpotOrderBook::crosses(const BasicOrder& taker, Price makerPrice) const noexcept
+    bool SpotOrderBook::crosses(const BasicOrder& taker, Price makerPrice) noexcept
     {
         if (taker.orderType == OrderType::Market)
         {
@@ -206,11 +206,6 @@ namespace advmatch
         if (order.getQuantity() == 0)
         {
             return reject(PlaceOrderRejectReason::InvalidQuantity);
-        }
-
-        if (order.orderType != OrderType::Market && order.orderType != OrderType::Limit)
-        {
-            return reject(PlaceOrderRejectReason::InvalidOrderType);
         }
 
         if (order.orderType == OrderType::Limit && order.getPrice() == 0)

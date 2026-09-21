@@ -8,23 +8,120 @@
 
 namespace advmatch
 {
+    AssetBalance* User::findBalance(AssetId assetId) noexcept
+    {
+        if (this->overflowBalances)
+        {
+            const auto iterator = this->overflowBalances->find(assetId);
+            return iterator == this->overflowBalances->end() ? nullptr : &iterator->second;
+        }
+
+        for (AssetBalanceEntry& entry : this->inlineBalances)
+        {
+            if (entry.assetId == assetId)
+            {
+                return &entry.balance;
+            }
+        }
+
+        return nullptr;
+    }
+
+    const AssetBalance* User::findBalance(AssetId assetId) const noexcept
+    {
+        if (this->overflowBalances)
+        {
+            const auto iterator = this->overflowBalances->find(assetId);
+            return iterator == this->overflowBalances->end() ? nullptr : &iterator->second;
+        }
+
+        for (const AssetBalanceEntry& entry : this->inlineBalances)
+        {
+            if (entry.assetId == assetId)
+            {
+                return &entry.balance;
+            }
+        }
+
+        return nullptr;
+    }
+
+    AssetBalance& User::addBalance(AssetId assetId, AssetBalance balance)
+    {
+        if (this->overflowBalances)
+        {
+            return this->overflowBalances->emplace(assetId, balance).first->second;
+        }
+
+        if (this->inlineBalances.size() < InlineBalanceCapacity)
+        {
+            this->inlineBalances.push_back({assetId, balance});
+            return this->inlineBalances.back().balance;
+        }
+
+        // Promotion moves every balance out of inline storage. No pointer,
+        // reference, or iterator obtained before this point remains valid.
+        auto newOverflowBalances = std::make_unique<OverflowBalances>();
+        newOverflowBalances->reserve(InlineBalanceCapacity * 2);
+
+        for (const AssetBalanceEntry& entry : this->inlineBalances)
+        {
+            newOverflowBalances->emplace(entry.assetId, entry.balance);
+        }
+
+        AssetBalance& insertedBalance = newOverflowBalances->emplace(assetId, balance).first->second;
+        this->overflowBalances = std::move(newOverflowBalances);
+        this->inlineBalances.clear();
+        return insertedBalance;
+    }
+
+    void User::removeBalance(AssetId assetId) noexcept
+    {
+        if (this->overflowBalances)
+        {
+            // DenseMap can move its last element into the erased slot. Treat all
+            // previously obtained balance addresses as invalid after erase.
+            this->overflowBalances->erase(assetId);
+
+            if (this->overflowBalances->empty())
+            {
+                this->overflowBalances.reset();
+            }
+
+            return;
+        }
+
+        for (auto iterator = this->inlineBalances.begin(); iterator != this->inlineBalances.end(); ++iterator)
+        {
+            if (iterator->assetId == assetId)
+            {
+                // SmallVector shifts every following entry into the empty slot.
+                // Addresses at and after iterator become invalid.
+                this->inlineBalances.erase(iterator);
+                return;
+            }
+        }
+    }
+
     std::optional<Balance> User::queryActiveBalance(AssetId assetId) const noexcept
     {
-        const auto iterator = this->balances.find(assetId);
-        if (iterator != this->balances.end())
+        const AssetBalance* balance = this->findBalance(assetId);
+        if (balance)
         {
-            return std::make_optional(iterator->second.active);
+            return balance->active;
         }
+
         return std::nullopt;
     }
 
     std::optional<Balance> User::queryLockedBalance(AssetId assetId) const noexcept
     {
-        const auto iterator = this->balances.find(assetId);
-        if (iterator != this->balances.end())
+        const AssetBalance* balance = this->findBalance(assetId);
+        if (balance)
         {
-            return std::make_optional(iterator->second.locked);
+            return balance->locked;
         }
+
         return std::nullopt;
     }
 
@@ -35,58 +132,42 @@ namespace advmatch
             return {BalanceOpResult::Success};
         }
 
-        auto iterator = this->balances.find(assetId);
-        if (iterator == this->balances.end())
+        AssetBalance* balance = this->findBalance(assetId);
+        if (!balance)
         {
             if (balanceChange < 0)
             {
-                return {
-                    BalanceOpResult::Insufficient,
-                    "Insufficient active balance"};
+                return {BalanceOpResult::Insufficient, "Insufficient active balance"};
             }
 
-            this->balances.emplace(
-                assetId,
-                AssetBalance{
-                    balanceChange,
-                    0
-                }
-            );
-
+            this->addBalance(assetId, {balanceChange, 0});
             return {BalanceOpResult::Success};
         }
 
-        AssetBalance& balance = iterator->second;
-
         if (balanceChange > 0)
         {
-            if (util::willAddOverflow(balance.active, balanceChange))
+            if (util::willAddOverflow(balance->active, balanceChange))
             {
-                return {
-                    BalanceOpResult::Overflow,
-                    "Balance update in active balance will overflow"};
+                return {BalanceOpResult::Overflow, "Balance update in active balance will overflow"};
             }
 
-            balance.active += balanceChange;
+            balance->active += balanceChange;
         }
         else
         {
-            const PositiveBalanceChange amount =
-                static_cast<PositiveBalanceChange>(-(balanceChange + 1)) + 1;
+            const PositiveBalanceChange amount = static_cast<PositiveBalanceChange>(-(balanceChange + 1)) + 1;
 
-            if (!util::enoughSubtract(balance.active, amount))
+            if (!util::enoughSubtract(balance->active, amount))
             {
-                return {
-                    BalanceOpResult::Insufficient,
-                    "Insufficient active balance"};
+                return {BalanceOpResult::Insufficient, "Insufficient active balance"};
             }
 
-            balance.active -= static_cast<Balance>(amount);
+            balance->active -= static_cast<Balance>(amount);
         }
 
-        if (balance.active == 0 && balance.locked == 0)
+        if (balance->active == 0 && balance->locked == 0)
         {
-            this->balances.erase(iterator);
+            this->removeBalance(assetId);
         }
 
         return {BalanceOpResult::Success};
@@ -99,28 +180,24 @@ namespace advmatch
             return {BalanceOpResult::Success};
         }
 
-        auto iterator = this->balances.find(assetId);
-        if (iterator == this->balances.end())
+        AssetBalance* balance = this->findBalance(assetId);
+        if (!balance)
         {
             return {BalanceOpResult::NoSuchAsset};
         }
 
-        AssetBalance& balance = iterator->second;
-
-        if (!util::enoughSubtract(balance.active, balanceChange))
+        if (!util::enoughSubtract(balance->active, balanceChange))
         {
             return {BalanceOpResult::Insufficient};
         }
 
-        if (util::willAddOverflow(balance.locked, balanceChange))
+        if (util::willAddOverflow(balance->locked, balanceChange))
         {
-            return {
-                BalanceOpResult::Overflow,
-                "Balance update in locked balance will overflow"};
+            return {BalanceOpResult::Overflow, "Balance update in locked balance will overflow"};
         }
 
-        balance.active -= static_cast<Balance>(balanceChange);
-        balance.locked += static_cast<Balance>(balanceChange);
+        balance->active -= static_cast<Balance>(balanceChange);
+        balance->locked += static_cast<Balance>(balanceChange);
 
         return {BalanceOpResult::Success};
     }
@@ -132,28 +209,24 @@ namespace advmatch
             return {BalanceOpResult::Success};
         }
 
-        auto iterator = this->balances.find(assetId);
-        if (iterator == this->balances.end())
+        AssetBalance* balance = this->findBalance(assetId);
+        if (!balance)
         {
             return {BalanceOpResult::NoSuchAsset};
         }
 
-        AssetBalance& balance = iterator->second;
-
-        if (!util::enoughSubtract(balance.locked, balanceChange))
+        if (!util::enoughSubtract(balance->locked, balanceChange))
         {
             return {BalanceOpResult::Insufficient};
         }
 
-        if (util::willAddOverflow(balance.active, balanceChange))
+        if (util::willAddOverflow(balance->active, balanceChange))
         {
-            return {
-                BalanceOpResult::Overflow,
-                "Balance update in active balance will overflow"};
+            return {BalanceOpResult::Overflow, "Balance update in active balance will overflow"};
         }
 
-        balance.locked -= static_cast<Balance>(balanceChange);
-        balance.active += static_cast<Balance>(balanceChange);
+        balance->locked -= static_cast<Balance>(balanceChange);
+        balance->active += static_cast<Balance>(balanceChange);
 
         return {BalanceOpResult::Success};
     }
@@ -165,16 +238,16 @@ namespace advmatch
             return {BalanceOpResult::Success};
         }
 
-        auto iterator = this->balances.find(assetId);
-        if (iterator == this->balances.end() || !util::enoughSubtract(iterator->second.locked, balanceChange))
+        AssetBalance* balance = this->findBalance(assetId);
+        if (!balance || !util::enoughSubtract(balance->locked, balanceChange))
         {
             return {BalanceOpResult::Insufficient};
         }
 
-        iterator->second.locked -= static_cast<Balance>(balanceChange);
-        if (iterator->second.active == 0 && iterator->second.locked == 0)
+        balance->locked -= static_cast<Balance>(balanceChange);
+        if (balance->active == 0 && balance->locked == 0)
         {
-            this->balances.erase(iterator);
+            this->removeBalance(assetId);
         }
 
         return {BalanceOpResult::Success};
@@ -182,41 +255,35 @@ namespace advmatch
 
     BalanceResult User::lockAsset(AssetId assetId)
     {
-        auto iterator = this->balances.find(assetId);
-        if (iterator == this->balances.end())
+        const AssetBalance* balance = this->findBalance(assetId);
+        if (!balance)
         {
             return {BalanceOpResult::NoSuchAsset};
         }
 
-        const Balance activeBalance = iterator->second.active;
+        const Balance activeBalance = balance->active;
         if (activeBalance == 0)
         {
             return {BalanceOpResult::Success};
         }
 
-        return this->lockBalance(
-            assetId,
-            static_cast<PositiveBalanceChange>(activeBalance)
-        );
+        return this->lockBalance(assetId, static_cast<PositiveBalanceChange>(activeBalance));
     }
 
     BalanceResult User::unlockAsset(AssetId assetId)
     {
-        auto iterator = this->balances.find(assetId);
-        if (iterator == this->balances.end())
+        const AssetBalance* balance = this->findBalance(assetId);
+        if (!balance)
         {
             return {BalanceOpResult::NoSuchAsset};
         }
 
-        const Balance lockedBalance = iterator->second.locked;
+        const Balance lockedBalance = balance->locked;
         if (lockedBalance == 0)
         {
             return {BalanceOpResult::Success};
         }
 
-        return this->unlockBalance(
-            assetId,
-            static_cast<PositiveBalanceChange>(lockedBalance)
-        );
+        return this->unlockBalance(assetId, static_cast<PositiveBalanceChange>(lockedBalance));
     }
 } // advmatch
