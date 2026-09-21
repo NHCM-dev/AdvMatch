@@ -65,12 +65,14 @@ namespace advmatch
     struct BalanceResult : Result<BalanceOpResult>
     {
         BalanceResult(BalanceOpResult result)
-        : Result(result)
-        {}
+            : Result(result)
+        {
+        }
 
         BalanceResult(BalanceOpResult result, std::string errorMessage)
-        : Result(result, std::move(errorMessage))
-        {}
+            : Result(result, std::move(errorMessage))
+        {
+        }
 
         explicit operator bool() const noexcept
         {

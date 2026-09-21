@@ -2,6 +2,7 @@
 #include "advmatch/matching/MatchingEngine.h"
 
 #include <barrier>
+#include <bit>
 #include <charconv>
 #include <chrono>
 #include <cstddef>
@@ -69,7 +70,7 @@ namespace
 
         ~BenchmarkConsumer() override
         {
-            stop();
+            this->stopBeforeDerivedDestruction();
         }
 
         bool addSpotBook(advmatch::SymbolId symbolId)
@@ -158,7 +159,7 @@ namespace
             throw std::invalid_argument("order count exceeds balance range");
         }
 
-        if ((options.ringSize & (options.ringSize - 1)) != 0)
+        if (!std::has_single_bit(static_cast<unsigned int>(options.ringSize)))
         {
             throw std::invalid_argument("ring size must be a power of two");
         }
@@ -258,7 +259,7 @@ int main(int argumentCount, char** arguments)
 
                 try
                 {
-                    const std::uint64_t count = options.orders / options.producers + (producer < options.orders % options.producers ? 1 : 0);
+                    const std::uint64_t count = (options.orders / options.producers) + (producer < options.orders % options.producers ? 1 : 0);
                     auto responseSlots = std::make_unique<consuming::ResponseSlot<PlaceResponse>[]>(options.batchSize);
                     std::vector<PlaceCommand> commands;
                     commands.reserve(options.batchSize);

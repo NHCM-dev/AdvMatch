@@ -43,7 +43,8 @@ namespace advmatch
     public:
         explicit MatchingEngine(UserManager& userManager, SymbolManager& symbolManager)
             : userManager(userManager), symbolManager(symbolManager)
-        {}
+        {
+        }
 
         // activeOrderCount is retained for source compatibility. Hold state is
         // now stored directly in OrderNode, so it requires no separate table.
@@ -58,9 +59,10 @@ namespace advmatch
         bool addSpotBook(SymbolId symbolId);
 
         PlaceOrderResult placeOrder(UserId userId, SymbolId symbolId, OrderSide side, OrderType type,
-            TimeInForce timeInForce, Price price, Quantity quantity, Timestamp timestamp, TradeBuffer& trades);
+                                    TimeInForce timeInForce, Price price, Quantity quantity, Timestamp timestamp,
+                                    TradeBuffer& trades);
         ModifyOrderResult modifyPrice(UserId userId, OrderId orderId, Price price,
-            Timestamp timestamp, TradeBuffer& trades);
+                                      Timestamp timestamp, TradeBuffer& trades);
         ModifyOrderResult modifyQuantity(UserId userId, OrderId orderId, QuantityChange change, Timestamp timestamp);
         CancelOrderResult cancelOrder(UserId userId, OrderId orderId, Timestamp timestamp);
 

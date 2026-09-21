@@ -21,7 +21,7 @@ namespace advmatch::util
     constexpr bool willAddOverflow(int64_t a, int64_t b) noexcept
     {
         return (b > 0 && a > std::numeric_limits<int64_t>::max() - b) ||
-               (b < 0 && a < std::numeric_limits<int64_t>::min() - b);
+            (b < 0 && a < std::numeric_limits<int64_t>::min() - b);
     }
 
     [[nodiscard]]
@@ -49,7 +49,7 @@ namespace advmatch::util
         }
 
         return b - negativeMagnitude >
-               static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
+            static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
     }
 
     [[nodiscard]]
@@ -58,7 +58,7 @@ namespace advmatch::util
         if (b >= 0)
         {
             return a > std::numeric_limits<uint64_t>::max()
-                       - static_cast<uint64_t>(b);
+                - static_cast<uint64_t>(b);
         }
 
         const uint64_t negativeMagnitude =
@@ -133,9 +133,9 @@ namespace advmatch::util
         }
 
         return static_cast<std::uint64_t>(a) >
-               static_cast<std::uint64_t>(
-                   std::numeric_limits<std::int64_t>::max()
-               ) / b;
+            static_cast<std::uint64_t>(
+                std::numeric_limits<std::int64_t>::max()
+            ) / b;
     }
 
 
@@ -185,12 +185,14 @@ namespace advmatch
     struct Result
     {
         explicit Result(State state)
-        : state(state), errorMessage(std::nullopt)
-        {}
+            : state(state), errorMessage(std::nullopt)
+        {
+        }
 
         explicit Result(State state, std::string errorMessage)
-        : state(state), errorMessage(std::move(errorMessage))
-        {}
+            : state(state), errorMessage(std::move(errorMessage))
+        {
+        }
 
         State state;
         std::optional<std::string> errorMessage;

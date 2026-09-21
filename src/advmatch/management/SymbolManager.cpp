@@ -4,6 +4,8 @@
 
 #include "SymbolManager.h"
 
+#include <utility>
+
 namespace advmatch
 {
     Symbol* SymbolManager::createSymbol(std::string name, SymbolType symbolType, AssetId base, AssetId quote)
@@ -28,7 +30,7 @@ namespace advmatch
 
         auto result = this->symbols.emplace(
             symbolId,
-            Symbol(name, symbolId, symbolType, base, quote)
+            Symbol(std::move(name), symbolId, symbolType, base, quote)
         );
 
         if (!result.second)
@@ -38,12 +40,12 @@ namespace advmatch
 
         try
         {
-            this->symbolsByName.emplace(name, symbolId);
+            this->symbolsByName.emplace(result.first->second.name, symbolId);
             this->symbolPairs.emplace(key);
         }
         catch (...)
         {
-            this->symbolsByName.erase(name);
+            this->symbolsByName.erase(result.first->second.name);
             this->symbols.erase(result.first);
             throw;
         }

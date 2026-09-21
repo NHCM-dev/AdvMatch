@@ -121,6 +121,7 @@ int main()
     CHECK(values.empty());
 
     std::vector<TrackedValue*> allocated;
+    allocated.reserve(9);
     for (int value = 0; value < 9; ++value)
     {
         allocated.push_back(values.emplace(value));

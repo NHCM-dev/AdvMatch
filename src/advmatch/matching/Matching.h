@@ -4,7 +4,6 @@
 #include "../trading/Order.h"
 
 #include <cstdint>
-#include <utility>
 
 namespace advmatch
 {
@@ -18,9 +17,10 @@ namespace advmatch
     struct OrderNode
     {
         OrderNode(BasicOrder value, User& user, const Symbol& symbol, AssetId baseAssetId, AssetId quoteAssetId)
-            : order(std::move(value)), user(&user), symbol(&symbol), baseAssetId(baseAssetId), quoteAssetId(quoteAssetId),
+            : order(value), user(&user), symbol(&symbol), baseAssetId(baseAssetId), quoteAssetId(quoteAssetId),
               holdAssetId(order.orderSide == OrderSide::Bid ? quoteAssetId : baseAssetId)
-        {}
+        {
+        }
 
         BasicOrder order;
         User* const user;
@@ -37,8 +37,9 @@ namespace advmatch
     struct PriceLevel
     {
         explicit PriceLevel(Price value)
-        : price(value)
-        {}
+            : price(value)
+        {
+        }
 
         Price price;
         OrderNode* head = nullptr;

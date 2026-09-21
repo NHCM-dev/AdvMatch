@@ -34,29 +34,45 @@ int main()
     const auto ask2 = engine.placeOrder(seller, 1, OrderSide::Ask, OrderType::Limit, TimeInForce::GTC, 100, 5, 2, trades);
     const auto ask3 = engine.placeOrder(seller, 1, OrderSide::Ask, OrderType::Limit, TimeInForce::GTC, 101, 4, 3, trades);
     CHECK(ask1 && ask2 && ask3);
-    CHECK(engine.bestAsk(1)->price == 100);
-    CHECK(engine.askAt(1, 100)->quantity == 15);
-    CHECK(engine.askAt(1, 100)->orderCount == 2);
+    const auto initialBestAsk = engine.bestAsk(1);
+    const auto initialAskLevel = engine.askAt(1, 100);
+    CHECK(initialBestAsk);
+    CHECK(initialAskLevel);
+    CHECK(initialBestAsk->price == 100);
+    CHECK(initialAskLevel->quantity == 15);
+    CHECK(initialAskLevel->orderCount == 2);
 
     const auto bid = engine.placeOrder(buyer, 1, OrderSide::Bid, OrderType::Limit, TimeInForce::GTC, 100, 12, 4, trades);
     CHECK(bid && bid.state.status == OrderStatus::Filled);
     CHECK(trades.size() == 2);
     CHECK(trades[0].makerOrderId == ask1.orderId && trades[0].quantity == 10);
     CHECK(trades[1].makerOrderId == ask2.orderId && trades[1].quantity == 2);
-    CHECK(engine.askAt(1, 100)->quantity == 3);
-    CHECK(engine.queryOrder(ask1.orderId)->getStatus() == OrderStatus::Filled);
+    const auto partiallyFilledAskLevel = engine.askAt(1, 100);
+    const auto filledAsk = engine.queryOrder(ask1.orderId);
+    CHECK(partiallyFilledAskLevel);
+    CHECK(filledAsk);
+    CHECK(partiallyFilledAskLevel->quantity == 3);
+    CHECK(filledAsk->getStatus() == OrderStatus::Filled);
 
     CHECK(engine.cancelOrder(seller, ask2.orderId, 5));
     CHECK(engine.cancelOrder(seller, ask2.orderId, 6).state == CancelOrderState::OrderCancelled);
-    CHECK(engine.bestAsk(1)->price == 101);
+    const auto bestAskAfterCancel = engine.bestAsk(1);
+    CHECK(bestAskAfterCancel);
+    CHECK(bestAskAfterCancel->price == 101);
     CHECK(engine.modifyPrice(seller, ask3.orderId, 99, 7, trades));
-    CHECK(engine.bestAsk(1)->price == 99);
+    const auto bestAskAfterPriceChange = engine.bestAsk(1);
+    CHECK(bestAskAfterPriceChange);
+    CHECK(bestAskAfterPriceChange->price == 99);
     CHECK(engine.modifyQuantity(seller, ask3.orderId, 2, 8));
-    CHECK(engine.bestAsk(1)->quantity == 6);
+    const auto bestAskAfterQuantityChange = engine.bestAsk(1);
+    CHECK(bestAskAfterQuantityChange);
+    CHECK(bestAskAfterQuantityChange->quantity == 6);
 
     const auto fok = engine.placeOrder(buyer, 1, OrderSide::Bid, OrderType::Limit, TimeInForce::FOK, 99, 7, 9, trades);
     CHECK(!fok && fok.rejectReason == PlaceOrderRejectReason::InsufficientLiquidity);
-    CHECK(trades.empty() && engine.bestAsk(1)->quantity == 6);
+    const auto bestAskAfterRejectedFok = engine.bestAsk(1);
+    CHECK(bestAskAfterRejectedFok);
+    CHECK(trades.empty() && bestAskAfterRejectedFok->quantity == 6);
 
     const auto market = engine.placeOrder(buyer, 1, OrderSide::Bid, OrderType::Market, TimeInForce::IOC, 0, 8, 10, trades);
     CHECK(market && market.state.status == OrderStatus::Cancelled);
@@ -74,8 +90,10 @@ int main()
     CHECK(sell && trades.size() == 2);
     CHECK(trades[0].makerOrderId == bid96b.orderId);
     CHECK(trades[1].makerOrderId == bid96a.orderId);
-    CHECK(priority.bestBid(2)->price == 96);
-    CHECK(priority.bestBid(2)->quantity == 1);
+    const auto remainingBestBid = priority.bestBid(2);
+    CHECK(remainingBestBid);
+    CHECK(remainingBestBid->price == 96);
+    CHECK(remainingBestBid->quantity == 1);
     CHECK(priority.cancelOrder(seller, bid95.orderId, 16).state == CancelOrderState::WrongUser);
 
     MatchingEngine cases(users, symbols);
@@ -94,11 +112,15 @@ int main()
     CHECK(cases.modifyPrice(buyer, lowBid.orderId, 120, 22, trades));
     CHECK(trades.size() == 1 && trades[0].makerOrderId == highAsk.orderId);
     CHECK(!cases.bestBid(3) && !cases.bestAsk(3));
-    CHECK(cases.queryOrder(lowBid.orderId)->getStatus() == OrderStatus::Filled);
+    const auto filledBid = cases.queryOrder(lowBid.orderId);
+    CHECK(filledBid);
+    CHECK(filledBid->getStatus() == OrderStatus::Filled);
 
     const auto cancelled = cases.placeOrder(buyer, 3, OrderSide::Bid, OrderType::Limit, TimeInForce::GTC, 90, 2, 23, trades);
     CHECK(cases.modifyQuantity(buyer, cancelled.orderId, -2, 24));
-    CHECK(cases.queryOrder(cancelled.orderId)->getStatus() == OrderStatus::Cancelled);
+    const auto cancelledOrder = cases.queryOrder(cancelled.orderId);
+    CHECK(cancelledOrder);
+    CHECK(cancelledOrder->getStatus() == OrderStatus::Cancelled);
     CHECK(!cases.bestBid(3));
     CHECK(cases.cancelOrder(buyer, cancelled.orderId, 25).state == CancelOrderState::OrderCancelled);
     const auto invalid = cases.placeOrder(buyer, 3, OrderSide::Bid, OrderType::Market, TimeInForce::GTC, 0, 1, 26, trades);

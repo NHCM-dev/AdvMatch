@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <barrier>
+#include <bit>
 #include <charconv>
 #include <chrono>
 #include <cstddef>
@@ -21,6 +22,9 @@
 #include <vector>
 
 #ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #include <psapi.h>
 #endif
@@ -81,7 +85,7 @@ namespace
 
         ~ScaleConsumer() override
         {
-            stop();
+            this->stopBeforeDerivedDestruction();
         }
 
         bool addSpotBook(advmatch::SymbolId symbolId)
@@ -288,7 +292,7 @@ namespace
                 "and accounts >= users + pending orders + symbols");
         }
 
-        if ((options.ringSize & (options.ringSize - 1)) != 0 || options.producers > 256 || options.batchSize > 100000)
+        if (!std::has_single_bit(static_cast<unsigned int>(options.ringSize)) || options.producers > 256 || options.batchSize > 100000)
         {
             throw std::invalid_argument("ring size must be a power of two; producers and batch size must be bounded");
         }
@@ -298,7 +302,7 @@ namespace
             throw std::invalid_argument("total cycles overflow");
         }
 
-        const std::uint64_t maxCyclesPerSymbol = (options.cycles * options.rounds + options.symbols - 1) / options.symbols;
+        const std::uint64_t maxCyclesPerSymbol = ((options.cycles * options.rounds) + options.symbols - 1) / options.symbols;
         if (maxCyclesPerSymbol > static_cast<std::uint64_t>(std::numeric_limits<advmatch::Balance>::max()) / 1000)
         {
             throw std::invalid_argument("balance range exceeded");
@@ -335,7 +339,7 @@ namespace
 
     double percentile(std::vector<std::uint64_t>& values, std::uint64_t numerator, std::uint64_t denominator)
     {
-        const std::size_t index = static_cast<std::size_t>((values.size() * numerator + denominator - 1) / denominator - 1);
+        const std::size_t index = static_cast<std::size_t>((((values.size() * numerator) + denominator - 1) / denominator) - 1);
         return static_cast<double>(values[index]) / 1000.0;
     }
 
@@ -355,11 +359,12 @@ namespace
                 try
                 {
                     const std::uint64_t baseCount = options.cycles / options.producers;
-                    const std::uint64_t first = baseCount * producer + std::min<std::uint64_t>(producer, options.cycles % options.producers);
-                    const std::uint64_t count = options.cycles / options.producers + (producer < options.cycles % options.producers ? 1 : 0);
-                    auto responseSlots = std::make_unique<advmatch::consuming::ResponseSlot<PlaceResponse>[]>(options.batchSize * 2);
+                    const std::uint64_t first = (baseCount * producer) + std::min<std::uint64_t>(producer, options.cycles % options.producers);
+                    const std::uint64_t count = (options.cycles / options.producers) + (producer < options.cycles % options.producers ? 1 : 0);
+                    const std::size_t responseSlotCount = static_cast<std::size_t>(options.batchSize) * 2;
+                    auto responseSlots = std::make_unique<advmatch::consuming::ResponseSlot<PlaceResponse>[]>(responseSlotCount);
                     std::vector<PendingResponse> pending;
-                    pending.reserve(static_cast<std::size_t>(options.batchSize) * 2);
+                    pending.reserve(responseSlotCount);
                     stats[producer].latencyNanos.reserve(static_cast<std::size_t>(count) * 2);
 
                     for (std::uint64_t index = 0; index < count;)
@@ -368,14 +373,15 @@ namespace
                         for (std::uint32_t batch = 0; batch < options.batchSize && index < count; ++batch, ++index)
                         {
                             const std::uint32_t symbol = static_cast<std::uint32_t>((first + index) % options.symbols);
-                            const advmatch::UserId buyer = (symbol + 1) % options.users + 1;
+                            const advmatch::UserId buyer = ((symbol + 1) % options.users) + 1;
                             const advmatch::UserId seller = symbol + 1;
+                            const std::size_t responseIndex = static_cast<std::size_t>(batch) * 2;
 
                             auto buy = consumer.post({buyer, symbol + 1, advmatch::OrderSide::Bid, advmatch::TimeInForce::IOC, Clock::now()},
-                                responseSlots[batch * 2]);
+                                responseSlots[responseIndex]);
                             pending.push_back({std::move(buy), true});
                             auto ask = consumer.post({seller, symbol + 1, advmatch::OrderSide::Ask, advmatch::TimeInForce::GTC, Clock::now()},
-                                responseSlots[batch * 2 + 1]);
+                                responseSlots[responseIndex + 1]);
                             pending.push_back({std::move(ask), false});
                         }
 
@@ -458,8 +464,9 @@ int main(int argumentCount, char** arguments)
         using namespace advmatch;
 
         const Options options = parseOptions(argumentCount, arguments);
-        const std::uint64_t estimatedBytes = options.users * (sizeof(User) + 64) + options.accounts * sizeof(AssetBalanceEntry) +
-            options.symbols * 640 + options.pendingOrders * 360 + options.cycles * options.rounds * 512;
+        const std::uint64_t estimatedBytes = (options.users * (sizeof(User) + 64)) +
+            (options.accounts * sizeof(AssetBalanceEntry)) + (static_cast<std::uint64_t>(options.symbols) * 640) +
+            (options.pendingOrders * 360) + ((options.cycles * options.rounds) * 512);
         const std::uint64_t availableBytes = availablePhysicalMemory();
         std::cout << "users=" << options.users << " asset_balance_records=" << options.accounts;
         std::cout << " symbols=" << options.symbols << " pending_orders=" << options.pendingOrders << '\n';
@@ -489,7 +496,7 @@ int main(int argumentCount, char** arguments)
         std::cout << "setup_phase=symbols_done\n" << std::flush;
 
         const std::uint64_t totalCycles = options.cycles * options.rounds;
-        const Balance quotePerUser = static_cast<Balance>((totalCycles + options.symbols - 1) / options.symbols * 100 + 100);
+        const Balance quotePerUser = static_cast<Balance>((((totalCycles + options.symbols - 1) / options.symbols) * 100) + 100);
         for (std::uint64_t index = 0; index < options.users; ++index)
         {
             const UserId userId = users.createUser();
@@ -504,7 +511,7 @@ int main(int argumentCount, char** arguments)
         for (std::uint64_t index = 0; index < options.pendingOrders; ++index)
         {
             const std::uint64_t owner = index % options.users;
-            const std::uint32_t symbol = static_cast<std::uint32_t>((owner % options.symbols + index / options.users) % options.symbols);
+            const std::uint32_t symbol = static_cast<std::uint32_t>(((owner % options.symbols) + (index / options.users)) % options.symbols);
             if (!users.getUser(owner + 1)->updateBalance(symbol + 2, 2))
             {
                 throw std::runtime_error("maker balance setup failed");
@@ -513,7 +520,7 @@ int main(int argumentCount, char** arguments)
 
         for (std::uint32_t symbol = 0; symbol < options.symbols; ++symbol)
         {
-            const UserId buyer = (symbol + 1) % options.users + 1;
+            const UserId buyer = ((symbol + 1) % options.users) + 1;
             if (!users.getUser(buyer)->updateBalance(symbol + 2, 1))
             {
                 throw std::runtime_error("buyer asset balance setup failed");
@@ -523,8 +530,8 @@ int main(int argumentCount, char** arguments)
         const std::uint64_t fillerCount = options.accounts - options.users - options.pendingOrders - options.symbols;
         for (std::uint64_t index = 0; index < fillerCount; ++index)
         {
-            const std::uint64_t assetId = static_cast<std::uint64_t>(options.symbols) + 2 + index / options.users;
-            if (assetId > std::numeric_limits<AssetId>::max() || !users.getUser(index % options.users + 1)->updateBalance(static_cast<AssetId>(assetId), 1))
+            const std::uint64_t assetId = static_cast<std::uint64_t>(options.symbols) + 2 + (index / options.users);
+            if (assetId > std::numeric_limits<AssetId>::max() || !users.getUser((index % options.users) + 1)->updateBalance(static_cast<AssetId>(assetId), 1))
             {
                 throw std::runtime_error("account proxy setup failed");
             }
@@ -547,7 +554,7 @@ int main(int argumentCount, char** arguments)
         std::cout << "setup_phase=balances_done\n" << std::flush;
 
         ScaleConsumer consumer(users, symbols);
-        consumer.reserve(options.pendingOrders + totalCycles * 2, options.symbols, options.pendingOrders);
+        consumer.reserve(options.pendingOrders + (totalCycles * 2), options.symbols, options.pendingOrders);
         for (std::uint32_t symbol = 0; symbol < options.symbols; ++symbol)
         {
             if (!consumer.addSpotBook(symbol + 1))
@@ -569,7 +576,7 @@ int main(int argumentCount, char** arguments)
             for (std::uint32_t batch = 0; batch < options.batchSize && index < options.pendingOrders; ++batch, ++index)
             {
                 const std::uint64_t owner = index % options.users;
-                const std::uint32_t symbol = static_cast<std::uint32_t>((owner % options.symbols + index / options.users) % options.symbols);
+                const std::uint32_t symbol = static_cast<std::uint32_t>(((owner % options.symbols) + (index / options.users)) % options.symbols);
                 pending.push_back(consumer.post({owner + 1, symbol + 1, OrderSide::Ask, TimeInForce::GTC, Clock::now()},
                     pendingSlots[batch]));
             }
@@ -617,10 +624,10 @@ int main(int argumentCount, char** arguments)
         const MemoryStats after = processMemory();
         std::cout << "verified_users=" << users.getUserCount() << " verified_accounts=" << finalAccounts;
         std::cout << " verified_symbols=" << symbols.getSymbolCount() << " verified_pending=" << finalPending << '\n';
-        std::cout << "retained_order_records=" << options.pendingOrders + totalCycles * 2 << '\n';
+        std::cout << "retained_order_records=" << options.pendingOrders + (totalCycles * 2) << '\n';
         const double privateGrowth = megabytes(after.privateBytes) - megabytes(before.privateBytes);
         std::cout << "private_growth_mb=" << privateGrowth;
-        std::cout << " private_growth_mb_per_million_trades=" << privateGrowth * 1000000.0 / totalCycles << '\n';
+        std::cout << " private_growth_mb_per_million_trades=" << privateGrowth * 1000000.0 / static_cast<double>(totalCycles) << '\n';
         return 0;
     }
     catch (const std::exception& error)

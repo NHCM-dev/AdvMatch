@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "advmatch/consuming/RequestTicket.h"
+
 namespace advmatch::consuming
 {
     // Derive from this class and implement consume(). All calls to consume()
@@ -48,7 +49,8 @@ namespace advmatch::consuming
         {
             explicit Request(Command command)
                 : command(std::move(command))
-            {}
+            {
+            }
 
             Command command;
             std::promise<Response> promise;
@@ -185,12 +187,24 @@ namespace advmatch::consuming
     protected:
         virtual Response consume(Command&& command) = 0;
 
+        void stopBeforeDerivedDestruction() noexcept
+        {
+            try
+            {
+                this->stop();
+            }
+            catch (...)
+            {
+                std::terminate();
+            }
+        }
+
     public:
         SingleThreadConsumer() = default;
 
-        virtual ~SingleThreadConsumer()
+        virtual ~SingleThreadConsumer() noexcept
         {
-            stop();
+            this->stopBeforeDerivedDestruction();
         }
 
         SingleThreadConsumer(const SingleThreadConsumer&) = delete;
@@ -214,7 +228,8 @@ namespace advmatch::consuming
 
         RequestTicket<Response> post(Command command, ResponseSlot<Response>& responseSlot)
         {
-            static_assert(std::is_nothrow_move_constructible_v<Command>, "fast commands must be nothrow move constructible");
+            static_assert(std::is_nothrow_move_constructible_v<Command>,
+                          "fast commands must be nothrow move constructible");
 
             this->beginSubmit();
             try
@@ -245,9 +260,10 @@ namespace advmatch::consuming
         // consumed. Keep publishBatchSize well below the ring size so one
         // producer cannot monopolize the complete queue.
         void postBatch(std::span<Command> commands, std::span<ResponseSlot<Response>> responseSlots,
-            std::vector<RequestTicket<Response>>& tickets, std::size_t publishBatchSize)
+                       std::vector<RequestTicket<Response>>& tickets, std::size_t publishBatchSize)
         {
-            static_assert(std::is_nothrow_move_constructible_v<Command>, "fast commands must be nothrow move constructible");
+            static_assert(std::is_nothrow_move_constructible_v<Command>,
+                          "fast commands must be nothrow move constructible");
 
             if (commands.size() != responseSlots.size())
             {

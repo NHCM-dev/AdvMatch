@@ -30,35 +30,40 @@ namespace advmatch
         {
             return {
                 ModifyOrderState::OrderAlreadyFilled,
-                "Filled order cannot be modified"};
+                "Filled order cannot be modified"
+            };
         }
 
         if (this->fillingStatus.status == OrderStatus::Cancelled)
         {
             return {
                 ModifyOrderState::OrderCancelled,
-                "Cancelled order cannot be modified"};
+                "Cancelled order cannot be modified"
+            };
         }
 
         if (this->fillingStatus.status == OrderStatus::Rejected)
         {
             return {
                 ModifyOrderState::OrderRejected,
-                "Rejected order cannot be modified"};
+                "Rejected order cannot be modified"
+            };
         }
 
         if (this->orderType != OrderType::Limit)
         {
             return {
                 ModifyOrderState::InvalidOrderType,
-                "Market order price cannot be modified"};
+                "Market order price cannot be modified"
+            };
         }
 
         if (newPrice == 0)
         {
             return {
                 ModifyOrderState::InvalidPrice,
-                "Limit order price cannot be zero"};
+                "Limit order price cannot be zero"
+            };
         }
 
         this->price = newPrice;
@@ -77,21 +82,24 @@ namespace advmatch
         {
             return {
                 ModifyOrderState::OrderAlreadyFilled,
-                "Filled order cannot be modified"};
+                "Filled order cannot be modified"
+            };
         }
 
         if (this->fillingStatus.status == OrderStatus::Cancelled)
         {
             return {
                 ModifyOrderState::OrderCancelled,
-                "Cancelled order cannot be modified"};
+                "Cancelled order cannot be modified"
+            };
         }
 
         if (this->fillingStatus.status == OrderStatus::Rejected)
         {
             return {
                 ModifyOrderState::OrderRejected,
-                "Rejected order cannot be modified"};
+                "Rejected order cannot be modified"
+            };
         }
 
         if (quantityChange == 0)
@@ -108,7 +116,8 @@ namespace advmatch
             {
                 return {
                     ModifyOrderState::InsufficientQuantity,
-                    "Quantity change exceeds unfilled quantity"};
+                    "Quantity change exceeds unfilled quantity"
+                };
             }
 
             this->requestedQuantity -= subtractQuantity;
@@ -133,14 +142,16 @@ namespace advmatch
         {
             return {
                 ModifyOrderState::Overflow,
-                "Requested quantity will overflow"};
+                "Requested quantity will overflow"
+            };
         }
 
         if (util::willAddOverflow(this->fillingStatus.unfilled, addQuantity))
         {
             return {
                 ModifyOrderState::Overflow,
-                "Unfilled quantity will overflow"};
+                "Unfilled quantity will overflow"
+            };
         }
 
         this->requestedQuantity += addQuantity;
@@ -159,21 +170,24 @@ namespace advmatch
         {
             return {
                 CancelOrderState::OrderAlreadyFilled,
-                "Filled order cannot be cancelled"};
+                "Filled order cannot be cancelled"
+            };
         }
 
         if (this->fillingStatus.status == OrderStatus::Cancelled)
         {
             return {
                 CancelOrderState::OrderCancelled,
-                "Order is already cancelled"};
+                "Order is already cancelled"
+            };
         }
 
         if (this->fillingStatus.status == OrderStatus::Rejected)
         {
             return {
                 CancelOrderState::OrderRejected,
-                "Rejected order cannot be cancelled"};
+                "Rejected order cannot be cancelled"
+            };
         }
 
         this->fillingStatus.status = OrderStatus::Cancelled;
@@ -193,42 +207,48 @@ namespace advmatch
         {
             return {
                 OrderFillState::InvalidQuantity,
-                "Fill quantity cannot be zero"};
+                "Fill quantity cannot be zero"
+            };
         }
 
         if (this->fillingStatus.status == OrderStatus::Filled)
         {
             return {
                 OrderFillState::OrderAlreadyFilled,
-                "Order is already filled"};
+                "Order is already filled"
+            };
         }
 
         if (this->fillingStatus.status == OrderStatus::Cancelled)
         {
             return {
                 OrderFillState::OrderCancelled,
-                "Cancelled order cannot be filled"};
+                "Cancelled order cannot be filled"
+            };
         }
 
         if (this->fillingStatus.status == OrderStatus::Rejected)
         {
             return {
                 OrderFillState::OrderRejected,
-                "Rejected order cannot be filled"};
+                "Rejected order cannot be filled"
+            };
         }
 
         if (fillQuantity > this->fillingStatus.unfilled)
         {
             return {
                 OrderFillState::ExceedsRemainingQuantity,
-                "Fill quantity exceeds unfilled quantity"};
+                "Fill quantity exceeds unfilled quantity"
+            };
         }
 
         if (util::willAddOverflow(this->fillingStatus.filled, fillQuantity))
         {
             return {
                 OrderFillState::Overflow,
-                "Filled quantity will overflow"};
+                "Filled quantity will overflow"
+            };
         }
 
         if (this->fillingStatus.filled == 0)
@@ -257,27 +277,26 @@ namespace advmatch
     }
 
 
-
     Price BasicOrder::getPrice() const noexcept
     {
         return this->price;
     }
+
     Quantity BasicOrder::getQuantity() const noexcept
     {
         return this->requestedQuantity;
     }
 
 
-
     Quantity BasicOrder::getFilledQuantity() const noexcept
     {
         return this->fillingStatus.filled;
     }
+
     Quantity BasicOrder::getUnfilledQuantity() const noexcept
     {
         return this->fillingStatus.unfilled;
     }
-
 
 
     OrderStatus BasicOrder::getStatus() const noexcept
@@ -286,41 +305,43 @@ namespace advmatch
     }
 
 
-
     const OrderFillingStatus& BasicOrder::getFillingStatus() const noexcept
     {
         return this->fillingStatus;
     }
 
 
-
     Timestamp BasicOrder::getCreatedTimestamp() const noexcept
     {
         return this->createdTimestamp;
     }
+
     Timestamp BasicOrder::getUpdatedTimestamp() const noexcept
     {
         return this->updatedTimestamp;
     }
+
     Timestamp BasicOrder::getFirstFilledTimestamp() const noexcept
     {
         return this->firstFilledTimestamp;
     }
+
     Timestamp BasicOrder::getLastFilledTimestamp() const noexcept
     {
         return this->lastFilledTimestamp;
     }
+
     Timestamp BasicOrder::getCompletedTimestamp() const noexcept
     {
         return this->completedTimestamp;
     }
 
 
-
     Sequence BasicOrder::getCreatedSequence() const noexcept
     {
         return this->createdSequence;
     }
+
     Sequence BasicOrder::getUpdatedSequence() const noexcept
     {
         return this->updatedSequence;

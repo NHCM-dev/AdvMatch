@@ -14,24 +14,24 @@ namespace advmatch
         static std::optional<Balance> requiredHold(const BasicOrder& order, Price price, Quantity remaining) noexcept;
 
         [[nodiscard]]
-        static bool increaseHold(OrderNode& order, Balance amount);
+        static bool increaseHold(OrderNode& node, Balance amount);
 
-        static void reduceHold(OrderNode& order, Balance amount);
+        static void reduceHold(OrderNode& node, Balance amount);
 
-        static void settleOrder(OrderNode& order, Price tradePrice, Quantity quantity);
+        static void settleOrder(OrderNode& node, Price tradePrice, Quantity quantity);
 
     public:
-        std::optional<PlaceOrderRejectReason> checkPlaceOrder(OrderNode& order) override;
+        std::optional<PlaceOrderRejectReason> checkPlaceOrder(OrderNode& node) override;
 
-        std::optional<ModifyOrderState> checkModifyPrice(OrderNode& order, Price price) override;
-        std::optional<ModifyOrderState> checkModifyQuantity(OrderNode& order, QuantityChange quantityChange) override;
+        std::optional<ModifyOrderState> checkModifyPrice(OrderNode& node, Price price) override;
+        std::optional<ModifyOrderState> checkModifyQuantity(OrderNode& node, QuantityChange quantityChange) override;
 
-        std::optional<PlaceOrderRejectReason> reservePlaceOrder(OrderNode& order, Balance marketBuyCost);
-        std::optional<ModifyOrderState> reserveModifyOrder(OrderNode& order, Price price, Quantity remaining);
+        std::optional<PlaceOrderRejectReason> reservePlaceOrder(OrderNode& node, Balance marketBuyCost);
+        std::optional<ModifyOrderState> reserveModifyOrder(OrderNode& node, Price price, Quantity remaining);
 
         static void settleTrade(const Trade& trade, OrderNode& maker, OrderNode& taker);
-        static void reconcileOrder(OrderNode& order);
-        static void releaseOrder(OrderNode& order);
+        static void reconcileOrder(OrderNode& node);
+        static void releaseOrder(OrderNode& node);
     };
 } // advmatch
 

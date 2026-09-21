@@ -17,7 +17,8 @@ namespace advmatch
         virtual std::optional<PlaceOrderRejectReason> checkPlaceOrder(OrderNode& order) = 0;
 
         virtual std::optional<ModifyOrderState> checkModifyPrice(OrderNode& order, Price price) = 0;
-        virtual std::optional<ModifyOrderState> checkModifyQuantity(OrderNode& order, QuantityChange quantityChange) = 0;
+        virtual std::optional<ModifyOrderState> checkModifyQuantity(OrderNode& order, QuantityChange quantityChange) =
+        0;
     };
 } // advmatch
 

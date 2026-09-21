@@ -88,26 +88,32 @@ namespace advmatch
         {
             return this->bookSymbolId;
         }
-        PlaceOrderResult place(OrderNode& order, Timestamp timestamp, Sequence sequence, TradeBuffer& trades) override;
-        ModifyOrderResult modifyPrice(OrderNode& order, Price price, Timestamp timestamp, Sequence sequence, TradeBuffer& trades) override;
-        ModifyOrderResult modifyQuantity(OrderNode& order, QuantityChange change, Timestamp timestamp, Sequence sequence) override;
-        CancelOrderResult cancel(OrderNode& order, Timestamp timestamp, Sequence sequence) override;
+
+        PlaceOrderResult place(OrderNode& node, Timestamp timestamp, Sequence sequence, TradeBuffer& trades) override;
+        ModifyOrderResult modifyPrice(OrderNode& node, Price price, Timestamp timestamp, Sequence sequence,
+                                      TradeBuffer& trades) override;
+        ModifyOrderResult modifyQuantity(OrderNode& node, QuantityChange change, Timestamp timestamp,
+                                         Sequence sequence) override;
+        CancelOrderResult cancel(OrderNode& node, Timestamp timestamp, Sequence sequence) override;
 
         [[nodiscard]]
         std::optional<Quote> bestBid() const noexcept override
         {
             return quote(this->bids.best());
         }
+
         [[nodiscard]]
         std::optional<Quote> bestAsk() const noexcept override
         {
             return quote(this->asks.best());
         }
+
         [[nodiscard]]
         std::optional<Quote> bidAt(Price price) const noexcept override
         {
             return quote(this->bids.find(price));
         }
+
         [[nodiscard]]
         std::optional<Quote> askAt(Price price) const noexcept override
         {

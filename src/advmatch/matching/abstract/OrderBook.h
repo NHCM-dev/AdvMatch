@@ -34,12 +34,14 @@ namespace advmatch
     struct PlaceOrderResult : Result<OrderFillingStatus>
     {
         PlaceOrderResult(OrderId orderId, OrderFillingStatus status)
-        : Result(status), orderId(orderId), rejectReason(std::nullopt)
-        {}
+            : Result(status), orderId(orderId), rejectReason(std::nullopt)
+        {
+        }
 
         PlaceOrderResult(OrderId orderId, OrderFillingStatus status, PlaceOrderRejectReason reason)
-        : Result(status), orderId(orderId), rejectReason(reason)
-        {}
+            : Result(status), orderId(orderId), rejectReason(reason)
+        {
+        }
 
         const OrderId orderId;
         const std::optional<PlaceOrderRejectReason> rejectReason;
@@ -78,11 +80,14 @@ namespace advmatch
     struct ModifyOrderResult : Result<ModifyOrderState>
     {
         ModifyOrderResult(ModifyOrderState state)
-        : Result(state)
-        {}
+            : Result(state)
+        {
+        }
+
         ModifyOrderResult(ModifyOrderState state, std::string message)
-        : Result(state, std::move(message))
-        {}
+            : Result(state, std::move(message))
+        {
+        }
 
         explicit operator bool() const noexcept
         {
@@ -104,11 +109,14 @@ namespace advmatch
     struct CancelOrderResult : Result<CancelOrderState>
     {
         CancelOrderResult(CancelOrderState state)
-        : Result(state)
-        {}
+            : Result(state)
+        {
+        }
+
         CancelOrderResult(CancelOrderState state, std::string message)
-        : Result(state, std::move(message))
-        {}
+            : Result(state, std::move(message))
+        {
+        }
 
         explicit operator bool() const noexcept
         {
@@ -244,11 +252,11 @@ namespace advmatch
         virtual SymbolId symbolId() const noexcept = 0;
 
         virtual PlaceOrderResult place(OrderNode& order, Timestamp timestamp,
-            Sequence sequence, TradeBuffer& trades) = 0;
+                                       Sequence sequence, TradeBuffer& trades) = 0;
         virtual ModifyOrderResult modifyPrice(OrderNode& order, Price price, Timestamp timestamp,
-            Sequence sequence, TradeBuffer& trades) = 0;
+                                              Sequence sequence, TradeBuffer& trades) = 0;
         virtual ModifyOrderResult modifyQuantity(OrderNode& order, QuantityChange change, Timestamp timestamp,
-            Sequence sequence) = 0;
+                                                 Sequence sequence) = 0;
         virtual CancelOrderResult cancel(OrderNode& order, Timestamp timestamp, Sequence sequence) = 0;
 
         [[nodiscard]]

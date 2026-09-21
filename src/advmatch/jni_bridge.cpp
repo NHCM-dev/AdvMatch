@@ -8,7 +8,6 @@ namespace
     {
         return advmatch_abi_version();
     }
-
 } // namespace
 
 extern "C" JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM* vm, void*)

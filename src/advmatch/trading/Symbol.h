@@ -28,15 +28,16 @@ namespace advmatch
         Symbol(std::string name, SymbolId symbolId, SymbolType symbolType, AssetId baseAssetId, AssetId quoteAssetId)
             : name(std::move(name)), symbolId(symbolId), symbolType(symbolType), baseAssetId(baseAssetId),
               quoteAssetId(quoteAssetId)
-        {}
+        {
+        }
 
         std::string name;
         SymbolId symbolId;
 
         SymbolType symbolType;
 
-        AssetId baseAssetId;   // Example: BTC
-        AssetId quoteAssetId;  // Example: USDT
+        AssetId baseAssetId; // Example: BTC
+        AssetId quoteAssetId; // Example: USDT
 
         [[nodiscard]]
         bool isActive() const noexcept
@@ -49,7 +50,6 @@ namespace advmatch
 
         friend class SymbolManager;
     };
-
 } // advmatch
 
 #endif //ADVMATCH_TYPES_H

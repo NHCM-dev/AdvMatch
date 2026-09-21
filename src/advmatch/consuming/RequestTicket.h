@@ -28,7 +28,8 @@ namespace advmatch::consuming
     template <typename Response>
     class alignas(64) ResponseSlot
     {
-        static_assert(std::is_nothrow_move_constructible_v<Response>, "fast responses must be nothrow move constructible");
+        static_assert(std::is_nothrow_move_constructible_v<Response>,
+                      "fast responses must be nothrow move constructible");
 
         template <typename CommandType, typename ResponseType>
         friend class SingleThreadConsumer;
@@ -132,7 +133,8 @@ namespace advmatch::consuming
 
         explicit RequestTicket(ResponseSlot<Response>* slot) noexcept
             : slot(slot)
-        {}
+        {
+        }
 
     public:
         RequestTicket() = default;
@@ -141,7 +143,8 @@ namespace advmatch::consuming
 
         RequestTicket(RequestTicket&& other) noexcept
             : slot(std::exchange(other.slot, nullptr))
-        {}
+        {
+        }
 
         RequestTicket& operator=(RequestTicket&&) = delete;
 
@@ -201,7 +204,8 @@ namespace advmatch::consuming
 
         explicit RequestTicket(ResponseSlot<void>* slot) noexcept
             : slot(slot)
-        {}
+        {
+        }
 
     public:
         RequestTicket() = default;
@@ -210,7 +214,8 @@ namespace advmatch::consuming
 
         RequestTicket(RequestTicket&& other) noexcept
             : slot(std::exchange(other.slot, nullptr))
-        {}
+        {
+        }
 
         RequestTicket& operator=(RequestTicket&&) = delete;
 

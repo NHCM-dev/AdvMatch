@@ -13,14 +13,15 @@ namespace advmatch
     template <typename T, std::size_t initialBlocks, std::size_t blockSize>
     BigAllocs<T, initialBlocks, blockSize>::Block::Block()
         : slots(new Slot[blockSize])
-    {}
+    {
+    }
 
     template <typename T, std::size_t initialBlocks, std::size_t blockSize>
     bool BigAllocs<T, initialBlocks, blockSize>::Block::contains(std::size_t slotIndex) const noexcept
     {
         const std::size_t wordIndex = slotIndex / occupiedWordBits;
         const std::size_t bitIndex = slotIndex % occupiedWordBits;
-        return (this->occupied[wordIndex] & (std::uint64_t{1} << bitIndex)) != 0;
+        return static_cast<bool>(this->occupied[wordIndex] & (std::uint64_t{1} << bitIndex));
     }
 
     template <typename T, std::size_t initialBlocks, std::size_t blockSize>
@@ -66,7 +67,7 @@ namespace advmatch
     }
 
     template <typename T, std::size_t initialBlocks, std::size_t blockSize>
-    typename BigAllocs<T, initialBlocks, blockSize>::Block& BigAllocs<T, initialBlocks, blockSize>::appendBlock()
+    BigAllocs<T, initialBlocks, blockSize>::Block& BigAllocs<T, initialBlocks, blockSize>::appendBlock()
     {
         this->blocks.emplace_back(std::make_unique<Block>());
         return *this->blocks.back();
@@ -79,7 +80,7 @@ namespace advmatch
     }
 
     template <typename T, std::size_t initialBlocks, std::size_t blockSize>
-    typename BigAllocs<T, initialBlocks, blockSize>::Slot* BigAllocs<T, initialBlocks, blockSize>::slotFromObject(T* object) noexcept
+    BigAllocs<T, initialBlocks, blockSize>::Slot* BigAllocs<T, initialBlocks, blockSize>::slotFromObject(T* object) noexcept
     {
         std::byte* address = reinterpret_cast<std::byte*>(object);
         return reinterpret_cast<Slot*>(address - offsetof(Slot, payload));
@@ -219,7 +220,7 @@ namespace advmatch
                     while (occupied != 0)
                     {
                         const std::size_t bitIndex = static_cast<std::size_t>(std::countr_zero(occupied));
-                        const std::size_t slotIndex = wordIndex * occupiedWordBits + bitIndex;
+                        const std::size_t slotIndex = (wordIndex * occupiedWordBits) + bitIndex;
                         std::destroy_at(objectFromSlot(block.slots.get() + slotIndex));
                         occupied &= occupied - 1;
                     }

@@ -17,7 +17,8 @@ namespace advmatch
         }
 
         const AssetId assetId = this->nextAssetId;
-        auto result = this->assets.emplace(assetId, Asset(std::move(displayName), std::move(assetName), assetId, scale));
+        auto result = this->assets.
+                            emplace(assetId, Asset(std::move(displayName), std::move(assetName), assetId, scale));
 
         if (!result.second)
         {

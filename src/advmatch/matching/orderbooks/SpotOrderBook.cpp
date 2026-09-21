@@ -139,7 +139,9 @@ namespace advmatch
     void SpotOrderBook::append(OrderNode& node)
     {
         const Price price = node.order.getPrice();
-        PriceLevel& level = node.order.orderSide == OrderSide::Bid ? this->bids.getOrCreate(price) : this->asks.getOrCreate(price);
+        PriceLevel& level = node.order.orderSide == OrderSide::Bid
+                                ? this->bids.getOrCreate(price)
+                                : this->asks.getOrCreate(price);
         const Quantity quantity = node.order.getUnfilledQuantity();
 
         if (quantity > std::numeric_limits<Quantity>::max() - level.totalQuantity)
@@ -213,7 +215,8 @@ namespace advmatch
             return reject(PlaceOrderRejectReason::InvalidPrice);
         }
 
-        if (order.timeInForce != TimeInForce::GTC && order.timeInForce != TimeInForce::IOC && order.timeInForce != TimeInForce::FOK)
+        if (order.timeInForce != TimeInForce::GTC && order.timeInForce != TimeInForce::IOC && order.timeInForce !=
+            TimeInForce::FOK)
         {
             return reject(PlaceOrderRejectReason::InvalidTimeInForce);
         }
@@ -230,7 +233,9 @@ namespace advmatch
 
         if (order.orderType == OrderType::Limit && order.timeInForce == TimeInForce::GTC)
         {
-            const PriceLevel* existing = order.orderSide == OrderSide::Bid ? this->bids.find(order.getPrice()) : this->asks.find(order.getPrice());
+            const PriceLevel* existing = order.orderSide == OrderSide::Bid
+                                             ? this->bids.find(order.getPrice())
+                                             : this->asks.find(order.getPrice());
             if (existing && order.getQuantity() > std::numeric_limits<Quantity>::max() - existing->totalQuantity)
             {
                 return reject(PlaceOrderRejectReason::Overflow);
@@ -254,7 +259,8 @@ namespace advmatch
         return {order.orderId, order.getFillingStatus()};
     }
 
-    ModifyOrderResult SpotOrderBook::modifyPrice(OrderNode& node, Price price, Timestamp timestamp, Sequence sequence, TradeBuffer& trades)
+    ModifyOrderResult SpotOrderBook::modifyPrice(OrderNode& node, Price price, Timestamp timestamp, Sequence sequence,
+                                                 TradeBuffer& trades)
     {
         BasicOrder& order = node.order;
         if (!node.level)
@@ -301,12 +307,14 @@ namespace advmatch
         return result;
     }
 
-    ModifyOrderResult SpotOrderBook::modifyQuantity(OrderNode& node, QuantityChange change, Timestamp timestamp, Sequence sequence)
+    ModifyOrderResult SpotOrderBook::modifyQuantity(OrderNode& node, QuantityChange change, Timestamp timestamp,
+                                                    Sequence sequence)
     {
         BasicOrder& order = node.order;
         const Quantity before = order.getUnfilledQuantity();
 
-        if (change > 0 && node.level && static_cast<Quantity>(change) > std::numeric_limits<Quantity>::max() - node.level->totalQuantity)
+        if (change > 0 && node.level && static_cast<Quantity>(change) > std::numeric_limits<Quantity>::max() - node.
+            level->totalQuantity)
         {
             return {ModifyOrderState::Overflow};
         }

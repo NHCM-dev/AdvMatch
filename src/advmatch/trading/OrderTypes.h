@@ -43,16 +43,16 @@ namespace advmatch
     constexpr bool isOrderStatusSuccess(OrderStatus status) noexcept
     {
         return status == OrderStatus::NotFilled ||
-               status == OrderStatus::PartiallyFilled ||
-               status == OrderStatus::Filled;
+            status == OrderStatus::PartiallyFilled ||
+            status == OrderStatus::Filled;
     }
 
     [[nodiscard]]
     constexpr bool isOrderStatusTerminal(OrderStatus status) noexcept
     {
         return status == OrderStatus::Rejected ||
-               status == OrderStatus::Filled ||
-               status == OrderStatus::Cancelled;
+            status == OrderStatus::Filled ||
+            status == OrderStatus::Cancelled;
     }
 
     struct OrderFillingStatus

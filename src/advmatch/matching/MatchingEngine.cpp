@@ -43,8 +43,8 @@ namespace advmatch
                     throw std::logic_error("trade node reference does not match its order id");
                 }
 
-                this->riskEngine.settleTrade(trade, maker, taker);
-                this->riskEngine.reconcileOrder(maker);
+                SpotRiskEngine::settleTrade(trade, maker, taker);
+                SpotRiskEngine::reconcileOrder(maker);
             }
         }
         catch (...)
@@ -96,7 +96,8 @@ namespace advmatch
         return this->orderBooks[symbolId - 1].get();
     }
 
-    PlaceOrderResult MatchingEngine::placeOrder(UserId userId, SymbolId symbolId, OrderSide side, OrderType type, TimeInForce timeInForce, Price price,
+    PlaceOrderResult MatchingEngine::placeOrder(UserId userId, SymbolId symbolId, OrderSide side, OrderType type,
+                                                TimeInForce timeInForce, Price price,
                                                 Quantity quantity, Timestamp timestamp, TradeBuffer& trades)
     {
         trades.clear();
@@ -201,18 +202,19 @@ namespace advmatch
 
         if (!result)
         {
-            this->riskEngine.releaseOrder(*node);
+            SpotRiskEngine::releaseOrder(*node);
             this->orders[id - 1] = nullptr;
             this->orderPool.release(node);
             return result;
         }
 
         settleTrades(trades);
-        this->riskEngine.reconcileOrder(*node);
+        SpotRiskEngine::reconcileOrder(*node);
         return result;
     }
 
-    ModifyOrderResult MatchingEngine::modifyPrice(UserId userId, OrderId orderId, Price price, Timestamp timestamp, TradeBuffer& trades)
+    ModifyOrderResult MatchingEngine::modifyPrice(UserId userId, OrderId orderId, Price price, Timestamp timestamp,
+                                                  TradeBuffer& trades)
     {
         trades.clear();
 
@@ -270,11 +272,12 @@ namespace advmatch
             settleTrades(trades);
         }
 
-        this->riskEngine.reconcileOrder(*node);
+        SpotRiskEngine::reconcileOrder(*node);
         return result;
     }
 
-    ModifyOrderResult MatchingEngine::modifyQuantity(UserId userId, OrderId orderId, QuantityChange change, Timestamp timestamp)
+    ModifyOrderResult MatchingEngine::modifyQuantity(UserId userId, OrderId orderId, QuantityChange change,
+                                                     Timestamp timestamp)
     {
         OrderNode* node = findNode(orderId);
         if (!node)
@@ -304,18 +307,19 @@ namespace advmatch
             return {ModifyOrderState::OrderCancelled};
         }
 
-        if (change > 0 && static_cast<Quantity>(change) > std::numeric_limits<Quantity>::max() - order.getUnfilledQuantity())
+        const Quantity unfilledQuantity = order.getUnfilledQuantity();
+        if (change > 0 && static_cast<Quantity>(change) > std::numeric_limits<Quantity>::max() - unfilledQuantity)
         {
             return {ModifyOrderState::Overflow};
         }
 
         const Quantity decrease = change < 0 ? static_cast<Quantity>(-(change + 1)) + 1 : 0;
-        if (decrease > order.getUnfilledQuantity())
+        if (decrease > unfilledQuantity)
         {
             return {ModifyOrderState::InsufficientQuantity};
         }
 
-        const Quantity remaining = change < 0 ? order.getUnfilledQuantity() - decrease : order.getUnfilledQuantity() + static_cast<Quantity>(change);
+        const Quantity remaining = change < 0 ? unfilledQuantity - decrease : unfilledQuantity + static_cast<Quantity>(change);
         if (auto reason = this->riskEngine.checkModifyQuantity(*node, change))
         {
             return {*reason};
@@ -327,7 +331,7 @@ namespace advmatch
         }
 
         auto result = book->modifyQuantity(*node, change, timestamp, this->nextSequence++);
-        this->riskEngine.reconcileOrder(*node);
+        SpotRiskEngine::reconcileOrder(*node);
         return result;
     }
 
@@ -353,7 +357,7 @@ namespace advmatch
         auto result = book->cancel(*node, timestamp, this->nextSequence++);
         if (result)
         {
-            this->riskEngine.reconcileOrder(*node);
+            SpotRiskEngine::reconcileOrder(*node);
         }
 
         return result;

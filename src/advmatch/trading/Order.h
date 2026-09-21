@@ -33,11 +33,13 @@ namespace advmatch
     {
         OrderFillResult(OrderFillState result)
             : Result(result)
-        {}
+        {
+        }
 
         OrderFillResult(OrderFillState result, std::string errorMessage)
             : Result(result, std::move(errorMessage))
-        {}
+        {
+        }
 
         explicit operator bool() const noexcept
         {
@@ -125,7 +127,6 @@ namespace advmatch
         Sequence getCreatedSequence() const noexcept;
         [[nodiscard]]
         Sequence getUpdatedSequence() const noexcept;
-
     };
 } // advmatch
 

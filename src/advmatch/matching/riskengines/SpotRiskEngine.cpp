@@ -40,8 +40,8 @@ namespace advmatch
 
             const Balance available = user.queryActiveBalance(node.quoteAssetId).value_or(-1);
             return available < static_cast<Balance>(requiredUnsigned)
-                ? std::optional<PlaceOrderRejectReason>(PlaceOrderRejectReason::InsufficientBalance)
-                : std::nullopt;
+                       ? std::optional<PlaceOrderRejectReason>(PlaceOrderRejectReason::InsufficientBalance)
+                       : std::nullopt;
         }
 
         const Balance available = user.queryActiveBalance(node.baseAssetId).value_or(-1);
@@ -83,7 +83,9 @@ namespace advmatch
 
         const Balance additional = static_cast<Balance>(newRequiredUnsigned - oldRequiredUnsigned);
         const Balance available = node.user->queryActiveBalance(node.quoteAssetId).value_or(-1);
-        return available < additional ? std::optional<ModifyOrderState>(ModifyOrderState::InsufficientBalance) : std::nullopt;
+        return available < additional
+                   ? std::optional<ModifyOrderState>(ModifyOrderState::InsufficientBalance)
+                   : std::nullopt;
     }
 
     std::optional<ModifyOrderState> SpotRiskEngine::checkModifyQuantity(OrderNode& node, QuantityChange quantityChange)
@@ -135,8 +137,8 @@ namespace advmatch
 
             const Balance available = node.user->queryActiveBalance(node.quoteAssetId).value_or(-1);
             return available < static_cast<Balance>(additionalUnsigned)
-                ? std::optional<ModifyOrderState>(ModifyOrderState::InsufficientBalance)
-                : std::nullopt;
+                       ? std::optional<ModifyOrderState>(ModifyOrderState::InsufficientBalance)
+                       : std::nullopt;
         }
 
         const Balance available = node.user->queryActiveBalance(node.baseAssetId).value_or(-1);
@@ -148,7 +150,8 @@ namespace advmatch
         return std::nullopt;
     }
 
-    std::optional<Balance> SpotRiskEngine::requiredHold(const BasicOrder& order, Price price, Quantity remaining) noexcept
+    std::optional<Balance> SpotRiskEngine::requiredHold(const BasicOrder& order, Price price,
+                                                        Quantity remaining) noexcept
     {
         if (order.orderSide == OrderSide::Ask)
         {
@@ -209,8 +212,8 @@ namespace advmatch
     {
         const BasicOrder& order = node.order;
         const auto amount = order.orderType == OrderType::Market && order.orderSide == OrderSide::Bid
-            ? std::optional<Balance>(marketBuyCost)
-            : requiredHold(order, order.getPrice(), order.getUnfilledQuantity());
+                                ? std::optional<Balance>(marketBuyCost)
+                                : requiredHold(order, order.getPrice(), order.getUnfilledQuantity());
 
         if (!amount || *amount < 0)
         {
@@ -244,8 +247,8 @@ namespace advmatch
     void SpotRiskEngine::settleOrder(OrderNode& node, Price tradePrice, Quantity quantity)
     {
         const Balance debit = node.order.orderSide == OrderSide::Ask
-            ? static_cast<Balance>(quantity)
-            : static_cast<Balance>(tradePrice * quantity);
+                                  ? static_cast<Balance>(quantity)
+                                  : static_cast<Balance>(tradePrice * quantity);
 
         if (debit > node.heldAmount ||
             !node.user->consumeLockedBalance(node.holdAssetId, static_cast<PositiveBalanceChange>(debit)))
@@ -262,7 +265,8 @@ namespace advmatch
             maker.order.orderSide == taker.order.orderSide || maker.baseAssetId != taker.baseAssetId ||
             maker.quoteAssetId != taker.quoteAssetId ||
             trade.quantity > static_cast<Quantity>(std::numeric_limits<Balance>::max()) ||
-            (trade.price != 0 && trade.quantity > static_cast<Quantity>(std::numeric_limits<Balance>::max()) / trade.price))
+            (trade.price != 0 && trade.quantity > static_cast<Quantity>(std::numeric_limits<Balance>::max()) / trade.
+                price))
         {
             throw std::logic_error("invalid spot trade amount");
         }
@@ -282,7 +286,8 @@ namespace advmatch
 
         settleOrder(buyer, trade.price, trade.quantity);
         settleOrder(seller, trade.price, trade.quantity);
-        if (!buyer.user->updateBalance(buyer.baseAssetId, baseAmount) || !seller.user->updateBalance(seller.quoteAssetId, quoteAmount))
+        if (!buyer.user->updateBalance(buyer.baseAssetId, baseAmount) || !seller.user->updateBalance(
+            seller.quoteAssetId, quoteAmount))
         {
             throw std::logic_error("spot settlement credit failed");
         }

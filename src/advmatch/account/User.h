@@ -44,12 +44,13 @@ namespace advmatch
         const AssetBalance* findBalance(AssetId assetId) const noexcept;
 
         AssetBalance& addBalance(AssetId assetId, AssetBalance balance);
-        void removeBalance(AssetId assetId) noexcept;
+        void removeBalance(AssetId assetId);
 
     public:
         explicit User(UserId userId)
             : userId(userId)
-        {}
+        {
+        }
 
         [[nodiscard]]
         std::optional<Balance> queryActiveBalance(AssetId assetId) const noexcept;
@@ -93,7 +94,6 @@ namespace advmatch
         {
             return this->active;
         }
-
     };
 } // advmatch
 

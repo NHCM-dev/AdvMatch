@@ -75,7 +75,7 @@ namespace advmatch
         return insertedBalance;
     }
 
-    void User::removeBalance(AssetId assetId) noexcept
+    void User::removeBalance(AssetId assetId)
     {
         if (this->overflowBalances)
         {

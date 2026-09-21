@@ -14,8 +14,8 @@ namespace advmatch
         NodeHashMap<UserId, User> users;
         UserId nextUserId = 1;
         std::size_t activeUserCount = 0;
-    public:
 
+    public:
         void reserve(std::size_t userCount)
         {
             this->users.reserve(userCount);
