@@ -79,8 +79,7 @@ add_library(advmatch_core STATIC
         src/advmatch/matching/abstract/OrderBook.h
         src/advmatch/matching/orderbooks/SpotOrderBook.cpp
         src/advmatch/matching/orderbooks/SpotOrderBook.h
-    src/advmatch/matching/QueuedMatchingEngine.cpp
-    src/advmatch/matching/QueuedMatchingEngine.h
+    src/advmatch/consuming/SingleThreadConsumer.h
     src/advmatch/trading/Order.cpp
     src/advmatch/trading/Order.h
     src/advmatch/trading/OrderTypes.h
@@ -135,13 +134,24 @@ if(BUILD_TESTING)
     target_link_libraries(advmatch_matching_tests PRIVATE AdvMatch::core)
     add_test(NAME advmatch_matching_tests COMMAND advmatch_matching_tests)
 
-    add_executable(advmatch_queued_matching_tests tests/queued_matching.cpp)
-    target_link_libraries(advmatch_queued_matching_tests PRIVATE AdvMatch::core)
-    add_test(NAME advmatch_queued_matching_tests COMMAND advmatch_queued_matching_tests)
+    add_executable(advmatch_consuming_tests tests/consuming.cpp)
+    target_link_libraries(advmatch_consuming_tests PRIVATE AdvMatch::core)
+    add_test(NAME advmatch_consuming_tests COMMAND advmatch_consuming_tests)
 
     add_executable(advmatch_risk_tests tests/risk.cpp)
     target_link_libraries(advmatch_risk_tests PRIVATE AdvMatch::core)
     add_test(NAME advmatch_risk_tests COMMAND advmatch_risk_tests)
+
+    add_executable(advmatch_tps_benchmark benchmarks/tps.cpp)
+    target_link_libraries(advmatch_tps_benchmark PRIVATE AdvMatch::core)
+    add_test(NAME advmatch_tps_smoke COMMAND advmatch_tps_benchmark --orders 1000 --producers 2)
+
+    add_executable(advmatch_scale_benchmark benchmarks/scale.cpp)
+    target_link_libraries(advmatch_scale_benchmark PRIVATE AdvMatch::core)
+    if(WIN32)
+        target_link_libraries(advmatch_scale_benchmark PRIVATE Psapi)
+    endif()
+    add_test(NAME advmatch_scale_smoke COMMAND advmatch_scale_benchmark)
 endif()
 
 install(TARGETS advmatch LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}

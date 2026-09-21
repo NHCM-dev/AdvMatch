@@ -18,17 +18,13 @@ namespace advmatch
             return nullptr;
         }
 
-        for (auto& x : this->symbols)
+        const SymbolKey key{symbolType, base, quote};
+        if (this->symbolPairs.contains(key))
         {
-            if (x.second.baseAssetId == base &&
-                x.second.quoteAssetId == quote &&
-                x.second.symbolType == symbolType)
-            {
-                return nullptr;
-            }
+            return nullptr;
         }
 
-        const SymbolId symbolId = this->nextSymbolId++;
+        const SymbolId symbolId = this->nextSymbolId;
 
         auto result = this->symbols.emplace(
             symbolId,
@@ -40,7 +36,19 @@ namespace advmatch
             return nullptr;
         }
 
-        this->symbolsByName.emplace(name, symbolId);
+        try
+        {
+            this->symbolsByName.emplace(name, symbolId);
+            this->symbolPairs.emplace(key);
+        }
+        catch (...)
+        {
+            this->symbolsByName.erase(name);
+            this->symbols.erase(result.first);
+            throw;
+        }
+
+        ++this->nextSymbolId;
 
         return &result.first->second;
     }
@@ -84,6 +92,7 @@ namespace advmatch
         }
 
         this->symbolsByName.erase(iterator->second.name);
+        this->symbolPairs.erase(SymbolKey{iterator->second.symbolType, iterator->second.baseAssetId, iterator->second.quoteAssetId});
         this->symbols.erase(iterator);
 
         return true;

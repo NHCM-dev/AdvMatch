@@ -8,13 +8,33 @@
 #include "advmatch/account/User.h"
 #include "advmatch/trading/Symbol.h"
 #include <unordered_map>
+#include <unordered_set>
 
 namespace advmatch
 {
     class SymbolManager
     {
+        struct SymbolKey
+        {
+            SymbolType type;
+            AssetId base;
+            AssetId quote;
+
+            bool operator==(const SymbolKey&) const = default;
+        };
+
+        struct SymbolKeyHash
+        {
+            std::size_t operator()(const SymbolKey& key) const noexcept
+            {
+                const std::uint64_t assets = (static_cast<std::uint64_t>(key.base) << 32) | key.quote;
+                return std::hash<std::uint64_t>{}(assets) ^ (static_cast<std::size_t>(key.type) << 1);
+            }
+        };
+
         std::unordered_map<SymbolId, Symbol> symbols;
         std::unordered_map<std::string, SymbolId> symbolsByName;
+        std::unordered_set<SymbolKey, SymbolKeyHash> symbolPairs;
         SymbolId nextSymbolId = 1;
 
     public:

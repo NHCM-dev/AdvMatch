@@ -1,7 +1,7 @@
 # AdvMatch
 
-C++20 spot matching engine with a single matching writer, a multi-producer
-Disruptor command queue, a C ABI scaffold, and an optional JNI entry point.
+C++20 spot matching engine with a reusable single-thread consumer built on a
+multi-producer Disruptor queue, a C ABI scaffold, and an optional JNI entry point.
 Matching is implemented in the C++ core. The C/JNI interfaces currently expose
 only the ABI version.
 
@@ -79,35 +79,76 @@ order's price. Increasing an order's quantity moves it to the end of its price
 level; reducing quantity keeps its position. Changing price removes the order
 from its old level and tries to match it at the new price.
 
-Call `MatchingEngine` directly from one writer thread, or use
-`QueuedMatchingEngine` to accept requests from multiple producers and process
-them on one worker thread. Register symbol books before starting the queue:
+Call `MatchingEngine` directly from one writer thread. For multiple producer
+threads, derive from `consuming::SingleThreadConsumer<Command, Response>` and
+own the matching engine in the derived class. Register books before starting:
 
 ```cpp
-#include "advmatch/matching/QueuedMatchingEngine.h"
+#include "advmatch/consuming/SingleThreadConsumer.h"
+#include "advmatch/matching/MatchingEngine.h"
+
+struct PlaceCommand
+{
+    advmatch::UserId userId;
+    advmatch::SymbolId symbolId;
+    advmatch::Price price;
+    advmatch::Quantity quantity;
+};
+
+class PlaceConsumer final : public advmatch::consuming::SingleThreadConsumer<PlaceCommand, advmatch::PlaceOrderResult>
+{
+    advmatch::MatchingEngine engine;
+
+protected:
+    advmatch::PlaceOrderResult consume(PlaceCommand&& command) override
+    {
+        std::vector<advmatch::Trade> trades;
+        return this->engine.placeOrder(command.userId, command.symbolId, advmatch::OrderSide::Bid,
+            advmatch::OrderType::Limit, advmatch::TimeInForce::GTC, command.price, command.quantity, 1, trades);
+    }
+
+public:
+    PlaceConsumer(advmatch::UserManager& users, advmatch::SymbolManager& symbols)
+        : engine(users, symbols)
+    {}
+
+    ~PlaceConsumer() override
+    {
+        stop();
+    }
+
+    bool addSpotBook(advmatch::SymbolId symbolId)
+    {
+        return this->engine.addSpotBook(symbolId);
+    }
+};
 
 advmatch::UserManager users;
 advmatch::SymbolManager symbols;
 const auto buyer = users.createUser();
 const auto* symbol = symbols.createSymbol("BTC/USDT", advmatch::SymbolType::Spot, 1, 2);
 users.getUser(buyer)->updateBalance(2, 1000);
-advmatch::QueuedMatchingEngine engine(users, symbols);
+PlaceConsumer engine(users, symbols);
 engine.addSpotBook(symbol->symbolId);
 engine.start(1024); // power-of-two ring capacity
 
-auto outcome = engine.placeOrder(buyer, symbol->symbolId, advmatch::OrderSide::Bid,
-    advmatch::OrderType::Limit, advmatch::TimeInForce::GTC,
-    100, 5, 1); // price and quantity are integer units
-if (outcome.result)
+std::future<advmatch::PlaceOrderResult> response = engine.post({buyer, symbol->symbolId, 100, 5});
+auto result = response.get();
+if (result)
 {
-    // outcome.result.orderId and outcome.trades are available here
+    // result.orderId is available here
 }
 engine.stop();
 ```
 
-The queued API waits for each command's result. Register symbols and deposit
-balances before starting the worker. Do not mutate `UserManager` or
-`SymbolManager` concurrently with matching. `queryOrder` returns a copy of the order. User ID,
+`post()` is safe to call from multiple producer threads and returns immediately
+with a `std::future<Response>`. The worker invokes `consume()` in queue order;
+exceptions are delivered through the future. `stop()` drains accepted commands
+and waits for the worker. Call `stop()` in the derived destructor, before its
+matching state is destroyed. The consumer cannot restart after stopping, and
+its worker thread cannot call `post()` or `stop()` on itself. Register symbols
+and deposit balances before starting the worker. Do not mutate `UserManager`
+or `SymbolManager` concurrently with matching. `queryOrder` returns a copy of the order. User ID,
 order ID, symbol, and exact-price lookups use hash tables and are average O(1); best
 bid/ask reads are O(1). Adding or removing a price level costs O(log P) for P
 active levels, and matching costs at least O(number of fills). These are not
@@ -123,6 +164,49 @@ quote asset amount; asset scale conversion and fees are not implemented.
 This is an in-memory matching prototype: account changes and book changes do
 not yet have a transactional rollback path for exceptional failures during
 settlement, so it is not ready for production custody of funds.
+
+## TPS benchmark
+
+Build and run the standalone benchmark in Release mode:
+
+```powershell
+cmake --build build/release --target advmatch_tps_benchmark
+.\build\release\advmatch_tps_benchmark.exe --orders 100000 --producers 4 --batch-size 256 --ring-size 1024
+```
+
+The program first posts one resting sell order per requested trade. Preloading
+is reported separately and excluded from TPS. During the timed phase, producer
+threads post limit IOC buys through `SingleThreadConsumer`; its one worker runs
+matching, risk checks, and settlement. Each producer awaits responses in
+bounded batches. TPS is completed trades divided by wall time from producer
+release to the last response. The program checks every fill and final balances
+before reporting success. Command allocation, futures, and producer contention
+are included; process startup, preload, and shutdown are excluded. Run it
+several times for a representative figure. The engine retains all orders in
+memory, so larger `--orders` values also increase memory use.
+
+## Scale benchmark
+
+The scale benchmark has a small default smoke profile and an explicit target
+profile matching 3 million users, 10 million asset-balance records, 100,000
+spot books, and 4 million resting orders:
+
+```powershell
+cmake --build build/release --target advmatch_scale_benchmark
+.\build\release\advmatch_scale_benchmark.exe --profile target
+```
+
+The current model has no separate account object, so an asset-balance record
+is the closest available account proxy. The program verifies those counts
+before measuring. Each of three default rounds posts 100,000 IOC buys and
+100,000 replacement asks through `SingleThreadConsumer`, leaving the 4 million
+resting orders in place. It reports trade and command TPS, submission-to-consume
+latency percentiles, process memory after each round, and final counts. Setup
+time is separate. `--cycles`, `--rounds`, `--producers`, `--batch-size`, and
+`--ring-size` are configurable. The program checks available physical memory
+against a rough estimate before the target run; `--force` bypasses that check.
+Repeated rounds expose memory growth because terminal orders are retained.
+A finite run does not establish 24/7 durability or pause-free operation.
 
 ## Language boundary
 

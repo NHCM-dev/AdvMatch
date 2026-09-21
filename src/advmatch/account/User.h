@@ -46,6 +46,12 @@ namespace advmatch
         {
             return userId;
         }
+
+        [[nodiscard]]
+        std::size_t getAssetBalanceCount() const noexcept
+        {
+            return this->balances.size();
+        }
     };
 } // advmatch
 
