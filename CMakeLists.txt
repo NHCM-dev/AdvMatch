@@ -39,7 +39,15 @@ include(CTest)
 include(GNUInstallDirs)
 
 option(ADVMATCH_USE_SYSTEM_DEPENDENCIES "Use compatible dependencies installed on the host" OFF)
+option(ADVMATCH_BUILD_BENCHMARKS "Build the standalone performance benchmarks" ON)
+option(ADVMATCH_STATIC_MINGW_RUNTIME "Statically link the MinGW runtime into distributable binaries" ON)
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
+
+function(advmatch_configure_runtime target)
+    if(MINGW AND ADVMATCH_STATIC_MINGW_RUNTIME)
+        target_link_options(${target} PRIVATE -static)
+    endif()
+endfunction()
 
 find_package(JNI QUIET)
 option(ADVMATCH_BUILD_JNI "Build the JNI bridge" ${JNI_FOUND})
@@ -126,7 +134,7 @@ endif()
 add_library(advmatch_core STATIC
     src/advmatch/core.cpp
     include/advmatch/core.hpp
-    src/advmatch/market/Asset.h
+        src/advmatch/trading/Asset.h
     src/advmatch/account/User.cpp
     src/advmatch/account/User.h
     src/advmatch/util/BigAllocs.cpp
@@ -173,6 +181,7 @@ add_library(advmatch SHARED
 )
 target_compile_features(advmatch PRIVATE cxx_std_20)
 target_link_libraries(advmatch PRIVATE AdvMatch::core)
+advmatch_configure_runtime(advmatch)
 target_include_directories(advmatch PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
@@ -185,6 +194,7 @@ if(ADVMATCH_BUILD_JNI)
     find_package(JNI REQUIRED)
     add_library(advmatch_jni SHARED src/advmatch/jni_bridge.cpp)
     target_link_libraries(advmatch_jni PRIVATE advmatch JNI::JNI)
+    advmatch_configure_runtime(advmatch_jni)
     set_target_properties(advmatch_jni PROPERTIES OUTPUT_NAME advmatch_jni)
     if(WIN32)
         set_target_properties(advmatch_jni PROPERTIES PREFIX "")
@@ -195,39 +205,77 @@ if(BUILD_TESTING)
     add_executable(advmatch_smoke tests/smoke.cpp)
     target_compile_definitions(advmatch_smoke PRIVATE ADVMATCH_EXPECTED_VERSION="${PROJECT_VERSION}")
     target_link_libraries(advmatch_smoke PRIVATE AdvMatch::core advmatch)
+    advmatch_configure_runtime(advmatch_smoke)
     add_test(NAME advmatch_smoke COMMAND advmatch_smoke)
 
     add_executable(advmatch_matching_tests tests/matching.cpp)
     target_link_libraries(advmatch_matching_tests PRIVATE AdvMatch::core)
+    advmatch_configure_runtime(advmatch_matching_tests)
     add_test(NAME advmatch_matching_tests COMMAND advmatch_matching_tests)
 
     add_executable(advmatch_risk_tests tests/risk.cpp)
     target_link_libraries(advmatch_risk_tests PRIVATE AdvMatch::core)
+    advmatch_configure_runtime(advmatch_risk_tests)
     add_test(NAME advmatch_risk_tests COMMAND advmatch_risk_tests)
 
     add_executable(advmatch_asset_management_tests tests/asset_management.cpp)
     target_link_libraries(advmatch_asset_management_tests PRIVATE AdvMatch::core)
+    advmatch_configure_runtime(advmatch_asset_management_tests)
     add_test(NAME advmatch_asset_management_tests COMMAND advmatch_asset_management_tests)
 
     add_executable(advmatch_container_tests tests/containers.cpp)
     target_link_libraries(advmatch_container_tests PRIVATE AdvMatch::core)
+    advmatch_configure_runtime(advmatch_container_tests)
     add_test(NAME advmatch_container_tests COMMAND advmatch_container_tests)
+endif()
 
+if(ADVMATCH_BUILD_BENCHMARKS)
     add_executable(advmatch_tps_benchmark benchmarks/tps.cpp)
     target_link_libraries(advmatch_tps_benchmark PRIVATE AdvMatch::core)
-    add_test(NAME advmatch_tps_smoke COMMAND advmatch_tps_benchmark --orders 1000 --producers 2)
+    advmatch_configure_runtime(advmatch_tps_benchmark)
 
     add_executable(advmatch_scale_benchmark benchmarks/scale.cpp)
     target_link_libraries(advmatch_scale_benchmark PRIVATE AdvMatch::core)
+    advmatch_configure_runtime(advmatch_scale_benchmark)
     if(WIN32)
         target_link_libraries(advmatch_scale_benchmark PRIVATE Psapi)
     endif()
-    add_test(NAME advmatch_scale_smoke COMMAND advmatch_scale_benchmark)
 
     add_executable(advmatch_big_allocs_benchmark benchmarks/big_allocs.cpp)
     target_link_libraries(advmatch_big_allocs_benchmark PRIVATE AdvMatch::core)
+    advmatch_configure_runtime(advmatch_big_allocs_benchmark)
+
+    if(BUILD_TESTING)
+        add_test(NAME advmatch_tps_smoke COMMAND advmatch_tps_benchmark --orders 1000 --producers 2)
+        add_test(NAME advmatch_scale_smoke COMMAND advmatch_scale_benchmark)
+    endif()
 endif()
 
-install(TARGETS advmatch LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+install(TARGETS advmatch
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+
+if(ADVMATCH_BUILD_JNI)
+    install(TARGETS advmatch_jni
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+endif()
+
+if(ADVMATCH_BUILD_BENCHMARKS)
+    install(TARGETS advmatch_tps_benchmark advmatch_scale_benchmark advmatch_big_allocs_benchmark
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
 install(FILES include/advmatch/advmatch.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/advmatch)
+install(FILES README.md DESTINATION .)
+install(FILES third_party/disruptor-cpp/LICENSE DESTINATION licenses/disruptor-cpp)
+
+set(CPACK_GENERATOR ZIP)
+set(CPACK_PACKAGE_NAME AdvMatch)
+set(CPACK_PACKAGE_VENDOR AdvMatch)
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_FILE_NAME "AdvMatch-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+set(CPACK_PACKAGE_CHECKSUM SHA256)
+include(CPack)

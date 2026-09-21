@@ -33,3 +33,7 @@ if errorlevel 1 (
 cmake --preset "%ADVMATCH_PRESET%" || exit /b 1
 cmake --build --preset "%ADVMATCH_PRESET%" || exit /b 1
 ctest --preset "%ADVMATCH_PRESET%" || exit /b 1
+
+if "%ADVMATCH_PRESET%"=="release" (
+    cmake --build --preset release --target package || exit /b 1
+)

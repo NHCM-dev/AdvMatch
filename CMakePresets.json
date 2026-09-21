@@ -8,6 +8,8 @@
       "generator": "Ninja",
       "cacheVariables": {
         "BUILD_TESTING": "ON",
+        "ADVMATCH_BUILD_BENCHMARKS": "ON",
+        "ADVMATCH_STATIC_MINGW_RUNTIME": "ON",
         "ADVMATCH_USE_SYSTEM_DEPENDENCIES": "OFF"
       }
     },

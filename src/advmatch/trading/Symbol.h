@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <string>
 #include <utility>
-#include "../market/Asset.h"
+#include "Asset.h"
 
 namespace advmatch
 {

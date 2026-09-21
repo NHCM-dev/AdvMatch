@@ -3,7 +3,7 @@
 #include <memory>
 #include <optional>
 
-#include "../market/Asset.h"
+#include "../trading/Asset.h"
 #include "../util/Containers.h"
 #include "../util/Utils.h"
 

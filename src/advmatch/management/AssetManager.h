@@ -1,7 +1,7 @@
 #ifndef ADVMATCH_ASSETMANAGER_H
 #define ADVMATCH_ASSETMANAGER_H
 
-#include "advmatch/market/Asset.h"
+#include "../trading/Asset.h"
 #include "advmatch/util/Containers.h"
 
 #include <string>

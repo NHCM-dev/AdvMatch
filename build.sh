@@ -33,3 +33,7 @@ fi
 cmake --preset "$preset"
 cmake --build --preset "$preset"
 ctest --preset "$preset"
+
+if [ "$preset" = "release" ]; then
+    cmake --build --preset release --target package
+fi

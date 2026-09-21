@@ -51,7 +51,8 @@ sh ./build.sh
 
 Both scripts build Release by default. Pass `debug` to build Debug instead.
 They use the checked-in CMake presets and require no dependency paths or other
-project-specific configuration.
+project-specific configuration. A Release build also creates a portable ZIP in
+`build/release`; distribute that archive instead of copying a single executable.
 
 The equivalent individual commands are:
 
@@ -65,6 +66,11 @@ Use `release` instead of `debug` for optimized builds. The presets use the
 compiler found in the current environment. On Windows, run them in an MSVC
 Developer PowerShell or an MSYS2 UCRT64 shell. Keep the compiler and C runtime
 consistent across all native libraries and language bindings.
+
+MinGW builds statically link libgcc, libstdc++, and winpthread by default. The
+packaged executables therefore do not require an MSYS2 installation or its DLLs
+on the destination computer. Set `ADVMATCH_STATIC_MINGW_RUNTIME=OFF` only when
+intentionally distributing those runtime DLLs beside the application.
 
 To build JNI, configure with `cmake --preset release -DADVMATCH_BUILD_JNI=ON`
 and set `JAVA_HOME` to the JDK if CMake cannot locate it. The C ABI library is
