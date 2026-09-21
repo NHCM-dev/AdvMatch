@@ -38,20 +38,29 @@ include(FetchContent)
 include(CTest)
 include(GNUInstallDirs)
 
+option(ADVMATCH_USE_SYSTEM_DEPENDENCIES "Use compatible dependencies installed on the host" OFF)
+set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
+
 find_package(JNI QUIET)
 option(ADVMATCH_BUILD_JNI "Build the JNI bridge" ${JNI_FOUND})
 
 # Use the vendored headers without importing upstream build flags or tests.
 find_package(Threads REQUIRED)
+set(ADVMATCH_DISRUPTOR_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party/disruptor-cpp/include")
+if(NOT EXISTS "${ADVMATCH_DISRUPTOR_INCLUDE_DIR}/disruptor.h")
+    message(FATAL_ERROR "The vendored disruptor-cpp headers are missing. Restore third_party/disruptor-cpp from the repository.")
+endif()
+
 add_library(advmatch_disruptor INTERFACE)
 add_library(AdvMatch::disruptor ALIAS advmatch_disruptor)
-target_include_directories(advmatch_disruptor SYSTEM INTERFACE
-    "${CMAKE_CURRENT_SOURCE_DIR}/third_party/disruptor-cpp/include")
+target_include_directories(advmatch_disruptor SYSTEM INTERFACE "${ADVMATCH_DISRUPTOR_INCLUDE_DIR}")
 target_link_libraries(advmatch_disruptor INTERFACE Threads::Threads)
 target_compile_features(advmatch_disruptor INTERFACE cxx_std_20)
 
-find_package(fmt 11.2 QUIET CONFIG)
-if(NOT fmt_FOUND)
+if(ADVMATCH_USE_SYSTEM_DEPENDENCIES)
+    find_package(fmt 11.2 QUIET CONFIG)
+endif()
+if(NOT TARGET fmt::fmt)
     set(FMT_INSTALL OFF CACHE BOOL "Do not install vendored fmt" FORCE)
     FetchContent_Declare(fmt
         GIT_REPOSITORY https://github.com/fmtlib/fmt.git
@@ -59,8 +68,10 @@ if(NOT fmt_FOUND)
     FetchContent_MakeAvailable(fmt)
 endif()
 
-find_package(spdlog 1.15 QUIET CONFIG)
-if(NOT spdlog_FOUND)
+if(ADVMATCH_USE_SYSTEM_DEPENDENCIES)
+    find_package(spdlog 1.15 QUIET CONFIG)
+endif()
+if(NOT TARGET spdlog::spdlog)
     set(SPDLOG_FMT_EXTERNAL ON CACHE BOOL "Use the selected fmt package" FORCE)
     FetchContent_Declare(spdlog
         GIT_REPOSITORY https://github.com/gabime/spdlog.git
@@ -68,10 +79,12 @@ if(NOT spdlog_FOUND)
     FetchContent_MakeAvailable(spdlog)
 endif()
 
-find_package(Boost 1.92 QUIET)
+if(ADVMATCH_USE_SYSTEM_DEPENDENCIES)
+    find_package(Boost 1.92 QUIET)
+endif()
 add_library(advmatch_boost_headers INTERFACE)
 add_library(AdvMatch::boost_headers ALIAS advmatch_boost_headers)
-if(Boost_FOUND)
+if(ADVMATCH_USE_SYSTEM_DEPENDENCIES AND Boost_FOUND)
     target_include_directories(advmatch_boost_headers SYSTEM INTERFACE ${Boost_INCLUDE_DIRS})
 else()
     FetchContent_Declare(advmatch_boost
@@ -83,16 +96,20 @@ else()
     target_include_directories(advmatch_boost_headers SYSTEM INTERFACE ${advmatch_boost_SOURCE_DIR})
 endif()
 
-find_package(unordered_dense 5.0.1 QUIET CONFIG)
-if(NOT unordered_dense_FOUND)
+if(ADVMATCH_USE_SYSTEM_DEPENDENCIES)
+    find_package(unordered_dense 5.0.1 QUIET CONFIG)
+endif()
+if(NOT TARGET unordered_dense::unordered_dense)
     FetchContent_Declare(unordered_dense
         GIT_REPOSITORY https://github.com/martinus/unordered_dense.git
         GIT_TAG 1c8636e810d7e4a485d17bb9cbd6dccb5fe4e284)
     FetchContent_MakeAvailable(unordered_dense)
 endif()
 
-find_package(absl 20250814 QUIET CONFIG)
-if(NOT absl_FOUND)
+if(ADVMATCH_USE_SYSTEM_DEPENDENCIES)
+    find_package(absl 20250814 QUIET CONFIG)
+endif()
+if(NOT TARGET absl::flat_hash_map OR NOT TARGET absl::node_hash_map)
     set(ABSL_BUILD_TESTING OFF CACHE BOOL "Do not build Abseil tests" FORCE)
     set(ABSL_ENABLE_INSTALL OFF CACHE BOOL "Do not install vendored Abseil" FORCE)
     set(ABSL_PROPAGATE_CXX_STD ON CACHE BOOL "Use the parent C++ standard" FORCE)
@@ -123,20 +140,20 @@ add_library(advmatch_core STATIC
     src/advmatch/matching/MatchingEngine.cpp
     src/advmatch/matching/MatchingEngine.h
     src/advmatch/matching/Matching.h
-        src/advmatch/matching/abstract/OrderBook.h
-        src/advmatch/matching/orderbooks/SpotOrderBook.cpp
-        src/advmatch/matching/orderbooks/SpotOrderBook.h
+    src/advmatch/matching/abstract/OrderBook.h
+    src/advmatch/matching/orderbooks/SpotOrderBook.cpp
+    src/advmatch/matching/orderbooks/SpotOrderBook.h
     src/advmatch/consuming/SingleThreadConsumer.h
     src/advmatch/consuming/RequestTicket.h
     src/advmatch/trading/Order.cpp
     src/advmatch/trading/Order.h
     src/advmatch/trading/OrderTypes.h
     src/advmatch/trading/Symbol.h
-        src/advmatch/matching/abstract/RiskEngine.h
-        src/advmatch/matching/riskengines/SpotRiskEngine.cpp
-        src/advmatch/matching/riskengines/SpotRiskEngine.h
-        src/advmatch/management/SymbolManager.cpp
-        src/advmatch/management/SymbolManager.h)
+    src/advmatch/matching/abstract/RiskEngine.h
+    src/advmatch/matching/riskengines/SpotRiskEngine.cpp
+    src/advmatch/matching/riskengines/SpotRiskEngine.h
+    src/advmatch/management/SymbolManager.cpp
+    src/advmatch/management/SymbolManager.h)
 add_library(AdvMatch::core ALIAS advmatch_core)
 set_target_properties(advmatch_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_features(advmatch_core PUBLIC cxx_std_20)

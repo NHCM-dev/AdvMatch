@@ -37,6 +37,24 @@ make a successfully built executable fail when launched.
 
 ## Build
 
+On Windows, configure, build, and test with one command:
+
+```powershell
+.\build.cmd
+```
+
+On Linux or macOS:
+
+```sh
+sh ./build.sh
+```
+
+Both scripts build Release by default. Pass `debug` to build Debug instead.
+They use the checked-in CMake presets and require no dependency paths or other
+project-specific configuration.
+
+The equivalent individual commands are:
+
 ```sh
 cmake --preset debug
 cmake --build --preset debug
@@ -69,11 +87,14 @@ and set `JAVA_HOME` to the JDK if CMake cannot locate it. The C ABI library is
 - [Abseil](https://github.com/abseil/abseil-cpp) 20250814.2, exposing
   `flat_hash_map` as an alternative flat hash container.
 
-CMake first uses installed packages, then fetches pinned versions. Disruptor is
-built from the vendored headers without a network request or its upstream
-global compiler flags, tests, benchmarks, or examples. The
+CMake fetches pinned dependency versions by default, so a machine's installed
+packages cannot silently change the build. Set `ADVMATCH_USE_SYSTEM_DEPENDENCIES=ON`
+only when intentionally using compatible host packages. Disruptor is built from
+the vendored headers without a network request or its upstream global compiler
+flags, tests, benchmarks, or examples. The
 `AdvMatch::disruptor` target is available to the C++ core. Downloads live under
-the ignored build directory.
+the ignored build directory. Once downloaded, CMake reuses them without checking
+the remote repository on later configure runs.
 
 `advmatch/util/Containers.h` provides the project aliases `SmallVector`,
 `DenseMap`, `DenseSet`, `FlatHashMap`, and `NodeHashMap`. Managers use
