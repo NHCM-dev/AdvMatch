@@ -3,6 +3,7 @@
 /out/
 /.idea/
 /CMakeUserPresets.json
+/.clangd
 *.dll
 *.so
 *.dylib

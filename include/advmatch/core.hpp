@@ -3,5 +3,5 @@
 #include <string>
 
 namespace advmatch {
-std::string build_description();
+std::string buildDescription();
 }

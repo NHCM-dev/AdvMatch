@@ -10,22 +10,14 @@ namespace advmatch
 {
     using UserId = std::uint64_t;
 
-    class UserManager;
-
     class User
     {
+
         std::map<AssetId, AssetBalance> balances;
         const UserId userId;
 
     public:
-        class ConstructorKey
-        {
-            friend class UserManager;
-
-            ConstructorKey() = default;
-        };
-
-        explicit User(ConstructorKey, UserId userId)
+        explicit User(UserId userId)
             : userId(userId)
         {}
 
@@ -41,6 +33,8 @@ namespace advmatch
         BalanceResult lockBalance(AssetId assetId, PositiveBalanceChange balanceChange);
         [[nodiscard]]
         BalanceResult unlockBalance(AssetId assetId, PositiveBalanceChange balanceChange);
+        [[nodiscard]]
+        BalanceResult consumeLockedBalance(AssetId assetId, PositiveBalanceChange balanceChange);
 
         [[nodiscard]]
         BalanceResult lockAsset(AssetId assetId);
@@ -48,7 +42,10 @@ namespace advmatch
         BalanceResult unlockAsset(AssetId assetId);
 
         [[nodiscard]]
-        UserId getUserId() const noexcept;
+        UserId getUserId() const noexcept
+        {
+            return userId;
+        }
     };
 } // advmatch
 

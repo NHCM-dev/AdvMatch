@@ -10,9 +10,8 @@ namespace advmatch
     {
         const UserId userId = this->nextUserId++;
 
-        this->users.try_emplace(
+        this->users.emplace(
             userId,
-            User::ConstructorKey{},
             userId
         );
 

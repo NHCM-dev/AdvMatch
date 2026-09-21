@@ -4,14 +4,14 @@
 
 #ifndef ADVMATCH_USERMANAGER_H
 #define ADVMATCH_USERMANAGER_H
-#include <map>
+#include <unordered_map>
 #include "../account/User.h"
 
 namespace advmatch
 {
     class UserManager
     {
-        std::map<UserId, User> users;
+        std::unordered_map<UserId, User> users;
         UserId nextUserId = 1;
     public:
 
@@ -32,6 +32,26 @@ namespace advmatch
 
         [[nodiscard]]
         std::size_t getUserCount() const noexcept;
+
+        auto begin()
+        {
+            return users.begin();
+        }
+
+        auto end()
+        {
+            return users.end();
+        }
+
+        auto begin() const
+        {
+            return users.begin();
+        }
+
+        auto end() const
+        {
+            return users.end();
+        }
     };
 } // advmatch
 

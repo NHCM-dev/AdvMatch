@@ -158,6 +158,28 @@ namespace advmatch
         return {BalanceOpResult::Success};
     }
 
+    BalanceResult User::consumeLockedBalance(AssetId assetId, PositiveBalanceChange balanceChange)
+    {
+        if (balanceChange == 0)
+        {
+            return {BalanceOpResult::Success};
+        }
+
+        auto iterator = this->balances.find(assetId);
+        if (iterator == this->balances.end() || !util::enoughSubtract(iterator->second.locked, balanceChange))
+        {
+            return {BalanceOpResult::Insufficient};
+        }
+
+        iterator->second.locked -= static_cast<Balance>(balanceChange);
+        if (iterator->second.active == 0 && iterator->second.locked == 0)
+        {
+            this->balances.erase(iterator);
+        }
+
+        return {BalanceOpResult::Success};
+    }
+
     BalanceResult User::lockAsset(AssetId assetId)
     {
         auto iterator = this->balances.find(assetId);
@@ -196,10 +218,5 @@ namespace advmatch
             assetId,
             static_cast<PositiveBalanceChange>(lockedBalance)
         );
-    }
-
-    UserId User::getUserId() const noexcept
-    {
-        return this->userId;
     }
 } // advmatch
