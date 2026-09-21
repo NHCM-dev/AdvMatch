@@ -8,9 +8,9 @@
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
-#include <future>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string_view>
@@ -188,7 +188,8 @@ int main(int argumentCount, char** arguments)
         consumer.start(options.ringSize);
 
         const auto preloadStart = Clock::now();
-        std::vector<std::future<PlaceResponse>> pending;
+        auto pendingSlots = std::make_unique<consuming::ResponseSlot<PlaceResponse>[]>(options.batchSize);
+        std::vector<consuming::RequestTicket<PlaceResponse>> pending;
         pending.reserve(options.batchSize);
         for (std::uint64_t index = 0; index < options.orders;)
         {
@@ -196,7 +197,7 @@ int main(int argumentCount, char** arguments)
             for (std::uint32_t batchIndex = 0; batchIndex < options.batchSize && index < options.orders; ++batchIndex, ++index)
             {
                 pending.push_back(consumer.post({sellerId, symbol->symbolId, OrderSide::Ask, OrderType::Limit,
-                    TimeInForce::GTC, 100, 1, index + 1}));
+                    TimeInForce::GTC, 100, 1, index + 1}, pendingSlots[batchIndex]));
             }
 
             for (auto& response : pending)
@@ -224,7 +225,8 @@ int main(int argumentCount, char** arguments)
                 try
                 {
                     const std::uint64_t count = options.orders / options.producers + (producer < options.orders % options.producers ? 1 : 0);
-                    std::vector<std::future<PlaceResponse>> responses;
+                    auto responseSlots = std::make_unique<consuming::ResponseSlot<PlaceResponse>[]>(options.batchSize);
+                    std::vector<consuming::RequestTicket<PlaceResponse>> responses;
                     responses.reserve(options.batchSize);
 
                     for (std::uint64_t index = 0; index < count;)
@@ -233,7 +235,7 @@ int main(int argumentCount, char** arguments)
                         for (std::uint32_t batchIndex = 0; batchIndex < options.batchSize && index < count; ++batchIndex, ++index)
                         {
                             responses.push_back(consumer.post({buyerId, symbol->symbolId, OrderSide::Bid, OrderType::Limit,
-                                TimeInForce::IOC, 100, 1, index + 1}));
+                                TimeInForce::IOC, 100, 1, index + 1}, responseSlots[batchIndex]));
                         }
 
                         for (auto& response : responses)

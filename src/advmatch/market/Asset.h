@@ -6,6 +6,7 @@
 #define ADVMATCH_ASSET_H
 #include <cstdint>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -24,7 +25,19 @@ namespace advmatch
 
     struct Asset
     {
-        AssetId id;
+        Asset(std::string displayName, std::string assetName, AssetId assetId, Scale scale)
+            : displayName(std::move(displayName)), assetName(std::move(assetName)), assetId(assetId), scale(scale)
+        {
+            if (scale >= 8)
+            {
+                throw std::range_error("Scale too big");
+            }
+        }
+
+        std::string displayName;
+        std::string assetName;
+
+        AssetId assetId;
         Scale scale;
     };
 

@@ -1,7 +1,7 @@
 #include "advmatch/advmatch.h"
 #include "advmatch/core.hpp"
 
-#include <disruptor/BusySpinWaitStrategy.h>
+#include <disruptor/BlockingWaitStrategy.h>
 #include <disruptor/EventFactory.h>
 #include <disruptor/RingBuffer.h>
 
@@ -28,9 +28,9 @@ int main()
         return 1;
     }
 
-    disruptor::BusySpinWaitStrategy waitStrategy;
-    auto ring = disruptor::RingBuffer<Command, disruptor::SingleProducerSequencer<disruptor::BusySpinWaitStrategy>>::createSingleProducer(
-        std::make_shared<CommandFactory>(), 1024, waitStrategy);
+    disruptor::BlockingWaitStrategy waitStrategy;
+    auto ring = disruptor::RingBuffer<Command, disruptor::SingleProducerSequencer<disruptor::BlockingWaitStrategy>>::createSingleProducer(
+        std::make_shared<CommandFactory>(), 32, waitStrategy);
     const auto sequence = ring->next();
     ring->get(sequence).value = 42;
     ring->publish(sequence);

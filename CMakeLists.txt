@@ -73,6 +73,8 @@ add_library(advmatch_core STATIC
     src/advmatch/util/Utils.h
     src/advmatch/management/UserManager.cpp
     src/advmatch/management/UserManager.h
+    src/advmatch/management/AssetManager.cpp
+    src/advmatch/management/AssetManager.h
     src/advmatch/matching/MatchingEngine.cpp
     src/advmatch/matching/MatchingEngine.h
     src/advmatch/matching/Matching.h
@@ -80,6 +82,7 @@ add_library(advmatch_core STATIC
         src/advmatch/matching/orderbooks/SpotOrderBook.cpp
         src/advmatch/matching/orderbooks/SpotOrderBook.h
     src/advmatch/consuming/SingleThreadConsumer.h
+    src/advmatch/consuming/RequestTicket.h
     src/advmatch/trading/Order.cpp
     src/advmatch/trading/Order.h
     src/advmatch/trading/OrderTypes.h
@@ -134,13 +137,13 @@ if(BUILD_TESTING)
     target_link_libraries(advmatch_matching_tests PRIVATE AdvMatch::core)
     add_test(NAME advmatch_matching_tests COMMAND advmatch_matching_tests)
 
-    add_executable(advmatch_consuming_tests tests/consuming.cpp)
-    target_link_libraries(advmatch_consuming_tests PRIVATE AdvMatch::core)
-    add_test(NAME advmatch_consuming_tests COMMAND advmatch_consuming_tests)
-
     add_executable(advmatch_risk_tests tests/risk.cpp)
     target_link_libraries(advmatch_risk_tests PRIVATE AdvMatch::core)
     add_test(NAME advmatch_risk_tests COMMAND advmatch_risk_tests)
+
+    add_executable(advmatch_asset_management_tests tests/asset_management.cpp)
+    target_link_libraries(advmatch_asset_management_tests PRIVATE AdvMatch::core)
+    add_test(NAME advmatch_asset_management_tests COMMAND advmatch_asset_management_tests)
 
     add_executable(advmatch_tps_benchmark benchmarks/tps.cpp)
     target_link_libraries(advmatch_tps_benchmark PRIVATE AdvMatch::core)

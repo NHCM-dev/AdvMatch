@@ -10,9 +10,9 @@
 #include <cstdlib>
 #include <exception>
 #include <fstream>
-#include <future>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -97,7 +97,7 @@ namespace
 
     struct PendingResponse
     {
-        std::future<PlaceResponse> response;
+        advmatch::consuming::RequestTicket<PlaceResponse> response;
         bool shouldFill;
     };
 
@@ -352,6 +352,7 @@ namespace
                     const std::uint64_t baseCount = options.cycles / options.producers;
                     const std::uint64_t first = baseCount * producer + std::min<std::uint64_t>(producer, options.cycles % options.producers);
                     const std::uint64_t count = options.cycles / options.producers + (producer < options.cycles % options.producers ? 1 : 0);
+                    auto responseSlots = std::make_unique<advmatch::consuming::ResponseSlot<PlaceResponse>[]>(options.batchSize * 2);
                     std::vector<PendingResponse> pending;
                     pending.reserve(static_cast<std::size_t>(options.batchSize) * 2);
                     stats[producer].latencyNanos.reserve(static_cast<std::size_t>(count) * 2);
@@ -365,9 +366,11 @@ namespace
                             const advmatch::UserId buyer = (symbol + 1) % options.users + 1;
                             const advmatch::UserId seller = symbol + 1;
 
-                            auto buy = consumer.post({buyer, symbol + 1, advmatch::OrderSide::Bid, advmatch::TimeInForce::IOC, Clock::now()});
+                            auto buy = consumer.post({buyer, symbol + 1, advmatch::OrderSide::Bid, advmatch::TimeInForce::IOC, Clock::now()},
+                                responseSlots[batch * 2]);
                             pending.push_back({std::move(buy), true});
-                            auto ask = consumer.post({seller, symbol + 1, advmatch::OrderSide::Ask, advmatch::TimeInForce::GTC, Clock::now()});
+                            auto ask = consumer.post({seller, symbol + 1, advmatch::OrderSide::Ask, advmatch::TimeInForce::GTC, Clock::now()},
+                                responseSlots[batch * 2 + 1]);
                             pending.push_back({std::move(ask), false});
                         }
 
@@ -547,7 +550,8 @@ int main(int argumentCount, char** arguments)
         std::cout << "setup_phase=books_done\n" << std::flush;
 
         consumer.start(options.ringSize);
-        std::vector<std::future<PlaceResponse>> pending;
+        auto pendingSlots = std::make_unique<consuming::ResponseSlot<PlaceResponse>[]>(options.batchSize);
+        std::vector<consuming::RequestTicket<PlaceResponse>> pending;
         pending.reserve(options.batchSize);
         std::uint64_t nextProgress = 1000000;
         for (std::uint64_t index = 0; index < options.pendingOrders;)
@@ -557,7 +561,8 @@ int main(int argumentCount, char** arguments)
             {
                 const std::uint64_t owner = index % options.users;
                 const std::uint32_t symbol = static_cast<std::uint32_t>((owner % options.symbols + index / options.users) % options.symbols);
-                pending.push_back(consumer.post({owner + 1, symbol + 1, OrderSide::Ask, TimeInForce::GTC, Clock::now()}));
+                pending.push_back(consumer.post({owner + 1, symbol + 1, OrderSide::Ask, TimeInForce::GTC, Clock::now()},
+                    pendingSlots[batch]));
             }
 
             for (auto& response : pending)
