@@ -55,22 +55,22 @@ namespace advmatch
         [[nodiscard]]
         std::optional<Balance> queryActiveBalance(AssetId assetId) const noexcept;
         [[nodiscard]]
-        std::optional<Balance> queryLockedBalance(AssetId assetId) const noexcept;
+        std::optional<Balance> queryReservedBalance(AssetId assetId) const noexcept;
 
         [[nodiscard]]
         BalanceResult updateBalance(AssetId assetId, BalanceChange balanceChange);
 
         [[nodiscard]]
-        BalanceResult lockBalance(AssetId assetId, PositiveBalanceChange balanceChange);
+        BalanceResult reserveBalance(AssetId assetId, PositiveBalanceChange amount);
         [[nodiscard]]
-        BalanceResult unlockBalance(AssetId assetId, PositiveBalanceChange balanceChange);
+        BalanceResult releaseReservedBalance(AssetId assetId, PositiveBalanceChange amount);
         [[nodiscard]]
-        BalanceResult consumeLockedBalance(AssetId assetId, PositiveBalanceChange balanceChange);
+        BalanceResult consumeReservedBalance(AssetId assetId, PositiveBalanceChange amount);
 
         [[nodiscard]]
-        BalanceResult lockAsset(AssetId assetId);
+        BalanceResult reserveAsset(AssetId assetId);
         [[nodiscard]]
-        BalanceResult unlockAsset(AssetId assetId);
+        BalanceResult releaseAsset(AssetId assetId);
 
         [[nodiscard]]
         UserId getUserId() const noexcept

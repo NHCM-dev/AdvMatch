@@ -137,6 +137,8 @@ add_library(advmatch_core STATIC
         src/advmatch/trading/Asset.h
     src/advmatch/account/User.cpp
     src/advmatch/account/User.h
+    src/advmatch/util/AccountLedger.cpp
+    src/advmatch/util/AccountLedger.h
     src/advmatch/util/BigAllocs.cpp
     src/advmatch/util/BigAllocs.h
     src/advmatch/util/Utils.h
@@ -148,18 +150,22 @@ add_library(advmatch_core STATIC
     src/advmatch/matching/MatchingEngine.cpp
     src/advmatch/matching/MatchingEngine.h
     src/advmatch/matching/Matching.h
-    src/advmatch/matching/abstract/OrderBook.h
-    src/advmatch/matching/orderbooks/SpotOrderBook.cpp
-    src/advmatch/matching/orderbooks/SpotOrderBook.h
+    src/advmatch/matching/TradeBuffer.h
+    src/advmatch/matching/orderbooks/OrderBook.h
+    src/advmatch/matching/orderbooks/impl/IndexedTreeOrderBook.cpp
+    src/advmatch/matching/orderbooks/impl/IndexedTreeOrderBook.h
     src/advmatch/consuming/SingleThreadConsumer.h
     src/advmatch/consuming/RequestTicket.h
     src/advmatch/trading/Order.cpp
     src/advmatch/trading/Order.h
     src/advmatch/trading/OrderTypes.h
     src/advmatch/trading/Symbol.h
-    src/advmatch/matching/abstract/RiskEngine.h
-    src/advmatch/matching/riskengines/SpotRiskEngine.cpp
-    src/advmatch/matching/riskengines/SpotRiskEngine.h
+    src/advmatch/matching/riskengines/RiskEngine.h
+    src/advmatch/matching/riskengines/impl/SpotRiskEngine.cpp
+    src/advmatch/matching/riskengines/impl/SpotRiskEngine.h
+    src/advmatch/matching/settleengines/SettleEngine.h
+    src/advmatch/matching/settleengines/impl/SpotSettleEngine.cpp
+    src/advmatch/matching/settleengines/impl/SpotSettleEngine.h
     src/advmatch/management/SymbolManager.cpp
     src/advmatch/management/SymbolManager.h)
 add_library(AdvMatch::core ALIAS advmatch_core)

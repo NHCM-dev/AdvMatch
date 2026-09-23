@@ -496,11 +496,12 @@ int main(int argumentCount, char** arguments)
         std::cout << "setup_phase=symbols_done\n" << std::flush;
 
         const std::uint64_t totalCycles = options.cycles * options.rounds;
-        const Balance quotePerUser = static_cast<Balance>((((totalCycles + options.symbols - 1) / options.symbols) * 100) + 100);
+        const BalanceChange quoteCredit = static_cast<BalanceChange>(
+            (((totalCycles + options.symbols - 1) / options.symbols) * 100) + 100);
         for (std::uint64_t index = 0; index < options.users; ++index)
         {
             const UserId userId = users.createUser();
-            if (userId != index + 1 || !users.getUser(userId)->updateBalance(1, quotePerUser))
+            if (userId != index + 1 || !users.getUser(userId)->updateBalance(1, quoteCredit))
             {
                 throw std::runtime_error("user setup failed");
             }
@@ -537,10 +538,11 @@ int main(int argumentCount, char** arguments)
             }
         }
 
-        const Balance replenishment = static_cast<Balance>((totalCycles + options.symbols - 1) / options.symbols);
+        const BalanceChange replenishmentCredit = static_cast<BalanceChange>(
+            (totalCycles + options.symbols - 1) / options.symbols);
         for (std::uint32_t symbol = 0; symbol < options.symbols; ++symbol)
         {
-            if (!users.getUser(symbol + 1)->updateBalance(symbol + 2, replenishment))
+            if (!users.getUser(symbol + 1)->updateBalance(symbol + 2, replenishmentCredit))
             {
                 throw std::runtime_error("replenishment balance setup failed");
             }

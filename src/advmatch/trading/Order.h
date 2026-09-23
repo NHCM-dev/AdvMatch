@@ -12,7 +12,7 @@
 
 #include "Symbol.h"
 #include "../account/User.h"
-#include "../matching/abstract/OrderBook.h"
+#include "../matching/orderbooks/OrderBook.h"
 #include "../util/Utils.h"
 
 namespace advmatch

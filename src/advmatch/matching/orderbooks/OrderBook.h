@@ -1,9 +1,9 @@
 #ifndef ADVMATCH_ORDERBOOK_H
 #define ADVMATCH_ORDERBOOK_H
 
+#include "../TradeBuffer.h"
 #include "../../trading/OrderTypes.h"
 #include "../../trading/Symbol.h"
-#include "../../util/Containers.h"
 #include "../../util/Utils.h"
 
 #include <cstdint>
@@ -124,117 +124,6 @@ namespace advmatch
         }
     };
 
-    struct Trade
-    {
-        OrderId makerOrderId;
-        OrderId takerOrderId;
-        Price price;
-        Quantity quantity;
-        Sequence sequence;
-    };
-
-    class TradeBuffer
-    {
-        static constexpr std::size_t InlineTradeCapacity = 4;
-
-        struct MatchedOrders
-        {
-            OrderNode* maker;
-            OrderNode* taker;
-        };
-
-        SmallVector<Trade, InlineTradeCapacity> trades;
-        // These addresses are borrowed only while MatchingEngine settles the
-        // current command. clearNodeReferences() removes them before the
-        // buffer is returned to its caller; public access exposes Trade values.
-        SmallVector<MatchedOrders, InlineTradeCapacity> matchedOrders;
-
-        void append(Trade trade, OrderNode& maker, OrderNode& taker)
-        {
-            this->trades.push_back(trade);
-            try
-            {
-                this->matchedOrders.push_back({&maker, &taker});
-            }
-            catch (...)
-            {
-                this->trades.pop_back();
-                throw;
-            }
-        }
-
-        [[nodiscard]]
-        OrderNode& maker(std::size_t index) const noexcept
-        {
-            return *this->matchedOrders[index].maker;
-        }
-
-        [[nodiscard]]
-        OrderNode& taker(std::size_t index) const noexcept
-        {
-            return *this->matchedOrders[index].taker;
-        }
-
-        void clearNodeReferences() noexcept
-        {
-            this->matchedOrders.clear();
-        }
-
-        friend class MatchingEngine;
-        friend class SpotOrderBook;
-
-    public:
-        using const_iterator = typename SmallVector<Trade, InlineTradeCapacity>::const_iterator;
-
-        void clear() noexcept
-        {
-            this->trades.clear();
-            this->matchedOrders.clear();
-        }
-
-        [[nodiscard]]
-        bool empty() const noexcept
-        {
-            return this->trades.empty();
-        }
-
-        [[nodiscard]]
-        std::size_t size() const noexcept
-        {
-            return this->trades.size();
-        }
-
-        [[nodiscard]]
-        std::size_t capacity() const noexcept
-        {
-            return this->trades.capacity();
-        }
-
-        [[nodiscard]]
-        const Trade& operator[](std::size_t index) const noexcept
-        {
-            return this->trades[index];
-        }
-
-        [[nodiscard]]
-        const Trade* data() const noexcept
-        {
-            return this->trades.data();
-        }
-
-        [[nodiscard]]
-        const_iterator begin() const noexcept
-        {
-            return this->trades.begin();
-        }
-
-        [[nodiscard]]
-        const_iterator end() const noexcept
-        {
-            return this->trades.end();
-        }
-    };
-
     struct Quote
     {
         Price price;
@@ -245,6 +134,12 @@ namespace advmatch
     // The engine owns orders. One matching thread calls these methods.
     class OrderBook
     {
+    protected:
+        static void appendTrade(TradeBuffer& trades, Trade trade, OrderNode& maker, OrderNode& taker)
+        {
+            trades.append(trade, maker, taker);
+        }
+
     public:
         virtual ~OrderBook() = default;
 
@@ -268,6 +163,9 @@ namespace advmatch
         virtual std::optional<Quote> bidAt(Price price) const noexcept = 0;
         [[nodiscard]]
         virtual std::optional<Quote> askAt(Price price) const noexcept = 0;
+
+        [[nodiscard]]
+        virtual std::optional<Balance> estimateMarketBuyCost(Quantity quantity) const noexcept = 0;
     };
 } // advmatch
 

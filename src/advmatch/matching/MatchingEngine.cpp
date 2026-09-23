@@ -1,7 +1,7 @@
 #include "MatchingEngine.h"
-#include "orderbooks/SpotOrderBook.h"
+#include "orderbooks/impl/IndexedTreeOrderBook.h"
+#include "../util/AccountLedger.h"
 
-#include <stdexcept>
 #include <limits>
 
 namespace advmatch
@@ -25,35 +25,8 @@ namespace advmatch
             return false;
         }
 
-        book = std::make_unique<SpotOrderBook>(symbolId);
+        book = std::make_unique<IndexedTreeOrderBook>(symbolId);
         return true;
-    }
-
-    void MatchingEngine::settleTrades(TradeBuffer& trades)
-    {
-        try
-        {
-            for (std::size_t index = 0; index < trades.size(); ++index)
-            {
-                const Trade& trade = trades[index];
-                OrderNode& maker = trades.maker(index);
-                OrderNode& taker = trades.taker(index);
-                if (trade.makerOrderId != maker.order.orderId || trade.takerOrderId != taker.order.orderId)
-                {
-                    throw std::logic_error("trade node reference does not match its order id");
-                }
-
-                SpotRiskEngine::settleTrade(trade, maker, taker);
-                SpotRiskEngine::reconcileOrder(maker);
-            }
-        }
-        catch (...)
-        {
-            trades.clearNodeReferences();
-            throw;
-        }
-
-        trades.clearNodeReferences();
     }
 
     OrderNode* MatchingEngine::findNode(OrderId orderId) noexcept
@@ -155,16 +128,16 @@ namespace advmatch
             return reject(PlaceOrderRejectReason::InvalidTimeInForce);
         }
 
-        Balance marketBuyCost = 0;
+        Balance estimatedMarketBuyBalance = 0;
         if (type == OrderType::Market && side == OrderSide::Bid)
         {
-            auto cost = static_cast<SpotOrderBook*>(book)->marketBuyCost(quantity);
+            auto cost = book->estimateMarketBuyCost(quantity);
             if (!cost)
             {
                 return reject(PlaceOrderRejectReason::Overflow);
             }
 
-            marketBuyCost = *cost;
+            estimatedMarketBuyBalance = *cost;
         }
 
         if (this->nextOrderId == 0 || this->nextSequence == 0)
@@ -184,32 +157,33 @@ namespace advmatch
             BasicOrder(id, userId, symbolId, side, type, timeInForce, price, quantity, timestamp, sequence),
             *user, *symbol, symbol->baseAssetId, symbol->quoteAssetId);
 
-        if (auto reason = this->riskEngine.checkPlaceOrder(*node))
+        const PlaceOrderRiskDecision riskDecision = this->riskEngine.checkPlaceOrder(*node, estimatedMarketBuyBalance);
+        if (riskDecision.rejectReason)
         {
             this->orderPool.release(node);
-            return reject(*reason);
+            return reject(*riskDecision.rejectReason);
         }
 
         this->orders[id - 1] = node;
-        if (auto reason = this->riskEngine.reservePlaceOrder(*node, marketBuyCost))
+        if (!util::AccountLedger::reserve(*node, riskDecision.requiredReservationBalance))
         {
             this->orders[id - 1] = nullptr;
             this->orderPool.release(node);
-            return reject(*reason);
+            return reject(PlaceOrderRejectReason::InsufficientBalance);
         }
 
         auto result = book->place(*node, timestamp, sequence, trades);
 
         if (!result)
         {
-            SpotRiskEngine::releaseOrder(*node);
+            this->settleEngine.releaseReservation(*node);
             this->orders[id - 1] = nullptr;
             this->orderPool.release(node);
             return result;
         }
 
-        settleTrades(trades);
-        SpotRiskEngine::reconcileOrder(*node);
+        this->settleEngine.settleTrades(trades);
+        this->settleEngine.reconcileReservation(*node);
         return result;
     }
 
@@ -256,23 +230,24 @@ namespace advmatch
             return {ModifyOrderState::InvalidPrice};
         }
 
-        if (auto reason = this->riskEngine.checkModifyPrice(*node, price))
+        const ModifyOrderRiskDecision riskDecision = this->riskEngine.checkModifyPrice(*node, price);
+        if (riskDecision.rejectReason)
         {
-            return {*reason};
+            return {*riskDecision.rejectReason};
         }
 
-        if (auto reason = this->riskEngine.reserveModifyOrder(*node, price, order.getUnfilledQuantity()))
+        if (!util::AccountLedger::reserve(*node, riskDecision.requiredReservationBalance))
         {
-            return {*reason};
+            return {ModifyOrderState::InsufficientBalance};
         }
 
         auto result = book->modifyPrice(*node, price, timestamp, this->nextSequence++, trades);
         if (result)
         {
-            settleTrades(trades);
+            this->settleEngine.settleTrades(trades);
         }
 
-        SpotRiskEngine::reconcileOrder(*node);
+        this->settleEngine.reconcileReservation(*node);
         return result;
     }
 
@@ -319,19 +294,19 @@ namespace advmatch
             return {ModifyOrderState::InsufficientQuantity};
         }
 
-        const Quantity remaining = change < 0 ? unfilledQuantity - decrease : unfilledQuantity + static_cast<Quantity>(change);
-        if (auto reason = this->riskEngine.checkModifyQuantity(*node, change))
+        const ModifyOrderRiskDecision riskDecision = this->riskEngine.checkModifyQuantity(*node, change);
+        if (riskDecision.rejectReason)
         {
-            return {*reason};
+            return {*riskDecision.rejectReason};
         }
 
-        if (auto reason = this->riskEngine.reserveModifyOrder(*node, order.getPrice(), remaining))
+        if (!util::AccountLedger::reserve(*node, riskDecision.requiredReservationBalance))
         {
-            return {*reason};
+            return {ModifyOrderState::InsufficientBalance};
         }
 
         auto result = book->modifyQuantity(*node, change, timestamp, this->nextSequence++);
-        SpotRiskEngine::reconcileOrder(*node);
+        this->settleEngine.reconcileReservation(*node);
         return result;
     }
 
@@ -357,7 +332,7 @@ namespace advmatch
         auto result = book->cancel(*node, timestamp, this->nextSequence++);
         if (result)
         {
-            SpotRiskEngine::reconcileOrder(*node);
+            this->settleEngine.reconcileReservation(*node);
         }
 
         return result;

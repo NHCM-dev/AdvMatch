@@ -1,16 +1,16 @@
-#ifndef ADVMATCH_SPOT_ORDER_BOOK_H
-#define ADVMATCH_SPOT_ORDER_BOOK_H
+#ifndef ADVMATCH_INDEXED_TREE_ORDER_BOOK_H
+#define ADVMATCH_INDEXED_TREE_ORDER_BOOK_H
 
-#include "../Matching.h"
-#include "../abstract/OrderBook.h"
-#include "../../util/Containers.h"
+#include "../../Matching.h"
+#include "../OrderBook.h"
+#include "../../../util/Containers.h"
 
 #include <functional>
 #include <map>
 
 namespace advmatch
 {
-    class SpotOrderBook final : public OrderBook
+    class IndexedTreeOrderBook final : public OrderBook
     {
         template <typename Compare>
         struct Levels
@@ -62,6 +62,7 @@ namespace advmatch
                 return this->ordered.empty() ? nullptr : &this->ordered.begin()->second;
             }
 
+            [[nodiscard]]
             const PriceLevel* best() const noexcept
             {
                 return this->ordered.empty() ? nullptr : &this->ordered.begin()->second;
@@ -69,21 +70,23 @@ namespace advmatch
         };
 
         SymbolId bookSymbolId;
-        Levels<std::greater<Price>> bids;
-        Levels<std::less<Price>> asks;
+        Levels<std::greater<>> bids;
+        Levels<std::less<>> asks;
 
         static std::optional<Quote> quote(const PriceLevel* level) noexcept;
         static bool crosses(const BasicOrder& taker, Price makerPrice) noexcept;
+        [[nodiscard]]
         bool canFillAll(const BasicOrder& order) const noexcept;
         void match(OrderNode& taker, Timestamp timestamp, Sequence sequence, TradeBuffer& trades);
         void append(OrderNode& node);
         void unlink(OrderNode& node, Quantity remaining) noexcept;
 
     public:
-        explicit SpotOrderBook(SymbolId symbolId) : bookSymbolId(symbolId)
+        explicit IndexedTreeOrderBook(SymbolId symbolId) : bookSymbolId(symbolId)
         {
         }
 
+        [[nodiscard]]
         SymbolId symbolId() const noexcept override
         {
             return this->bookSymbolId;
@@ -121,8 +124,8 @@ namespace advmatch
         }
 
         [[nodiscard]]
-        std::optional<Balance> marketBuyCost(Quantity quantity) const noexcept;
+        std::optional<Balance> estimateMarketBuyCost(Quantity quantity) const noexcept override;
     };
 } // advmatch
 
-#endif // ADVMATCH_SPOT_ORDER_BOOK_H
+#endif // ADVMATCH_INDEXED_TREE_ORDER_BOOK_H

@@ -62,7 +62,7 @@ SmallVector<AssetBalanceEntry, InlineBalanceCapacity>
 
 ### 5. 订单簿采用排序结构和精确索引的组合
 
-[SpotOrderBook.h](src/advmatch/matching/orderbooks/SpotOrderBook.h) 的每一侧同时维护：
+[SpotOrderBook.h](src/advmatch/matching/orderbooks/impl/IndexedTreeOrderBook.h) 的每一侧同时维护：
 
 ```cpp
 std::map<Price, PriceLevel, Compare> ordered;
@@ -75,7 +75,7 @@ DenseMap<Price, PriceLevel*> exact;
 
 ### 6. TradeBuffer、订单上下文与 Hold 已内联
 
-[OrderBook.h](src/advmatch/matching/abstract/OrderBook.h) 提供专用 `TradeBuffer`，前 4 条成交直接保存在对象内部，超过容量后才扩容。消费线程复用同一个 Buffer，`clear()` 后保留已经申请的容量。
+[OrderBook.h](src/advmatch/matching/orderbooks/OrderBook.h) 提供专用 `TradeBuffer`，前 4 条成交直接保存在对象内部，超过容量后才扩容。消费线程复用同一个 Buffer，`clear()` 后保留已经申请的容量。
 
 `OrderNode` 缓存以下运行时上下文：
 

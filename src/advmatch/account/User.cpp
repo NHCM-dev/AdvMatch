@@ -114,12 +114,12 @@ namespace advmatch
         return std::nullopt;
     }
 
-    std::optional<Balance> User::queryLockedBalance(AssetId assetId) const noexcept
+    std::optional<Balance> User::queryReservedBalance(AssetId assetId) const noexcept
     {
         const AssetBalance* balance = this->findBalance(assetId);
         if (balance)
         {
-            return balance->locked;
+            return balance->reserved;
         }
 
         return std::nullopt;
@@ -140,7 +140,7 @@ namespace advmatch
                 return {BalanceOpResult::Insufficient, "Insufficient active balance"};
             }
 
-            this->addBalance(assetId, {balanceChange, 0});
+            this->addBalance(assetId, {static_cast<Balance>(balanceChange), 0});
             return {BalanceOpResult::Success};
         }
 
@@ -165,7 +165,7 @@ namespace advmatch
             balance->active -= static_cast<Balance>(amount);
         }
 
-        if (balance->active == 0 && balance->locked == 0)
+        if (balance->active == 0 && balance->reserved == 0)
         {
             this->removeBalance(assetId);
         }
@@ -173,9 +173,9 @@ namespace advmatch
         return {BalanceOpResult::Success};
     }
 
-    BalanceResult User::lockBalance(AssetId assetId, PositiveBalanceChange balanceChange)
+    BalanceResult User::reserveBalance(AssetId assetId, PositiveBalanceChange amount)
     {
-        if (balanceChange == 0)
+        if (amount == 0)
         {
             return {BalanceOpResult::Success};
         }
@@ -186,25 +186,25 @@ namespace advmatch
             return {BalanceOpResult::NoSuchAsset};
         }
 
-        if (!util::enoughSubtract(balance->active, balanceChange))
+        if (!util::enoughSubtract(balance->active, amount))
         {
             return {BalanceOpResult::Insufficient};
         }
 
-        if (util::willAddOverflow(balance->locked, balanceChange))
+        if (util::willAddOverflow(balance->reserved, amount))
         {
-            return {BalanceOpResult::Overflow, "Balance update in locked balance will overflow"};
+            return {BalanceOpResult::Overflow, "Balance update in reserved balance will overflow"};
         }
 
-        balance->active -= static_cast<Balance>(balanceChange);
-        balance->locked += static_cast<Balance>(balanceChange);
+        balance->active -= static_cast<Balance>(amount);
+        balance->reserved += static_cast<Balance>(amount);
 
         return {BalanceOpResult::Success};
     }
 
-    BalanceResult User::unlockBalance(AssetId assetId, PositiveBalanceChange balanceChange)
+    BalanceResult User::releaseReservedBalance(AssetId assetId, PositiveBalanceChange amount)
     {
-        if (balanceChange == 0)
+        if (amount == 0)
         {
             return {BalanceOpResult::Success};
         }
@@ -215,37 +215,37 @@ namespace advmatch
             return {BalanceOpResult::NoSuchAsset};
         }
 
-        if (!util::enoughSubtract(balance->locked, balanceChange))
+        if (!util::enoughSubtract(balance->reserved, amount))
         {
             return {BalanceOpResult::Insufficient};
         }
 
-        if (util::willAddOverflow(balance->active, balanceChange))
+        if (util::willAddOverflow(balance->active, amount))
         {
             return {BalanceOpResult::Overflow, "Balance update in active balance will overflow"};
         }
 
-        balance->locked -= static_cast<Balance>(balanceChange);
-        balance->active += static_cast<Balance>(balanceChange);
+        balance->reserved -= static_cast<Balance>(amount);
+        balance->active += static_cast<Balance>(amount);
 
         return {BalanceOpResult::Success};
     }
 
-    BalanceResult User::consumeLockedBalance(AssetId assetId, PositiveBalanceChange balanceChange)
+    BalanceResult User::consumeReservedBalance(AssetId assetId, PositiveBalanceChange amount)
     {
-        if (balanceChange == 0)
+        if (amount == 0)
         {
             return {BalanceOpResult::Success};
         }
 
         AssetBalance* balance = this->findBalance(assetId);
-        if (!balance || !util::enoughSubtract(balance->locked, balanceChange))
+        if (!balance || !util::enoughSubtract(balance->reserved, amount))
         {
             return {BalanceOpResult::Insufficient};
         }
 
-        balance->locked -= static_cast<Balance>(balanceChange);
-        if (balance->active == 0 && balance->locked == 0)
+        balance->reserved -= static_cast<Balance>(amount);
+        if (balance->active == 0 && balance->reserved == 0)
         {
             this->removeBalance(assetId);
         }
@@ -253,7 +253,7 @@ namespace advmatch
         return {BalanceOpResult::Success};
     }
 
-    BalanceResult User::lockAsset(AssetId assetId)
+    BalanceResult User::reserveAsset(AssetId assetId)
     {
         const AssetBalance* balance = this->findBalance(assetId);
         if (!balance)
@@ -267,10 +267,15 @@ namespace advmatch
             return {BalanceOpResult::Success};
         }
 
-        return this->lockBalance(assetId, static_cast<PositiveBalanceChange>(activeBalance));
+        if (activeBalance < 0)
+        {
+            return {BalanceOpResult::Insufficient};
+        }
+
+        return this->reserveBalance(assetId, static_cast<PositiveBalanceChange>(activeBalance));
     }
 
-    BalanceResult User::unlockAsset(AssetId assetId)
+    BalanceResult User::releaseAsset(AssetId assetId)
     {
         const AssetBalance* balance = this->findBalance(assetId);
         if (!balance)
@@ -278,12 +283,17 @@ namespace advmatch
             return {BalanceOpResult::NoSuchAsset};
         }
 
-        const Balance lockedBalance = balance->locked;
-        if (lockedBalance == 0)
+        const Balance reservedBalance = balance->reserved;
+        if (reservedBalance == 0)
         {
             return {BalanceOpResult::Success};
         }
 
-        return this->unlockBalance(assetId, static_cast<PositiveBalanceChange>(lockedBalance));
+        if (reservedBalance < 0)
+        {
+            return {BalanceOpResult::Insufficient};
+        }
+
+        return this->releaseReservedBalance(assetId, static_cast<PositiveBalanceChange>(reservedBalance));
     }
 } // advmatch

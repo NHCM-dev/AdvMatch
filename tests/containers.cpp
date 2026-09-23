@@ -89,18 +89,18 @@ int main()
     User user(1);
     for (AssetId assetId = 1; assetId <= 6; ++assetId)
     {
-        CHECK(user.updateBalance(assetId, static_cast<Balance>(assetId * 10)));
+        CHECK(user.updateBalance(assetId, static_cast<BalanceChange>(assetId * 10)));
     }
 
     CHECK(user.getAssetBalanceCount() == 6);
-    CHECK(user.lockBalance(6, 25));
+    CHECK(user.reserveBalance(6, 25));
     CHECK(user.queryActiveBalance(6) == 35);
-    CHECK(user.queryLockedBalance(6) == 25);
+    CHECK(user.queryReservedBalance(6) == 25);
 
     CHECK(user.updateBalance(7, 70));
     CHECK(user.updateBalance(8, 80));
     CHECK(user.getAssetBalanceCount() == 8);
-    CHECK(user.unlockBalance(6, 25));
+    CHECK(user.releaseReservedBalance(6, 25));
 
     for (AssetId assetId = 1; assetId <= 8; ++assetId)
     {
@@ -109,7 +109,7 @@ int main()
 
     for (AssetId assetId = 1; assetId <= 8; ++assetId)
     {
-        CHECK(user.updateBalance(assetId, -static_cast<Balance>(assetId * 10)));
+        CHECK(user.updateBalance(assetId, -static_cast<BalanceChange>(assetId * 10)));
     }
 
     CHECK(user.getAssetBalanceCount() == 0);

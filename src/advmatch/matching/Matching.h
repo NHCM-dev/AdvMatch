@@ -18,7 +18,7 @@ namespace advmatch
     {
         OrderNode(BasicOrder value, User& user, const Symbol& symbol, AssetId baseAssetId, AssetId quoteAssetId)
             : order(value), user(&user), symbol(&symbol), baseAssetId(baseAssetId), quoteAssetId(quoteAssetId),
-              holdAssetId(order.orderSide == OrderSide::Bid ? quoteAssetId : baseAssetId)
+              reservationAssetId(order.orderSide == OrderSide::Bid ? quoteAssetId : baseAssetId)
         {
         }
 
@@ -27,8 +27,8 @@ namespace advmatch
         const Symbol* const symbol;
         const AssetId baseAssetId;
         const AssetId quoteAssetId;
-        const AssetId holdAssetId;
-        Balance heldAmount = 0;
+        const AssetId reservationAssetId;
+        Balance reservedBalance = 0;
         PriceLevel* level = nullptr;
         OrderNode* prev = nullptr;
         OrderNode* next = nullptr;

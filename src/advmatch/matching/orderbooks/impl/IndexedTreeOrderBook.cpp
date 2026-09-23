@@ -1,4 +1,4 @@
-#include "SpotOrderBook.h"
+#include "IndexedTreeOrderBook.h"
 
 #include <algorithm>
 #include <limits>
@@ -6,19 +6,22 @@
 
 namespace advmatch
 {
-    std::optional<Balance> SpotOrderBook::marketBuyCost(Quantity quantity) const noexcept
+    std::optional<Balance> IndexedTreeOrderBook::estimateMarketBuyCost(Quantity quantity) const noexcept
     {
-        std::uint64_t total = 0;
+        Balance totalBalance = 0;
 
         for (const auto& [price, level] : this->asks.ordered)
         {
             const Quantity fill = std::min(quantity, level.totalQuantity);
-            if (price != 0 && fill > (static_cast<std::uint64_t>(std::numeric_limits<Balance>::max()) - total) / price)
+            const PositiveBalanceChange availableCapacity = static_cast<PositiveBalanceChange>(
+                std::numeric_limits<Balance>::max() - totalBalance);
+            if (price != 0 && fill > availableCapacity / price)
             {
                 return std::nullopt;
             }
 
-            total += price * fill;
+            const PositiveBalanceChange fillAmount = static_cast<PositiveBalanceChange>(price * fill);
+            totalBalance += static_cast<Balance>(fillAmount);
             quantity -= fill;
             if (quantity == 0)
             {
@@ -26,10 +29,10 @@ namespace advmatch
             }
         }
 
-        return static_cast<Balance>(total);
+        return totalBalance;
     }
 
-    std::optional<Quote> SpotOrderBook::quote(const PriceLevel* level) noexcept
+    std::optional<Quote> IndexedTreeOrderBook::quote(const PriceLevel* level) noexcept
     {
         if (!level)
         {
@@ -39,7 +42,7 @@ namespace advmatch
         return Quote{level->price, level->totalQuantity, level->orderCount};
     }
 
-    bool SpotOrderBook::crosses(const BasicOrder& taker, Price makerPrice) noexcept
+    bool IndexedTreeOrderBook::crosses(const BasicOrder& taker, Price makerPrice) noexcept
     {
         if (taker.orderType == OrderType::Market)
         {
@@ -49,7 +52,7 @@ namespace advmatch
         return taker.orderSide == OrderSide::Bid ? makerPrice <= taker.getPrice() : makerPrice >= taker.getPrice();
     }
 
-    bool SpotOrderBook::canFillAll(const BasicOrder& order) const noexcept
+    bool IndexedTreeOrderBook::canFillAll(const BasicOrder& order) const noexcept
     {
         Quantity needed = order.getUnfilledQuantity();
         if (order.orderSide == OrderSide::Bid)
@@ -90,7 +93,7 @@ namespace advmatch
         return false;
     }
 
-    void SpotOrderBook::unlink(OrderNode& node, Quantity remaining) noexcept
+    void IndexedTreeOrderBook::unlink(OrderNode& node, Quantity remaining) noexcept
     {
         PriceLevel* level = node.level;
         if (!level)
@@ -136,7 +139,7 @@ namespace advmatch
         }
     }
 
-    void SpotOrderBook::append(OrderNode& node)
+    void IndexedTreeOrderBook::append(OrderNode& node)
     {
         const Price price = node.order.getPrice();
         PriceLevel& level = node.order.orderSide == OrderSide::Bid
@@ -167,7 +170,7 @@ namespace advmatch
         ++level.orderCount;
     }
 
-    void SpotOrderBook::match(OrderNode& taker, Timestamp timestamp, Sequence sequence, TradeBuffer& trades)
+    void IndexedTreeOrderBook::match(OrderNode& taker, Timestamp timestamp, Sequence sequence, TradeBuffer& trades)
     {
         while (taker.order.getUnfilledQuantity() != 0)
         {
@@ -180,7 +183,8 @@ namespace advmatch
             OrderNode& maker = *level->head;
             const Quantity quantity = std::min(taker.order.getUnfilledQuantity(), maker.order.getUnfilledQuantity());
 
-            trades.append({maker.order.orderId, taker.order.orderId, level->price, quantity, sequence}, maker, taker);
+            appendTrade(trades, {maker.order.orderId, taker.order.orderId, level->price, quantity, sequence}, maker,
+                        taker);
             [[maybe_unused]] auto makerResult = maker.order.fill(quantity, timestamp, sequence);
             [[maybe_unused]] auto takerResult = taker.order.fill(quantity, timestamp, sequence);
             level->totalQuantity -= quantity;
@@ -192,7 +196,7 @@ namespace advmatch
         }
     }
 
-    PlaceOrderResult SpotOrderBook::place(OrderNode& node, Timestamp timestamp, Sequence sequence, TradeBuffer& trades)
+    PlaceOrderResult IndexedTreeOrderBook::place(OrderNode& node, Timestamp timestamp, Sequence sequence, TradeBuffer& trades)
     {
         BasicOrder& order = node.order;
         const auto reject = [&](PlaceOrderRejectReason reason)
@@ -259,7 +263,7 @@ namespace advmatch
         return {order.orderId, order.getFillingStatus()};
     }
 
-    ModifyOrderResult SpotOrderBook::modifyPrice(OrderNode& node, Price price, Timestamp timestamp, Sequence sequence,
+    ModifyOrderResult IndexedTreeOrderBook::modifyPrice(OrderNode& node, Price price, Timestamp timestamp, Sequence sequence,
                                                  TradeBuffer& trades)
     {
         BasicOrder& order = node.order;
@@ -307,7 +311,7 @@ namespace advmatch
         return result;
     }
 
-    ModifyOrderResult SpotOrderBook::modifyQuantity(OrderNode& node, QuantityChange change, Timestamp timestamp,
+    ModifyOrderResult IndexedTreeOrderBook::modifyQuantity(OrderNode& node, QuantityChange change, Timestamp timestamp,
                                                     Sequence sequence)
     {
         BasicOrder& order = node.order;
@@ -357,7 +361,7 @@ namespace advmatch
         return result;
     }
 
-    CancelOrderResult SpotOrderBook::cancel(OrderNode& node, Timestamp timestamp, Sequence sequence)
+    CancelOrderResult IndexedTreeOrderBook::cancel(OrderNode& node, Timestamp timestamp, Sequence sequence)
     {
         const Quantity remaining = node.order.getUnfilledQuantity();
         auto result = node.order.cancel(timestamp, sequence);

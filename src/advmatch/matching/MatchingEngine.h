@@ -3,8 +3,10 @@
 
 #include "../management/UserManager.h"
 #include "Matching.h"
-#include "abstract/OrderBook.h"
-#include "riskengines/SpotRiskEngine.h"
+#include "TradeBuffer.h"
+#include "orderbooks/OrderBook.h"
+#include "riskengines/impl/SpotRiskEngine.h"
+#include "settleengines/impl/SpotSettleEngine.h"
 #include "../util/BigAllocs.h"
 
 #include <memory>
@@ -24,6 +26,7 @@ namespace advmatch
         UserManager& userManager;
         SymbolManager& symbolManager;
         SpotRiskEngine riskEngine;
+        SpotSettleEngine settleEngine;
 
         // IDs are monotonically allocated from one, so id - 1 is a direct O(1)
         // index. The pool owns stable-address nodes; the vector only indexes
@@ -38,7 +41,6 @@ namespace advmatch
         const OrderNode* findNode(OrderId orderId) const noexcept;
         const OrderBook* findBook(SymbolId symbolId) const noexcept;
         OrderBook* findBook(SymbolId symbolId) noexcept;
-        void settleTrades(TradeBuffer& trades);
 
     public:
         explicit MatchingEngine(UserManager& userManager, SymbolManager& symbolManager)
@@ -46,8 +48,8 @@ namespace advmatch
         {
         }
 
-        // activeOrderCount is retained for source compatibility. Hold state is
-        // now stored directly in OrderNode, so it requires no separate table.
+        // activeOrderCount is retained for source compatibility. Reservation
+        // state is stored directly in OrderNode, so it needs no separate table.
         void reserve(std::size_t orderCount, std::size_t bookCount, std::size_t activeOrderCount)
         {
             this->orders.reserve(orderCount);
@@ -66,10 +68,15 @@ namespace advmatch
         ModifyOrderResult modifyQuantity(UserId userId, OrderId orderId, QuantityChange change, Timestamp timestamp);
         CancelOrderResult cancelOrder(UserId userId, OrderId orderId, Timestamp timestamp);
 
+        [[nodiscard]]
         std::optional<BasicOrder> queryOrder(OrderId orderId) const;
+        [[nodiscard]]
         std::optional<Quote> bestBid(SymbolId symbolId) const noexcept;
+        [[nodiscard]]
         std::optional<Quote> bestAsk(SymbolId symbolId) const noexcept;
+        [[nodiscard]]
         std::optional<Quote> bidAt(SymbolId symbolId, Price price) const noexcept;
+        [[nodiscard]]
         std::optional<Quote> askAt(SymbolId symbolId, Price price) const noexcept;
     };
 } // advmatch

@@ -16,8 +16,10 @@ namespace advmatch
 {
     using AssetId = std::uint32_t;
 
+    // Balance is a stored account value. BalanceChange is a signed delta that
+    // can credit or debit a balance. PositiveBalanceChange is a non-negative
+    // amount used by reserve, release, consume, and settlement operations.
     using Balance = std::int64_t;
-
     using BalanceChange = std::int64_t;
     using PositiveBalanceChange = std::uint64_t;
 
@@ -44,7 +46,7 @@ namespace advmatch
     struct AssetBalance
     {
         Balance active;
-        Balance locked;
+        Balance reserved;
     };
 
     struct AssetBalanceEntry
