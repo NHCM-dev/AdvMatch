@@ -1,7 +1,7 @@
 #ifndef ADVMATCH_ORDER_TYPES_H
 #define ADVMATCH_ORDER_TYPES_H
 
-#include <cstdint>
+#include "../util/Types.h"
 
 namespace advmatch
 {
@@ -23,12 +23,6 @@ namespace advmatch
         IOC,
         FOK
     };
-
-    using OrderId = std::uint64_t;
-    using Price = std::uint64_t;
-    using Quantity = std::uint64_t;
-    using QuantityChange = std::int64_t;
-    using Sequence = std::uint64_t;
 
     enum class OrderStatus : std::uint8_t
     {

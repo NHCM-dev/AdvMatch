@@ -4,16 +4,37 @@
 
 #include "UserManager.h"
 
+#include <tuple>
+
 namespace advmatch
 {
     UserId UserManager::createUser()
     {
-        const UserId userId = this->nextUserId++;
+        if (this->nextUserId == 0)
+        {
+            return 0;
+        }
 
-        this->users.emplace(
-            userId,
-            userId
-        );
+        const UserId userId = this->nextUserId++;
+        const std::optional<UserAccounts> accounts = this->accountManager.createAccounts(userId);
+        if (!accounts)
+        {
+            return 0;
+        }
+
+        try
+        {
+            this->users.emplace(
+                std::piecewise_construct,
+                std::forward_as_tuple(userId),
+                std::forward_as_tuple(userId, this->accountManager, *accounts->spotAccount,
+                                      *accounts->contractAccount));
+        }
+        catch (...)
+        {
+            static_cast<void>(this->accountManager.removeAccounts(userId));
+            throw;
+        }
 
         ++this->activeUserCount;
 
@@ -29,6 +50,7 @@ namespace advmatch
         }
 
         iterator->second.deactivate();
+        static_cast<void>(this->accountManager.removeAccounts(userId));
         --this->activeUserCount;
         return true;
     }

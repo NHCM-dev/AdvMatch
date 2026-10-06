@@ -316,7 +316,7 @@ namespace
         std::uint64_t count = 0;
         for (const auto& [userId, user] : users)
         {
-            count += user.getAssetBalanceCount();
+            count += user.getSpotAccount().getAssetBalanceCount();
         }
 
         return count;
@@ -501,7 +501,7 @@ int main(int argumentCount, char** arguments)
         for (std::uint64_t index = 0; index < options.users; ++index)
         {
             const UserId userId = users.createUser();
-            if (userId != index + 1 || !users.getUser(userId)->updateBalance(1, quoteCredit))
+            if (userId != index + 1 || !users.getUser(userId)->getSpotAccount().updateBalance(1, quoteCredit))
             {
                 throw std::runtime_error("user setup failed");
             }
@@ -513,7 +513,7 @@ int main(int argumentCount, char** arguments)
         {
             const std::uint64_t owner = index % options.users;
             const std::uint32_t symbol = static_cast<std::uint32_t>(((owner % options.symbols) + (index / options.users)) % options.symbols);
-            if (!users.getUser(owner + 1)->updateBalance(symbol + 2, 2))
+            if (!users.getUser(owner + 1)->getSpotAccount().updateBalance(symbol + 2, 2))
             {
                 throw std::runtime_error("maker balance setup failed");
             }
@@ -522,7 +522,7 @@ int main(int argumentCount, char** arguments)
         for (std::uint32_t symbol = 0; symbol < options.symbols; ++symbol)
         {
             const UserId buyer = ((symbol + 1) % options.users) + 1;
-            if (!users.getUser(buyer)->updateBalance(symbol + 2, 1))
+            if (!users.getUser(buyer)->getSpotAccount().updateBalance(symbol + 2, 1))
             {
                 throw std::runtime_error("buyer asset balance setup failed");
             }
@@ -532,9 +532,9 @@ int main(int argumentCount, char** arguments)
         for (std::uint64_t index = 0; index < fillerCount; ++index)
         {
             const std::uint64_t assetId = static_cast<std::uint64_t>(options.symbols) + 2 + (index / options.users);
-            if (assetId > std::numeric_limits<AssetId>::max() || !users.getUser((index % options.users) + 1)->updateBalance(static_cast<AssetId>(assetId), 1))
+            if (assetId > std::numeric_limits<AssetId>::max() || !users.getUser((index % options.users) + 1)->getSpotAccount().updateBalance(static_cast<AssetId>(assetId), 1))
             {
-                throw std::runtime_error("account proxy setup failed");
+                throw std::runtime_error("ledging proxy setup failed");
             }
         }
 
@@ -542,7 +542,7 @@ int main(int argumentCount, char** arguments)
             (totalCycles + options.symbols - 1) / options.symbols);
         for (std::uint32_t symbol = 0; symbol < options.symbols; ++symbol)
         {
-            if (!users.getUser(symbol + 1)->updateBalance(symbol + 2, replenishmentCredit))
+            if (!users.getUser(symbol + 1)->getSpotAccount().updateBalance(symbol + 2, replenishmentCredit))
             {
                 throw std::runtime_error("replenishment balance setup failed");
             }

@@ -95,7 +95,7 @@ namespace advmatch
 
     void IndexedTreeOrderBook::unlink(OrderNode& node, Quantity remaining) noexcept
     {
-        PriceLevel* level = node.level;
+        PriceLevel* level = node.priceLevel;
         if (!level)
         {
             return;
@@ -122,13 +122,13 @@ namespace advmatch
         }
 
         const Price price = level->price;
-        node.level = nullptr;
+        node.priceLevel = nullptr;
         node.prev = nullptr;
         node.next = nullptr;
 
         if (level->orderCount == 0)
         {
-            if (node.order.orderSide == OrderSide::Bid)
+            if (node.basicOrder.orderSide == OrderSide::Bid)
             {
                 this->bids.erase(price);
             }
@@ -141,18 +141,18 @@ namespace advmatch
 
     void IndexedTreeOrderBook::append(OrderNode& node)
     {
-        const Price price = node.order.getPrice();
-        PriceLevel& level = node.order.orderSide == OrderSide::Bid
+        const Price price = node.basicOrder.getPrice();
+        PriceLevel& level = node.basicOrder.orderSide == OrderSide::Bid
                                 ? this->bids.getOrCreate(price)
                                 : this->asks.getOrCreate(price);
-        const Quantity quantity = node.order.getUnfilledQuantity();
+        const Quantity quantity = node.basicOrder.getUnfilledQuantity();
 
         if (quantity > std::numeric_limits<Quantity>::max() - level.totalQuantity)
         {
             throw std::overflow_error("price level quantity overflow");
         }
 
-        node.level = &level;
+        node.priceLevel = &level;
         node.prev = level.tail;
         node.next = nullptr;
 
@@ -170,69 +170,69 @@ namespace advmatch
         ++level.orderCount;
     }
 
-    void IndexedTreeOrderBook::match(OrderNode& taker, Timestamp timestamp, Sequence sequence, TradeBuffer& trades)
+    void IndexedTreeOrderBook::match(OrderNode& taker, Timestamp timestamp, TradeBuffer& trades)
     {
-        while (taker.order.getUnfilledQuantity() != 0)
+        while (taker.basicOrder.getUnfilledQuantity() != 0)
         {
-            PriceLevel* level = taker.order.orderSide == OrderSide::Bid ? this->asks.best() : this->bids.best();
-            if (!level || !crosses(taker.order, level->price))
+            PriceLevel* level = taker.basicOrder.orderSide == OrderSide::Bid ? this->asks.best() : this->bids.best();
+            if (!level || !crosses(taker.basicOrder, level->price))
             {
                 break;
             }
 
             OrderNode& maker = *level->head;
-            const Quantity quantity = std::min(taker.order.getUnfilledQuantity(), maker.order.getUnfilledQuantity());
+            const Quantity quantity = std::min(taker.basicOrder.getUnfilledQuantity(), maker.basicOrder.getUnfilledQuantity());
 
-            appendTrade(trades, {maker.order.orderId, taker.order.orderId, level->price, quantity, sequence}, maker,
+            appendTrade(trades, {maker.basicOrder.orderId, taker.basicOrder.orderId, level->price, quantity}, maker,
                         taker);
-            [[maybe_unused]] auto makerResult = maker.order.fill(quantity, timestamp, sequence);
-            [[maybe_unused]] auto takerResult = taker.order.fill(quantity, timestamp, sequence);
+            [[maybe_unused]] auto makerResult = maker.basicOrder.fill(quantity, timestamp);
+            [[maybe_unused]] auto takerResult = taker.basicOrder.fill(quantity, timestamp);
             level->totalQuantity -= quantity;
 
-            if (maker.order.getUnfilledQuantity() == 0)
+            if (maker.basicOrder.getUnfilledQuantity() == 0)
             {
                 unlink(maker, 0);
             }
         }
     }
 
-    PlaceOrderResult IndexedTreeOrderBook::place(OrderNode& node, Timestamp timestamp, Sequence sequence, TradeBuffer& trades)
+    PlaceOrderResult IndexedTreeOrderBook::place(OrderNode& node, Timestamp timestamp, TradeBuffer& trades)
     {
-        BasicOrder& order = node.order;
-        const auto reject = [&](PlaceOrderRejectReason reason)
+        BasicOrder& order = node.basicOrder;
+        const auto reject = [&](PlaceOrderState reason)
         {
             return PlaceOrderResult(order.orderId, {OrderStatus::Rejected, 0, order.getQuantity()}, reason);
         };
 
         if (order.symbolId != this->bookSymbolId)
         {
-            return reject(PlaceOrderRejectReason::InvalidSymbol);
+            return reject(PlaceOrderState::InvalidSymbol);
         }
 
         if (order.getQuantity() == 0)
         {
-            return reject(PlaceOrderRejectReason::InvalidQuantity);
+            return reject(PlaceOrderState::InvalidQuantity);
         }
 
         if (order.orderType == OrderType::Limit && order.getPrice() == 0)
         {
-            return reject(PlaceOrderRejectReason::InvalidPrice);
+            return reject(PlaceOrderState::InvalidPrice);
         }
 
         if (order.timeInForce != TimeInForce::GTC && order.timeInForce != TimeInForce::IOC && order.timeInForce !=
             TimeInForce::FOK)
         {
-            return reject(PlaceOrderRejectReason::InvalidTimeInForce);
+            return reject(PlaceOrderState::InvalidTimeInForce);
         }
 
         if (order.orderType == OrderType::Market && order.timeInForce == TimeInForce::GTC)
         {
-            return reject(PlaceOrderRejectReason::InvalidTimeInForce);
+            return reject(PlaceOrderState::InvalidTimeInForce);
         }
 
         if (order.timeInForce == TimeInForce::FOK && !canFillAll(order))
         {
-            return reject(PlaceOrderRejectReason::InsufficientLiquidity);
+            return reject(PlaceOrderState::InsufficientLiquidity);
         }
 
         if (order.orderType == OrderType::Limit && order.timeInForce == TimeInForce::GTC)
@@ -242,11 +242,11 @@ namespace advmatch
                                              : this->asks.find(order.getPrice());
             if (existing && order.getQuantity() > std::numeric_limits<Quantity>::max() - existing->totalQuantity)
             {
-                return reject(PlaceOrderRejectReason::Overflow);
+                return reject(PlaceOrderState::Overflow);
             }
         }
 
-        match(node, timestamp, sequence, trades);
+        match(node, timestamp, trades);
 
         if (order.getUnfilledQuantity() != 0)
         {
@@ -256,20 +256,20 @@ namespace advmatch
             }
             else
             {
-                [[maybe_unused]] auto result = order.cancel(timestamp, sequence);
+                [[maybe_unused]] auto result = order.cancel(timestamp);
             }
         }
 
         return {order.orderId, order.getFillingStatus()};
     }
 
-    ModifyOrderResult IndexedTreeOrderBook::modifyPrice(OrderNode& node, Price price, Timestamp timestamp, Sequence sequence,
-                                                 TradeBuffer& trades)
+    ModifyOrderResult IndexedTreeOrderBook::modifyPrice(OrderNode& node, Price price, Timestamp timestamp,
+                                                        TradeBuffer& trades)
     {
-        BasicOrder& order = node.order;
-        if (!node.level)
+        BasicOrder& order = node.basicOrder;
+        if (!node.priceLevel)
         {
-            return order.changePrice(price, timestamp, sequence);
+            return order.changePrice(price, timestamp);
         }
 
         if (order.orderType != OrderType::Limit)
@@ -294,14 +294,14 @@ namespace advmatch
         }
 
         unlink(node, order.getUnfilledQuantity());
-        auto result = order.changePrice(price, timestamp, sequence);
+        auto result = order.changePrice(price, timestamp);
 
         if (!result)
         {
             return result;
         }
 
-        match(node, timestamp, sequence, trades);
+        match(node, timestamp, trades);
 
         if (order.getUnfilledQuantity() != 0)
         {
@@ -311,21 +311,20 @@ namespace advmatch
         return result;
     }
 
-    ModifyOrderResult IndexedTreeOrderBook::modifyQuantity(OrderNode& node, QuantityChange change, Timestamp timestamp,
-                                                    Sequence sequence)
+    ModifyOrderResult IndexedTreeOrderBook::modifyQuantity(OrderNode& node, QuantityChange change, Timestamp timestamp)
     {
-        BasicOrder& order = node.order;
+        BasicOrder& order = node.basicOrder;
         const Quantity before = order.getUnfilledQuantity();
 
-        if (change > 0 && node.level && static_cast<Quantity>(change) > std::numeric_limits<Quantity>::max() - node.
-            level->totalQuantity)
+        if (change > 0 && node.priceLevel && static_cast<Quantity>(change) > std::numeric_limits<Quantity>::max() - node.
+            priceLevel->totalQuantity)
         {
             return {ModifyOrderState::Overflow};
         }
 
-        auto result = order.changeQuantity(change, timestamp, sequence);
+        auto result = order.changeQuantity(change, timestamp);
 
-        if (!result || !node.level)
+        if (!result || !node.priceLevel)
         {
             return result;
         }
@@ -337,7 +336,7 @@ namespace advmatch
             return result;
         }
 
-        PriceLevel& level = *node.level;
+        PriceLevel& level = *node.priceLevel;
         level.totalQuantity = level.totalQuantity - before + after;
 
         if (after > before && level.tail != &node)
@@ -361,12 +360,12 @@ namespace advmatch
         return result;
     }
 
-    CancelOrderResult IndexedTreeOrderBook::cancel(OrderNode& node, Timestamp timestamp, Sequence sequence)
+    CancelOrderResult IndexedTreeOrderBook::cancel(OrderNode& node, Timestamp timestamp)
     {
-        const Quantity remaining = node.order.getUnfilledQuantity();
-        auto result = node.order.cancel(timestamp, sequence);
+        const Quantity remaining = node.basicOrder.getUnfilledQuantity();
+        auto result = node.basicOrder.cancel(timestamp);
 
-        if (result && node.level)
+        if (result && node.priceLevel)
         {
             unlink(node, remaining);
         }

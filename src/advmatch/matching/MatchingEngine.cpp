@@ -1,6 +1,5 @@
 #include "MatchingEngine.h"
 #include "orderbooks/impl/IndexedTreeOrderBook.h"
-#include "../util/AccountLedger.h"
 
 #include <limits>
 
@@ -75,7 +74,7 @@ namespace advmatch
     {
         trades.clear();
 
-        const auto reject = [&](PlaceOrderRejectReason reason)
+        const auto reject = [&](PlaceOrderState reason)
         {
             return PlaceOrderResult(0, {OrderStatus::Rejected, 0, quantity}, reason);
         };
@@ -83,81 +82,50 @@ namespace advmatch
         User* user = this->userManager.getUser(userId);
         if (!user)
         {
-            return reject(PlaceOrderRejectReason::UserNotFound);
+            return reject(PlaceOrderState::UserNotFound);
         }
 
         const Symbol* symbol = this->symbolManager.getSymbol(symbolId);
         if (!symbol)
         {
-            return reject(PlaceOrderRejectReason::InvalidSymbol);
+            return reject(PlaceOrderState::InvalidSymbol);
         }
 
         OrderBook* book = findBook(symbolId);
         if (!book)
         {
-            return reject(PlaceOrderRejectReason::InvalidSymbol);
+            return reject(PlaceOrderState::InvalidSymbol);
         }
 
-        if (quantity == 0)
+        if (this->nextOrderId == 0)
         {
-            return reject(PlaceOrderRejectReason::InvalidQuantity);
-        }
-
-        if (util::willMultiplyOverflow(price, quantity))
-        {
-            return reject(PlaceOrderRejectReason::Overflow);
-        }
-
-        if (type != OrderType::Market && type != OrderType::Limit)
-        {
-            return reject(PlaceOrderRejectReason::InvalidOrderType);
-        }
-
-        if (type == OrderType::Limit && price == 0)
-        {
-            return reject(PlaceOrderRejectReason::InvalidPrice);
-        }
-
-        if (timeInForce != TimeInForce::GTC && timeInForce != TimeInForce::IOC && timeInForce != TimeInForce::FOK)
-        {
-            return reject(PlaceOrderRejectReason::InvalidTimeInForce);
-        }
-
-        if (type == OrderType::Market && timeInForce == TimeInForce::GTC)
-        {
-            return reject(PlaceOrderRejectReason::InvalidTimeInForce);
-        }
-
-        Balance estimatedMarketBuyBalance = 0;
-        if (type == OrderType::Market && side == OrderSide::Bid)
-        {
-            auto cost = book->estimateMarketBuyCost(quantity);
-            if (!cost)
-            {
-                return reject(PlaceOrderRejectReason::Overflow);
-            }
-
-            estimatedMarketBuyBalance = *cost;
-        }
-
-        if (this->nextOrderId == 0 || this->nextSequence == 0)
-        {
-            return reject(PlaceOrderRejectReason::Overflow);
+            return reject(PlaceOrderState::OrderIdOverflow);
         }
 
         const OrderId id = this->nextOrderId++;
-        const Sequence sequence = this->nextSequence++;
 
         if (this->orders.size() < id)
         {
             this->orders.resize(id, nullptr);
         }
 
-        OrderNode* node = this->orderPool.emplace(
-            BasicOrder(id, userId, symbolId, side, type, timeInForce, price, quantity, timestamp, sequence),
-            *user, *symbol, symbol->baseAssetId, symbol->quoteAssetId);
+        CreateOrderResult orderResult = this->orderFactory.createOrder(id, userId, symbolId, side, type, timeInForce, price, quantity, timestamp);
+        if (!orderResult)
+        {
+            return reject(orderResult.state);
+        }
 
-        const PlaceOrderRiskDecision riskDecision = this->riskEngine.checkPlaceOrder(*node, estimatedMarketBuyBalance);
+        MKTOverflowBidResult mktBidResult = this->orderFactory.checkMKTOverflowBid(*orderResult.content, book);
+        if (mktBidResult.first != PlaceOrderState::Success)
+        {
+            return reject(mktBidResult.first);
+        }
+
+        OrderNode* node = this->orderPool.emplace(
+            *orderResult.content,
+            *user, user->getSpotAccount(), *symbol, symbol->baseAssetId, symbol->quoteAssetId);
+
+        const PlaceOrderRiskDecision riskDecision = this->riskEngine.checkPlaceOrder(*node, mktBidResult.second);
         if (riskDecision.rejectReason)
         {
             this->orderPool.release(node);
@@ -165,14 +133,14 @@ namespace advmatch
         }
 
         this->orders[id - 1] = node;
-        if (!util::AccountLedger::reserve(*node, riskDecision.requiredReservationBalance))
+        if (!this->accountLedger.reserve(*node, riskDecision.requiredReservationBalance))
         {
             this->orders[id - 1] = nullptr;
             this->orderPool.release(node);
-            return reject(PlaceOrderRejectReason::InsufficientBalance);
+            return reject(PlaceOrderState::InsufficientBalance);
         }
 
-        auto result = book->place(*node, timestamp, sequence, trades);
+        auto result = book->place(*node, timestamp, trades);
 
         if (!result)
         {
@@ -198,18 +166,18 @@ namespace advmatch
             return {ModifyOrderState::OrderNotFound};
         }
 
-        if (node->order.userId != userId)
+        if (node->basicOrder.userId != userId)
         {
             return {ModifyOrderState::WrongUser};
         }
 
-        OrderBook* book = findBook(node->order.symbolId);
+        OrderBook* book = findBook(node->basicOrder.symbolId);
         if (!book)
         {
             return {ModifyOrderState::OrderNotFound};
         }
 
-        BasicOrder& order = node->order;
+        BasicOrder& order = node->basicOrder;
         if (order.getStatus() == OrderStatus::Filled)
         {
             return {ModifyOrderState::OrderAlreadyFilled};
@@ -236,12 +204,12 @@ namespace advmatch
             return {*riskDecision.rejectReason};
         }
 
-        if (!util::AccountLedger::reserve(*node, riskDecision.requiredReservationBalance))
+        if (!this->accountLedger.reserve(*node, riskDecision.requiredReservationBalance))
         {
             return {ModifyOrderState::InsufficientBalance};
         }
 
-        auto result = book->modifyPrice(*node, price, timestamp, this->nextSequence++, trades);
+        auto result = book->modifyPrice(*node, price, timestamp, trades);
         if (result)
         {
             this->settleEngine.settleTrades(trades);
@@ -260,18 +228,18 @@ namespace advmatch
             return {ModifyOrderState::OrderNotFound};
         }
 
-        if (node->order.userId != userId)
+        if (node->basicOrder.userId != userId)
         {
             return {ModifyOrderState::WrongUser};
         }
 
-        OrderBook* book = findBook(node->order.symbolId);
+        OrderBook* book = findBook(node->basicOrder.symbolId);
         if (!book)
         {
             return {ModifyOrderState::OrderNotFound};
         }
 
-        BasicOrder& order = node->order;
+        BasicOrder& order = node->basicOrder;
         if (order.getStatus() == OrderStatus::Filled)
         {
             return {ModifyOrderState::OrderAlreadyFilled};
@@ -300,12 +268,12 @@ namespace advmatch
             return {*riskDecision.rejectReason};
         }
 
-        if (!util::AccountLedger::reserve(*node, riskDecision.requiredReservationBalance))
+        if (!this->accountLedger.reserve(*node, riskDecision.requiredReservationBalance))
         {
             return {ModifyOrderState::InsufficientBalance};
         }
 
-        auto result = book->modifyQuantity(*node, change, timestamp, this->nextSequence++);
+        auto result = book->modifyQuantity(*node, change, timestamp);
         this->settleEngine.reconcileReservation(*node);
         return result;
     }
@@ -318,24 +286,46 @@ namespace advmatch
             return {CancelOrderState::OrderNotFound};
         }
 
-        if (node->order.userId != userId)
+        if (node->basicOrder.userId != userId)
         {
             return {CancelOrderState::WrongUser};
         }
 
-        OrderBook* book = findBook(node->order.symbolId);
+        OrderBook* book = findBook(node->basicOrder.symbolId);
         if (!book)
         {
             return {CancelOrderState::OrderNotFound};
         }
 
-        auto result = book->cancel(*node, timestamp, this->nextSequence++);
+        auto result = book->cancel(*node, timestamp);
         if (result)
         {
             this->settleEngine.reconcileReservation(*node);
         }
 
         return result;
+    }
+
+    BalanceResult MatchingEngine::transferToContract(UserId userId, AssetId assetId, PositiveBalanceChange amount)
+    {
+        User* user = this->userManager.getUser(userId);
+        if (!user)
+        {
+            return {BalanceOpResult::InvalidAccount, "User ledging was not found"};
+        }
+
+        return user->transferToContract(assetId, amount);
+    }
+
+    BalanceResult MatchingEngine::transferToSpot(UserId userId, AssetId assetId, PositiveBalanceChange amount)
+    {
+        User* user = this->userManager.getUser(userId);
+        if (!user)
+        {
+            return {BalanceOpResult::InvalidAccount, "User ledging was not found"};
+        }
+
+        return user->transferToSpot(assetId, amount);
     }
 
     std::optional<BasicOrder> MatchingEngine::queryOrder(OrderId orderId) const
@@ -346,7 +336,7 @@ namespace advmatch
             return std::nullopt;
         }
 
-        return node->order;
+        return node->basicOrder;
     }
 
     std::optional<Quote> MatchingEngine::bestBid(SymbolId symbolId) const noexcept

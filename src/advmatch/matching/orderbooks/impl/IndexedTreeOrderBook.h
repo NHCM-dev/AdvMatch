@@ -77,7 +77,7 @@ namespace advmatch
         static bool crosses(const BasicOrder& taker, Price makerPrice) noexcept;
         [[nodiscard]]
         bool canFillAll(const BasicOrder& order) const noexcept;
-        void match(OrderNode& taker, Timestamp timestamp, Sequence sequence, TradeBuffer& trades);
+        void match(OrderNode& taker, Timestamp timestamp, TradeBuffer& trades);
         void append(OrderNode& node);
         void unlink(OrderNode& node, Quantity remaining) noexcept;
 
@@ -92,12 +92,11 @@ namespace advmatch
             return this->bookSymbolId;
         }
 
-        PlaceOrderResult place(OrderNode& node, Timestamp timestamp, Sequence sequence, TradeBuffer& trades) override;
-        ModifyOrderResult modifyPrice(OrderNode& node, Price price, Timestamp timestamp, Sequence sequence,
+        PlaceOrderResult place(OrderNode& node, Timestamp timestamp, TradeBuffer& trades) override;
+        ModifyOrderResult modifyPrice(OrderNode& node, Price price, Timestamp timestamp,
                                       TradeBuffer& trades) override;
-        ModifyOrderResult modifyQuantity(OrderNode& node, QuantityChange change, Timestamp timestamp,
-                                         Sequence sequence) override;
-        CancelOrderResult cancel(OrderNode& node, Timestamp timestamp, Sequence sequence) override;
+        ModifyOrderResult modifyQuantity(OrderNode& node, QuantityChange change, Timestamp timestamp) override;
+        CancelOrderResult cancel(OrderNode& node, Timestamp timestamp) override;
 
         [[nodiscard]]
         std::optional<Quote> bestBid() const noexcept override

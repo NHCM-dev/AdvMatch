@@ -5,6 +5,7 @@
 #include "Matching.h"
 #include "TradeBuffer.h"
 #include "orderbooks/OrderBook.h"
+#include "advmatch/ledging/ledgers/impl/SpotAccountLedger.h"
 #include "riskengines/impl/SpotRiskEngine.h"
 #include "settleengines/impl/SpotSettleEngine.h"
 #include "../util/BigAllocs.h"
@@ -14,6 +15,7 @@
 #include <vector>
 
 #include "advmatch/management/SymbolManager.h"
+#include "advmatch/trading/factory/impl/BasicOrderFactory.h"
 
 namespace advmatch
 {
@@ -25,8 +27,10 @@ namespace advmatch
     {
         UserManager& userManager;
         SymbolManager& symbolManager;
+        SpotAccountLedger accountLedger;
         SpotRiskEngine riskEngine;
         SpotSettleEngine settleEngine;
+        BasicOrderFactory orderFactory = BasicOrderFactory();
 
         // IDs are monotonically allocated from one, so id - 1 is a direct O(1)
         // index. The pool owns stable-address nodes; the vector only indexes
@@ -35,7 +39,6 @@ namespace advmatch
         std::vector<OrderNode*> orders;
         std::vector<std::unique_ptr<OrderBook>> orderBooks;
         OrderId nextOrderId = 1;
-        Sequence nextSequence = 1;
 
         OrderNode* findNode(OrderId orderId) noexcept;
         const OrderNode* findNode(OrderId orderId) const noexcept;
@@ -44,7 +47,7 @@ namespace advmatch
 
     public:
         explicit MatchingEngine(UserManager& userManager, SymbolManager& symbolManager)
-            : userManager(userManager), symbolManager(symbolManager)
+            : userManager(userManager), symbolManager(symbolManager), settleEngine(this->accountLedger)
         {
         }
 
@@ -67,6 +70,12 @@ namespace advmatch
                                       Timestamp timestamp, TradeBuffer& trades);
         ModifyOrderResult modifyQuantity(UserId userId, OrderId orderId, QuantityChange change, Timestamp timestamp);
         CancelOrderResult cancelOrder(UserId userId, OrderId orderId, Timestamp timestamp);
+
+        [[nodiscard]]
+        BalanceResult transferToContract(UserId userId, AssetId assetId, PositiveBalanceChange amount);
+
+        [[nodiscard]]
+        BalanceResult transferToSpot(UserId userId, AssetId assetId, PositiveBalanceChange amount);
 
         [[nodiscard]]
         std::optional<BasicOrder> queryOrder(OrderId orderId) const;

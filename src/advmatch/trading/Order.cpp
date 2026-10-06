@@ -9,22 +9,15 @@ namespace advmatch
 {
     BasicOrder::BasicOrder(OrderId orderId, UserId userId, SymbolId symbolId,
                            OrderSide orderSide, OrderType orderType, TimeInForce timeInForce,
-                           Price price, Quantity quantity, Timestamp timestamp, Sequence sequence)
+                           Price price, Quantity quantity, Timestamp timestamp)
         : price(orderType == OrderType::Market ? 0 : price), requestedQuantity(quantity),
           fillingStatus{OrderStatus::NotFilled, 0, quantity}, createdTimestamp(timestamp), updatedTimestamp(timestamp),
-          firstFilledTimestamp(0), lastFilledTimestamp(0), completedTimestamp(0), createdSequence(sequence),
-          updatedSequence(sequence), orderId(orderId), userId(userId), symbolId(symbolId), orderSide(orderSide),
-          orderType(orderType), timeInForce(timeInForce)
+          firstFilledTimestamp(0), lastFilledTimestamp(0), completedTimestamp(0), orderId(orderId), userId(userId),
+          symbolId(symbolId), orderSide(orderSide), orderType(orderType), timeInForce(timeInForce)
     {
-        if (util::willMultiplyOverflow(price, quantity))
-        {
-            throw std::invalid_argument("price * quantity will overflow");
-        }
     }
 
-    ModifyOrderResult BasicOrder::changePrice(Price newPrice,
-                                              Timestamp timestamp,
-                                              Sequence sequence)
+    ModifyOrderResult BasicOrder::changePrice(Price newPrice, Timestamp timestamp)
     {
         if (this->fillingStatus.status == OrderStatus::Filled)
         {
@@ -69,14 +62,11 @@ namespace advmatch
         this->price = newPrice;
 
         this->updatedTimestamp = timestamp;
-        this->updatedSequence = sequence;
 
         return {ModifyOrderState::Success};
     }
 
-    ModifyOrderResult BasicOrder::changeQuantity(QuantityChange quantityChange,
-                                                 Timestamp timestamp,
-                                                 Sequence sequence)
+    ModifyOrderResult BasicOrder::changeQuantity(QuantityChange quantityChange, Timestamp timestamp)
     {
         if (this->fillingStatus.status == OrderStatus::Filled)
         {
@@ -124,7 +114,6 @@ namespace advmatch
             this->fillingStatus.unfilled -= subtractQuantity;
 
             this->updatedTimestamp = timestamp;
-            this->updatedSequence = sequence;
 
             if (this->fillingStatus.unfilled == 0)
             {
@@ -158,13 +147,11 @@ namespace advmatch
         this->fillingStatus.unfilled += addQuantity;
 
         this->updatedTimestamp = timestamp;
-        this->updatedSequence = sequence;
 
         return {ModifyOrderState::Success};
     }
 
-    CancelOrderResult BasicOrder::cancel(Timestamp timestamp,
-                                         Sequence sequence)
+    CancelOrderResult BasicOrder::cancel(Timestamp timestamp)
     {
         if (this->fillingStatus.status == OrderStatus::Filled)
         {
@@ -194,14 +181,11 @@ namespace advmatch
 
         this->updatedTimestamp = timestamp;
         this->completedTimestamp = timestamp;
-        this->updatedSequence = sequence;
 
         return {CancelOrderState::Success};
     }
 
-    OrderFillResult BasicOrder::fill(Quantity fillQuantity,
-                                     Timestamp timestamp,
-                                     Sequence sequence)
+    OrderFillResult BasicOrder::fill(Quantity fillQuantity, Timestamp timestamp)
     {
         if (fillQuantity == 0)
         {
@@ -261,7 +245,6 @@ namespace advmatch
 
         this->lastFilledTimestamp = timestamp;
         this->updatedTimestamp = timestamp;
-        this->updatedSequence = sequence;
 
         if (this->fillingStatus.unfilled == 0)
         {
@@ -334,16 +317,5 @@ namespace advmatch
     Timestamp BasicOrder::getCompletedTimestamp() const noexcept
     {
         return this->completedTimestamp;
-    }
-
-
-    Sequence BasicOrder::getCreatedSequence() const noexcept
-    {
-        return this->createdSequence;
-    }
-
-    Sequence BasicOrder::getUpdatedSequence() const noexcept
-    {
-        return this->updatedSequence;
     }
 } // advmatch

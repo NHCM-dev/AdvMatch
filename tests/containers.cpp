@@ -1,10 +1,12 @@
-#include "advmatch/account/User.h"
+#include "advmatch/ledging/User.h"
 #include "advmatch/management/UserManager.h"
 #include "advmatch/util/BigAllocs.h"
 #include "advmatch/util/Containers.h"
 
 #include <cstdint>
 #include <cstdlib>
+#include <memory>
+#include <utility>
 #include <vector>
 
 #define CHECK(condition) \
@@ -25,6 +27,19 @@ namespace
         explicit TrackedValue(int value)
             : value(value)
         {
+            ++alive;
+        }
+
+        TrackedValue(const TrackedValue& other)
+            : value(other.value)
+        {
+            ++alive;
+        }
+
+        TrackedValue(TrackedValue&& other) noexcept
+            : value(other.value)
+        {
+            other.value = -1;
             ++alive;
         }
 
@@ -86,35 +101,35 @@ int main()
     }
     CHECK(users.getUser(firstUser->getUserId()) == firstUser);
 
-    User user(1);
+    SpotAccount& account = firstUser->getSpotAccount();
     for (AssetId assetId = 1; assetId <= 6; ++assetId)
     {
-        CHECK(user.updateBalance(assetId, static_cast<BalanceChange>(assetId * 10)));
+        CHECK(account.updateBalance(assetId, static_cast<BalanceChange>(assetId * 10)));
     }
 
-    CHECK(user.getAssetBalanceCount() == 6);
-    CHECK(user.reserveBalance(6, 25));
-    CHECK(user.queryActiveBalance(6) == 35);
-    CHECK(user.queryReservedBalance(6) == 25);
+    CHECK(account.getAssetBalanceCount() == 6);
+    CHECK(account.reserveBalance(6, 25));
+    CHECK(account.queryActiveBalance(6) == 35);
+    CHECK(account.queryReservedBalance(6) == 25);
 
-    CHECK(user.updateBalance(7, 70));
-    CHECK(user.updateBalance(8, 80));
-    CHECK(user.getAssetBalanceCount() == 8);
-    CHECK(user.releaseReservedBalance(6, 25));
+    CHECK(account.updateBalance(7, 70));
+    CHECK(account.updateBalance(8, 80));
+    CHECK(account.getAssetBalanceCount() == 8);
+    CHECK(account.releaseReservedBalance(6, 25));
 
     for (AssetId assetId = 1; assetId <= 8; ++assetId)
     {
-        CHECK(user.queryActiveBalance(assetId) == static_cast<Balance>(assetId * 10));
+        CHECK(account.queryActiveBalance(assetId) == static_cast<Balance>(assetId * 10));
     }
 
     for (AssetId assetId = 1; assetId <= 8; ++assetId)
     {
-        CHECK(user.updateBalance(assetId, -static_cast<BalanceChange>(assetId * 10)));
+        CHECK(account.updateBalance(assetId, -static_cast<BalanceChange>(assetId * 10)));
     }
 
-    CHECK(user.getAssetBalanceCount() == 0);
-    CHECK(user.updateBalance(99, 100));
-    CHECK(user.queryActiveBalance(99) == 100);
+    CHECK(account.getAssetBalanceCount() == 0);
+    CHECK(account.updateBalance(99, 100));
+    CHECK(account.queryActiveBalance(99) == 100);
 
     BigAllocs<TrackedValue, 2, 4> values;
     CHECK(values.capacity() == 8);
@@ -148,6 +163,47 @@ int main()
     values.clear();
     CHECK(values.empty());
     CHECK(TrackedValue::alive == 0);
+
+    {
+        const TrackedValue original(123);
+        TrackedValue* copied = values.insert(original);
+        CHECK(copied != &original);
+        CHECK(copied->value == 123);
+        CHECK(original.value == 123);
+        CHECK(values.size() == 1);
+        CHECK(TrackedValue::alive == 2);
+
+        values.reserve(100);
+        CHECK(copied->value == 123);
+        CHECK(values.release(copied));
+        CHECK(TrackedValue::alive == 1);
+
+        TrackedValue source(456);
+        TrackedValue* moved = values.insert(std::move(source));
+        CHECK(moved == copied);
+        CHECK(moved->value == 456);
+        CHECK(source.value == -1);
+        CHECK(values.size() == 1);
+        CHECK(TrackedValue::alive == 3);
+
+        values.clear();
+        CHECK(values.empty());
+        CHECK(TrackedValue::alive == 2);
+    }
+    CHECK(TrackedValue::alive == 0);
+
+    {
+        BigAllocs<std::unique_ptr<TrackedValue>, 1, 2> ownedValues;
+        auto owned = std::make_unique<TrackedValue>(789);
+        TrackedValue* originalAddress = owned.get();
+        auto* stored = ownedValues.insert(std::move(owned));
+        CHECK(!owned);
+        CHECK(stored->get() == originalAddress);
+        CHECK(TrackedValue::alive == 1);
+        CHECK(ownedValues.release(stored));
+        CHECK(ownedValues.empty());
+        CHECK(TrackedValue::alive == 0);
+    }
 
     CacheLineValue* aligned = nullptr;
     {

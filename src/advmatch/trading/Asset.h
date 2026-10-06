@@ -4,7 +4,7 @@
 
 #ifndef ADVMATCH_ASSET_H
 #define ADVMATCH_ASSET_H
-#include <cstdint>
+#include "../util/Types.h"
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -14,17 +14,6 @@
 
 namespace advmatch
 {
-    using AssetId = std::uint32_t;
-
-    // Balance is a stored account value. BalanceChange is a signed delta that
-    // can credit or debit a balance. PositiveBalanceChange is a non-negative
-    // amount used by reserve, release, consume, and settlement operations.
-    using Balance = std::int64_t;
-    using BalanceChange = std::int64_t;
-    using PositiveBalanceChange = std::uint64_t;
-
-    using Scale = std::uint8_t;
-
     struct Asset
     {
         Asset(std::string displayName, std::string assetName, AssetId assetId, Scale scale)
@@ -61,6 +50,7 @@ namespace advmatch
         Overflow,
         Insufficient,
         NoSuchAsset,
+        InvalidAccount,
         Unknown
     };
 

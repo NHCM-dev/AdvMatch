@@ -5,13 +5,11 @@
 #ifndef ADVMATCH_ORDER_H
 #define ADVMATCH_ORDER_H
 
-#include <cstdint>
-#include <optional>
 #include <string>
 #include <utility>
 
-#include "Symbol.h"
-#include "../account/User.h"
+#include "../util/Types.h"
+#include "OrderTypes.h"
 #include "../matching/orderbooks/OrderBook.h"
 #include "../util/Utils.h"
 
@@ -61,9 +59,11 @@ namespace advmatch
         Timestamp lastFilledTimestamp;
         Timestamp completedTimestamp;
 
-        const Sequence createdSequence;
-        Sequence updatedSequence;
+        BasicOrder(OrderId orderId, UserId userId, SymbolId symbolId,
+                   OrderSide orderSide, OrderType orderType, TimeInForce timeInForce,
+                   Price price, Quantity quantity, Timestamp timestamp);
 
+        friend class BasicOrderFactory;
     public:
         const OrderId orderId;
         const UserId userId;
@@ -73,29 +73,17 @@ namespace advmatch
         const OrderType orderType;
         const TimeInForce timeInForce;
 
-        BasicOrder(OrderId orderId, UserId userId, SymbolId symbolId,
-                   OrderSide orderSide, OrderType orderType, TimeInForce timeInForce,
-                   Price price, Quantity quantity,
-                   Timestamp timestamp, Sequence sequence);
+        [[nodiscard]]
+        ModifyOrderResult changePrice(Price newPrice, Timestamp timestamp);
 
         [[nodiscard]]
-        ModifyOrderResult changePrice(Price newPrice,
-                                      Timestamp timestamp,
-                                      Sequence sequence);
+        ModifyOrderResult changeQuantity(QuantityChange quantityChange, Timestamp timestamp);
 
         [[nodiscard]]
-        ModifyOrderResult changeQuantity(QuantityChange quantityChange,
-                                         Timestamp timestamp,
-                                         Sequence sequence);
+        CancelOrderResult cancel(Timestamp timestamp);
 
         [[nodiscard]]
-        CancelOrderResult cancel(Timestamp timestamp,
-                                 Sequence sequence);
-
-        [[nodiscard]]
-        OrderFillResult fill(Quantity fillQuantity,
-                             Timestamp timestamp,
-                             Sequence sequence);
+        OrderFillResult fill(Quantity fillQuantity, Timestamp timestamp);
 
         [[nodiscard]]
         Price getPrice() const noexcept;
@@ -122,11 +110,6 @@ namespace advmatch
         Timestamp getLastFilledTimestamp() const noexcept;
         [[nodiscard]]
         Timestamp getCompletedTimestamp() const noexcept;
-
-        [[nodiscard]]
-        Sequence getCreatedSequence() const noexcept;
-        [[nodiscard]]
-        Sequence getUpdatedSequence() const noexcept;
     };
 } // advmatch
 

@@ -1,6 +1,6 @@
 #include "SpotRiskEngine.h"
 
-#include "advmatch/account/User.h"
+#include "advmatch/ledging/User.h"
 #include "advmatch/trading/Symbol.h"
 
 #include <limits>
@@ -38,7 +38,8 @@ namespace advmatch
 
     bool SpotRiskEngine::hasAvailableReservation(const OrderNode& node, Balance requiredBalance) noexcept
     {
-        if (requiredBalance < 0 || node.reservedBalance < 0)
+        if (!node.account || node.account->getAccountType() != AccountType::Spot ||
+            requiredBalance < 0 || node.reservedBalance < 0)
         {
             return false;
         }
@@ -50,37 +51,36 @@ namespace advmatch
 
         const BalanceChange additionalChange = requiredBalance - node.reservedBalance;
         const PositiveBalanceChange additionalAmount = static_cast<PositiveBalanceChange>(additionalChange);
-        const Balance availableBalance = node.user->queryActiveBalance(node.reservationAssetId).value_or(0);
+        const Balance availableBalance = node.account->queryActiveBalance(node.reservationAssetId).value_or(0);
         return availableBalance >= 0 && static_cast<PositiveBalanceChange>(availableBalance) >= additionalAmount;
     }
 
-    PlaceOrderRiskDecision SpotRiskEngine::checkPlaceOrder(const OrderNode& node,
-                                                           Balance estimatedMarketBuyBalance) const
+    PlaceOrderRiskDecision SpotRiskEngine::checkPlaceOrder(const OrderNode& node, Balance estimatedMarketBuyBalance) const
     {
-        const BasicOrder& order = node.order;
+        const BasicOrder& order = node.basicOrder;
         const User& user = *node.user;
         const Symbol& symbol = *node.symbol;
 
-        if (symbol.symbolType != SymbolType::Spot || symbol.symbolId != order.symbolId)
+        if (symbol.symbolId != order.symbolId || symbol.symbolType != SymbolType::Spot)
         {
-            return PlaceOrderRiskDecision(PlaceOrderRejectReason::InvalidSymbol);
+            return PlaceOrderRiskDecision(PlaceOrderState::InvalidSymbol);
         }
 
-        if (user.getUserId() != order.userId)
+        if (user.getUserId() != order.userId || node.account != &user.getSpotAccount())
         {
-            return PlaceOrderRiskDecision(PlaceOrderRejectReason::UserNotFound);
+            return PlaceOrderRiskDecision(PlaceOrderState::UserNotFound);
         }
 
         const auto requiredBalance = requiredReservationBalance(order, order.getPrice(), order.getUnfilledQuantity(),
                                                                 estimatedMarketBuyBalance);
         if (!requiredBalance)
         {
-            return PlaceOrderRiskDecision(PlaceOrderRejectReason::Overflow);
+            return PlaceOrderRiskDecision(PlaceOrderState::Overflow);
         }
 
         if (!hasAvailableReservation(node, *requiredBalance))
         {
-            return PlaceOrderRiskDecision(PlaceOrderRejectReason::InsufficientBalance);
+            return PlaceOrderRiskDecision(PlaceOrderState::InsufficientBalance);
         }
 
         return PlaceOrderRiskDecision(*requiredBalance);
@@ -88,7 +88,7 @@ namespace advmatch
 
     ModifyOrderRiskDecision SpotRiskEngine::checkModifyPrice(const OrderNode& node, Price price) const
     {
-        const auto requiredBalance = requiredReservationBalance(node.order, price, node.order.getUnfilledQuantity());
+        const auto requiredBalance = requiredReservationBalance(node.basicOrder, price, node.basicOrder.getUnfilledQuantity());
         if (!requiredBalance)
         {
             return ModifyOrderRiskDecision(ModifyOrderState::Overflow);
@@ -105,7 +105,7 @@ namespace advmatch
     ModifyOrderRiskDecision SpotRiskEngine::checkModifyQuantity(const OrderNode& node,
                                                                 QuantityChange quantityChange) const
     {
-        const Quantity currentQuantity = node.order.getUnfilledQuantity();
+        const Quantity currentQuantity = node.basicOrder.getUnfilledQuantity();
         Quantity newQuantity = currentQuantity;
 
         if (quantityChange > 0)
@@ -129,7 +129,7 @@ namespace advmatch
             newQuantity -= decrease;
         }
 
-        const auto requiredBalance = requiredReservationBalance(node.order, node.order.getPrice(), newQuantity);
+        const auto requiredBalance = requiredReservationBalance(node.basicOrder, node.basicOrder.getPrice(), newQuantity);
         if (!requiredBalance)
         {
             return ModifyOrderRiskDecision(ModifyOrderState::Overflow);

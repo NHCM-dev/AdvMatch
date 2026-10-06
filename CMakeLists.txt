@@ -132,25 +132,37 @@ if(NOT TARGET absl::flat_hash_map OR NOT TARGET absl::node_hash_map)
 endif()
 
 add_library(advmatch_core STATIC
+    src/advmatch/util/Types.h
     src/advmatch/core.cpp
     include/advmatch/core.hpp
-        src/advmatch/trading/Asset.h
-    src/advmatch/account/User.cpp
-    src/advmatch/account/User.h
-    src/advmatch/util/AccountLedger.cpp
-    src/advmatch/util/AccountLedger.h
+    src/advmatch/trading/Asset.h
+        src/advmatch/ledging/account/Account.cpp
+        src/advmatch/ledging/account/Account.h
+        src/advmatch/ledging/account/impl/SpotAccount.h
+        src/advmatch/ledging/account/impl/ContractAccount.cpp
+        src/advmatch/ledging/account/impl/ContractAccount.h
+        src/advmatch/ledging/User.cpp
+        src/advmatch/ledging/User.h
     src/advmatch/util/BigAllocs.cpp
     src/advmatch/util/BigAllocs.h
     src/advmatch/util/Utils.h
     src/advmatch/util/Containers.h
     src/advmatch/management/UserManager.cpp
     src/advmatch/management/UserManager.h
+    src/advmatch/management/AccountManager.cpp
+    src/advmatch/management/AccountManager.h
     src/advmatch/management/AssetManager.cpp
     src/advmatch/management/AssetManager.h
     src/advmatch/matching/MatchingEngine.cpp
     src/advmatch/matching/MatchingEngine.h
     src/advmatch/matching/Matching.h
     src/advmatch/matching/TradeBuffer.h
+        src/advmatch/ledging/ledgers/AccountLedger.cpp
+        src/advmatch/ledging/ledgers/AccountLedger.h
+        src/advmatch/ledging/ledgers/impl/SpotAccountLedger.cpp
+        src/advmatch/ledging/ledgers/impl/SpotAccountLedger.h
+        src/advmatch/ledging/ledgers/impl/ContractAccountLedger.cpp
+        src/advmatch/ledging/ledgers/impl/ContractAccountLedger.h
     src/advmatch/matching/orderbooks/OrderBook.h
     src/advmatch/matching/orderbooks/impl/IndexedTreeOrderBook.cpp
     src/advmatch/matching/orderbooks/impl/IndexedTreeOrderBook.h
@@ -160,6 +172,11 @@ add_library(advmatch_core STATIC
     src/advmatch/trading/Order.h
     src/advmatch/trading/OrderTypes.h
     src/advmatch/trading/Symbol.h
+    src/advmatch/trading/futures/Position.cpp
+    src/advmatch/trading/futures/Position.h
+    src/advmatch/trading/factory/OrderFactory.h
+    src/advmatch/trading/factory/impl/BasicOrderFactory.cpp
+    src/advmatch/trading/factory/impl/BasicOrderFactory.h
     src/advmatch/matching/riskengines/RiskEngine.h
     src/advmatch/matching/riskengines/impl/SpotRiskEngine.cpp
     src/advmatch/matching/riskengines/impl/SpotRiskEngine.h
@@ -167,7 +184,10 @@ add_library(advmatch_core STATIC
     src/advmatch/matching/settleengines/impl/SpotSettleEngine.cpp
     src/advmatch/matching/settleengines/impl/SpotSettleEngine.h
     src/advmatch/management/SymbolManager.cpp
-    src/advmatch/management/SymbolManager.h)
+    src/advmatch/management/SymbolManager.h
+    src/advmatch/matching/riskengines/impl/ContractRiskEngine.cpp
+    src/advmatch/matching/riskengines/impl/ContractRiskEngine.h
+    src/advmatch/util/ContractUtil.h)
 add_library(AdvMatch::core ALIAS advmatch_core)
 set_target_properties(advmatch_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_features(advmatch_core PUBLIC cxx_std_20)
@@ -233,6 +253,11 @@ if(BUILD_TESTING)
     target_link_libraries(advmatch_container_tests PRIVATE AdvMatch::core)
     advmatch_configure_runtime(advmatch_container_tests)
     add_test(NAME advmatch_container_tests COMMAND advmatch_container_tests)
+
+    add_executable(advmatch_account_tests tests/accounts.cpp)
+    target_link_libraries(advmatch_account_tests PRIVATE AdvMatch::core)
+    advmatch_configure_runtime(advmatch_account_tests)
+    add_test(NAME advmatch_account_tests COMMAND advmatch_account_tests)
 endif()
 
 if(ADVMATCH_BUILD_BENCHMARKS)

@@ -18,7 +18,6 @@ namespace advmatch
         OrderId takerOrderId;
         Price price;
         Quantity quantity;
-        Sequence sequence;
     };
 
     class TradeBuffer

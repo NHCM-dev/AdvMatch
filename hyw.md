@@ -43,7 +43,7 @@ std::vector<std::unique_ptr<OrderBook>> orderBooks;
 
 ### 3. 用户余额使用小对象优化
 
-[User.h](src/advmatch/account/User.h) 当前在用户对象内保存前 **6** 条余额：
+[User.h](src/advmatch/ledging/User.h) 当前在用户对象内保存前 **6** 条余额：
 
 ```cpp
 SmallVector<AssetBalanceEntry, InlineBalanceCapacity>

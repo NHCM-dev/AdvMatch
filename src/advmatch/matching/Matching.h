@@ -7,6 +7,7 @@
 
 namespace advmatch
 {
+    class Account;
     class User;
     struct Symbol;
     struct PriceLevel;
@@ -16,20 +17,23 @@ namespace advmatch
     // remain valid for the complete engine lifetime.
     struct OrderNode
     {
-        OrderNode(BasicOrder value, User& user, const Symbol& symbol, AssetId baseAssetId, AssetId quoteAssetId)
-            : order(value), user(&user), symbol(&symbol), baseAssetId(baseAssetId), quoteAssetId(quoteAssetId),
-              reservationAssetId(order.orderSide == OrderSide::Bid ? quoteAssetId : baseAssetId)
+        OrderNode(BasicOrder value, User& user, Account& account, const Symbol& symbol, AssetId baseAssetId,
+                  AssetId quoteAssetId)
+            : basicOrder(value), user(&user), account(&account), symbol(&symbol), baseAssetId(baseAssetId),
+              quoteAssetId(quoteAssetId),
+              reservationAssetId(basicOrder.orderSide == OrderSide::Bid ? quoteAssetId : baseAssetId)
         {
         }
 
-        BasicOrder order;
+        BasicOrder basicOrder;
         User* const user;
+        Account* const account;
         const Symbol* const symbol;
         const AssetId baseAssetId;
         const AssetId quoteAssetId;
         const AssetId reservationAssetId;
         Balance reservedBalance = 0;
-        PriceLevel* level = nullptr;
+        PriceLevel* priceLevel = nullptr;
         OrderNode* prev = nullptr;
         OrderNode* next = nullptr;
     };

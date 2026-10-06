@@ -1,6 +1,7 @@
 #ifndef ADVMATCH_RISK_ENGINE_H
 #define ADVMATCH_RISK_ENGINE_H
 
+#include "../../util/Types.h"
 #include "../Matching.h"
 #include "../orderbooks/OrderBook.h"
 
@@ -30,12 +31,9 @@ namespace advmatch
         }
     };
 
-    using PlaceOrderRiskDecision = RiskDecision<PlaceOrderRejectReason>;
-    using ModifyOrderRiskDecision = RiskDecision<ModifyOrderState>;
-
     // Risk engines are read-only policy components. They validate an operation
     // and calculate the total reservation it requires, but never mutate an
-    // account, an order, or an order book.
+    // ledging, an order, or an order book.
     class RiskEngine
     {
     public:

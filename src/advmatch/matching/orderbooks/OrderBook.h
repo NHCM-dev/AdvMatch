@@ -3,7 +3,7 @@
 
 #include "../TradeBuffer.h"
 #include "../../trading/OrderTypes.h"
-#include "../../trading/Symbol.h"
+#include "../../util/Types.h"
 #include "../../util/Utils.h"
 
 #include <cstdint>
@@ -15,8 +15,10 @@ namespace advmatch
 {
     struct OrderNode;
 
-    enum class PlaceOrderRejectReason : std::uint8_t
+    enum class PlaceOrderState : std::uint8_t
     {
+        Success,
+        InvalidOrderSide,
         InvalidQuantity,
         InvalidPrice,
         InsufficientBalance,
@@ -24,10 +26,13 @@ namespace advmatch
         InvalidSymbol,
         InvalidOrderType,
         InvalidTimeInForce,
+        InvalidTimestamp,
+        InvalidOrderBook,
         UserNotFound,
         TradingDisabled,
         DuplicateOrderId,
         Overflow,
+        OrderIdOverflow,
         Unknown
     };
 
@@ -38,13 +43,13 @@ namespace advmatch
         {
         }
 
-        PlaceOrderResult(OrderId orderId, OrderFillingStatus status, PlaceOrderRejectReason reason)
+        PlaceOrderResult(OrderId orderId, OrderFillingStatus status, PlaceOrderState reason)
             : Result(status), orderId(orderId), rejectReason(reason)
         {
         }
 
         const OrderId orderId;
-        const std::optional<PlaceOrderRejectReason> rejectReason;
+        const std::optional<PlaceOrderState> rejectReason;
 
         explicit operator bool() const noexcept
         {
@@ -146,13 +151,11 @@ namespace advmatch
         [[nodiscard]]
         virtual SymbolId symbolId() const noexcept = 0;
 
-        virtual PlaceOrderResult place(OrderNode& order, Timestamp timestamp,
-                                       Sequence sequence, TradeBuffer& trades) = 0;
+        virtual PlaceOrderResult place(OrderNode& order, Timestamp timestamp, TradeBuffer& trades) = 0;
         virtual ModifyOrderResult modifyPrice(OrderNode& order, Price price, Timestamp timestamp,
-                                              Sequence sequence, TradeBuffer& trades) = 0;
-        virtual ModifyOrderResult modifyQuantity(OrderNode& order, QuantityChange change, Timestamp timestamp,
-                                                 Sequence sequence) = 0;
-        virtual CancelOrderResult cancel(OrderNode& order, Timestamp timestamp, Sequence sequence) = 0;
+                                              TradeBuffer& trades) = 0;
+        virtual ModifyOrderResult modifyQuantity(OrderNode& order, QuantityChange change, Timestamp timestamp) = 0;
+        virtual CancelOrderResult cancel(OrderNode& order, Timestamp timestamp) = 0;
 
         [[nodiscard]]
         virtual std::optional<Quote> bestBid() const noexcept = 0;

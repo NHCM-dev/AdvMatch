@@ -145,6 +145,18 @@ namespace advmatch
     }
 
     template <typename T, std::size_t initialBlocks, std::size_t blockSize>
+    T* BigAllocs<T, initialBlocks, blockSize>::insert(const T& value)
+    {
+        return this->emplace(value);
+    }
+
+    template <typename T, std::size_t initialBlocks, std::size_t blockSize>
+    T* BigAllocs<T, initialBlocks, blockSize>::insert(T&& value)
+    {
+        return this->emplace(std::move(value));
+    }
+
+    template <typename T, std::size_t initialBlocks, std::size_t blockSize>
     bool BigAllocs<T, initialBlocks, blockSize>::release(T* object)
     {
         if (!object)

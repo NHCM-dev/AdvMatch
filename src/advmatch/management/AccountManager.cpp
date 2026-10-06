@@ -1,0 +1,208 @@
+#include "AccountManager.h"
+
+#include "../util/Utils.h"
+
+#include <limits>
+#include <stdexcept>
+
+namespace advmatch
+{
+    AccountId AccountManager::allocateAccountId()
+    {
+        if (this->nextAccountId == 0)
+        {
+            throw std::overflow_error("ledging id overflow");
+        }
+
+        return this->nextAccountId++;
+    }
+
+    void AccountManager::reserve(std::size_t userCount)
+    {
+        this->spotAccountPool.reserve(userCount);
+        this->contractAccountPool.reserve(userCount);
+        this->accounts.reserve(userCount * 2);
+        this->accountsByUser.reserve(userCount);
+    }
+
+    std::optional<UserAccounts> AccountManager::createAccounts(UserId userId)
+    {
+        if (userId == 0 || this->accountsByUser.contains(userId))
+        {
+            return std::nullopt;
+        }
+
+        const AccountId spotAccountId = this->allocateAccountId();
+        const AccountId contractAccountId = this->allocateAccountId();
+        SpotAccount* spotAccount = this->spotAccountPool.emplace(spotAccountId, userId);
+        StandardContractAccount* contractAccount = nullptr;
+
+        try
+        {
+            contractAccount = this->contractAccountPool.emplace(contractAccountId, userId);
+        }
+        catch (...)
+        {
+            static_cast<void>(this->spotAccountPool.release(spotAccount));
+            throw;
+        }
+
+        try
+        {
+            if (this->accounts.size() < contractAccountId)
+            {
+                this->accounts.resize(contractAccountId);
+            }
+
+            this->accounts[spotAccountId - 1] = spotAccount;
+            this->accounts[contractAccountId - 1] = contractAccount;
+            this->accountsByUser.emplace(userId, AccountPair{spotAccountId, contractAccountId});
+        }
+        catch (...)
+        {
+            if (this->accounts.size() >= contractAccountId)
+            {
+                this->accounts[spotAccountId - 1] = nullptr;
+                this->accounts[contractAccountId - 1] = nullptr;
+            }
+
+            static_cast<void>(this->spotAccountPool.release(spotAccount));
+            static_cast<void>(this->contractAccountPool.release(contractAccount));
+            throw;
+        }
+
+        this->activeAccountCount += 2;
+        return UserAccounts{spotAccount, contractAccount};
+    }
+
+    bool AccountManager::removeAccounts(UserId userId)
+    {
+        const auto iterator = this->accountsByUser.find(userId);
+        if (iterator == this->accountsByUser.end())
+        {
+            return false;
+        }
+
+        Account* spotAccount = this->accounts[iterator->second.spotAccountId - 1];
+        Account* contractAccount = this->accounts[iterator->second.contractAccountId - 1];
+        if (!spotAccount->isActive() || !contractAccount->isActive())
+        {
+            return false;
+        }
+
+        spotAccount->deactivate();
+        contractAccount->deactivate();
+        this->activeAccountCount -= 2;
+        return true;
+    }
+
+    Account* AccountManager::getAccount(AccountId accountId) noexcept
+    {
+        if (accountId == 0 || accountId > this->accounts.size())
+        {
+            return nullptr;
+        }
+
+        Account* account = this->accounts[accountId - 1];
+        return account && account->isActive() ? account : nullptr;
+    }
+
+    const Account* AccountManager::getAccount(AccountId accountId) const noexcept
+    {
+        if (accountId == 0 || accountId > this->accounts.size())
+        {
+            return nullptr;
+        }
+
+        const Account* account = this->accounts[accountId - 1];
+        return account && account->isActive() ? account : nullptr;
+    }
+
+    SpotAccount* AccountManager::getSpotAccount(UserId userId) noexcept
+    {
+        const auto iterator = this->accountsByUser.find(userId);
+        return iterator == this->accountsByUser.end()
+                   ? nullptr
+                   : static_cast<SpotAccount*>(this->getAccount(iterator->second.spotAccountId));
+    }
+
+    const SpotAccount* AccountManager::getSpotAccount(UserId userId) const noexcept
+    {
+        const auto iterator = this->accountsByUser.find(userId);
+        return iterator == this->accountsByUser.end()
+                   ? nullptr
+                   : static_cast<const SpotAccount*>(this->getAccount(iterator->second.spotAccountId));
+    }
+
+    ContractAccount* AccountManager::getContractAccount(UserId userId) noexcept
+    {
+        const auto iterator = this->accountsByUser.find(userId);
+        return iterator == this->accountsByUser.end()
+                   ? nullptr
+                   : static_cast<ContractAccount*>(this->getAccount(iterator->second.contractAccountId));
+    }
+
+    const ContractAccount* AccountManager::getContractAccount(UserId userId) const noexcept
+    {
+        const auto iterator = this->accountsByUser.find(userId);
+        return iterator == this->accountsByUser.end()
+                   ? nullptr
+                   : static_cast<const ContractAccount*>(this->getAccount(iterator->second.contractAccountId));
+    }
+
+    BalanceResult AccountManager::transfer(AccountId sourceAccountId, AccountId targetAccountId, AssetId assetId,
+                                           PositiveBalanceChange amount)
+    {
+        Account* sourceAccount = this->getAccount(sourceAccountId);
+        Account* targetAccount = this->getAccount(targetAccountId);
+        if (!sourceAccount || !targetAccount || sourceAccount == targetAccount ||
+            sourceAccount->getAccountType() == targetAccount->getAccountType() ||
+            sourceAccount->getUserId() != targetAccount->getUserId())
+        {
+            return {BalanceOpResult::InvalidAccount, "Invalid ledging transfer"};
+        }
+
+        if (amount == 0)
+        {
+            return {BalanceOpResult::Success};
+        }
+
+        const Balance sourceBalance = sourceAccount->queryActiveBalance(assetId).value_or(0);
+        const Balance targetBalance = targetAccount->queryActiveBalance(assetId).value_or(0);
+        if (!util::enoughSubtract(sourceBalance, amount))
+        {
+            return {BalanceOpResult::Insufficient, "Insufficient transferable balance"};
+        }
+
+        if (amount > static_cast<PositiveBalanceChange>(std::numeric_limits<BalanceChange>::max()) ||
+            targetBalance < 0 || util::willAddOverflow(targetBalance, static_cast<BalanceChange>(amount)))
+        {
+            return {BalanceOpResult::Overflow, "Target ledging balance would overflow"};
+        }
+
+        const BalanceChange balanceChange = static_cast<BalanceChange>(amount);
+        const BalanceResult debitResult = sourceAccount->updateBalance(assetId, -balanceChange);
+        if (!debitResult)
+        {
+            return debitResult;
+        }
+
+        const BalanceResult creditResult = targetAccount->updateBalance(assetId, balanceChange);
+        if (!creditResult)
+        {
+            if (!sourceAccount->updateBalance(assetId, balanceChange))
+            {
+                throw std::logic_error("ledging transfer rollback failed");
+            }
+
+            return creditResult;
+        }
+
+        return {BalanceOpResult::Success};
+    }
+
+    std::size_t AccountManager::getAccountCount() const noexcept
+    {
+        return this->activeAccountCount;
+    }
+}

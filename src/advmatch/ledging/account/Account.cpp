@@ -1,14 +1,15 @@
-//
-// Created by NHCM on 2026/9/20.
-//
+#include "Account.h"
 
-#include "User.h"
-
-#include "../util/Utils.h"
+#include "../../util/Utils.h"
 
 namespace advmatch
 {
-    AssetBalance* User::findBalance(AssetId assetId) noexcept
+    void Account::deactivate() noexcept
+    {
+        this->active = false;
+    }
+
+    AssetBalance* Account::findBalance(AssetId assetId) noexcept
     {
         if (this->overflowBalances)
         {
@@ -27,7 +28,7 @@ namespace advmatch
         return nullptr;
     }
 
-    const AssetBalance* User::findBalance(AssetId assetId) const noexcept
+    const AssetBalance* Account::findBalance(AssetId assetId) const noexcept
     {
         if (this->overflowBalances)
         {
@@ -46,7 +47,7 @@ namespace advmatch
         return nullptr;
     }
 
-    AssetBalance& User::addBalance(AssetId assetId, AssetBalance balance)
+    AssetBalance& Account::addBalance(AssetId assetId, AssetBalance balance)
     {
         if (this->overflowBalances)
         {
@@ -59,9 +60,7 @@ namespace advmatch
             return this->inlineBalances.back().balance;
         }
 
-        // Promotion moves every balance out of inline storage. No pointer,
-        // reference, or iterator obtained before this point remains valid.
-        auto newOverflowBalances = std::make_unique<OverflowBalances>();
+        auto newOverflowBalances = std::make_unique<DenseMap<AssetId, AssetBalance>>();
         newOverflowBalances->reserve(InlineBalanceCapacity * 2);
 
         for (const AssetBalanceEntry& entry : this->inlineBalances)
@@ -75,14 +74,11 @@ namespace advmatch
         return insertedBalance;
     }
 
-    void User::removeBalance(AssetId assetId)
+    void Account::removeBalance(AssetId assetId)
     {
         if (this->overflowBalances)
         {
-            // DenseMap can move its last element into the erased slot. Treat all
-            // previously obtained balance addresses as invalid after erase.
             this->overflowBalances->erase(assetId);
-
             if (this->overflowBalances->empty())
             {
                 this->overflowBalances.reset();
@@ -95,37 +91,25 @@ namespace advmatch
         {
             if (iterator->assetId == assetId)
             {
-                // SmallVector shifts every following entry into the empty slot.
-                // Addresses at and after iterator become invalid.
                 this->inlineBalances.erase(iterator);
                 return;
             }
         }
     }
 
-    std::optional<Balance> User::queryActiveBalance(AssetId assetId) const noexcept
+    std::optional<Balance> Account::queryActiveBalance(AssetId assetId) const noexcept
     {
         const AssetBalance* balance = this->findBalance(assetId);
-        if (balance)
-        {
-            return balance->active;
-        }
-
-        return std::nullopt;
+        return balance ? std::optional<Balance>(balance->active) : std::nullopt;
     }
 
-    std::optional<Balance> User::queryReservedBalance(AssetId assetId) const noexcept
+    std::optional<Balance> Account::queryReservedBalance(AssetId assetId) const noexcept
     {
         const AssetBalance* balance = this->findBalance(assetId);
-        if (balance)
-        {
-            return balance->reserved;
-        }
-
-        return std::nullopt;
+        return balance ? std::optional<Balance>(balance->reserved) : std::nullopt;
     }
 
-    BalanceResult User::updateBalance(AssetId assetId, BalanceChange balanceChange)
+    BalanceResult Account::updateBalance(AssetId assetId, BalanceChange balanceChange)
     {
         if (balanceChange == 0)
         {
@@ -148,7 +132,7 @@ namespace advmatch
         {
             if (util::willAddOverflow(balance->active, balanceChange))
             {
-                return {BalanceOpResult::Overflow, "Balance update in active balance will overflow"};
+                return {BalanceOpResult::Overflow, "Active balance would overflow"};
             }
 
             balance->active += balanceChange;
@@ -156,7 +140,6 @@ namespace advmatch
         else
         {
             const PositiveBalanceChange amount = static_cast<PositiveBalanceChange>(-(balanceChange + 1)) + 1;
-
             if (!util::enoughSubtract(balance->active, amount))
             {
                 return {BalanceOpResult::Insufficient, "Insufficient active balance"};
@@ -173,7 +156,7 @@ namespace advmatch
         return {BalanceOpResult::Success};
     }
 
-    BalanceResult User::reserveBalance(AssetId assetId, PositiveBalanceChange amount)
+    BalanceResult Account::reserveBalance(AssetId assetId, PositiveBalanceChange amount)
     {
         if (amount == 0)
         {
@@ -193,16 +176,15 @@ namespace advmatch
 
         if (util::willAddOverflow(balance->reserved, amount))
         {
-            return {BalanceOpResult::Overflow, "Balance update in reserved balance will overflow"};
+            return {BalanceOpResult::Overflow, "Reserved balance would overflow"};
         }
 
         balance->active -= static_cast<Balance>(amount);
         balance->reserved += static_cast<Balance>(amount);
-
         return {BalanceOpResult::Success};
     }
 
-    BalanceResult User::releaseReservedBalance(AssetId assetId, PositiveBalanceChange amount)
+    BalanceResult Account::releaseReservedBalance(AssetId assetId, PositiveBalanceChange amount)
     {
         if (amount == 0)
         {
@@ -222,16 +204,15 @@ namespace advmatch
 
         if (util::willAddOverflow(balance->active, amount))
         {
-            return {BalanceOpResult::Overflow, "Balance update in active balance will overflow"};
+            return {BalanceOpResult::Overflow, "Active balance would overflow"};
         }
 
         balance->reserved -= static_cast<Balance>(amount);
         balance->active += static_cast<Balance>(amount);
-
         return {BalanceOpResult::Success};
     }
 
-    BalanceResult User::consumeReservedBalance(AssetId assetId, PositiveBalanceChange amount)
+    BalanceResult Account::consumeReservedBalance(AssetId assetId, PositiveBalanceChange amount)
     {
         if (amount == 0)
         {
@@ -253,20 +234,15 @@ namespace advmatch
         return {BalanceOpResult::Success};
     }
 
-    BalanceResult User::reserveAsset(AssetId assetId)
+    BalanceResult Account::reserveAsset(AssetId assetId)
     {
-        const AssetBalance* balance = this->findBalance(assetId);
-        if (!balance)
+        const std::optional<Balance> activeBalanceResult = this->queryActiveBalance(assetId);
+        if (!activeBalanceResult)
         {
             return {BalanceOpResult::NoSuchAsset};
         }
 
-        const Balance activeBalance = balance->active;
-        if (activeBalance == 0)
-        {
-            return {BalanceOpResult::Success};
-        }
-
+        const Balance activeBalance = *activeBalanceResult;
         if (activeBalance < 0)
         {
             return {BalanceOpResult::Insufficient};
@@ -275,20 +251,15 @@ namespace advmatch
         return this->reserveBalance(assetId, static_cast<PositiveBalanceChange>(activeBalance));
     }
 
-    BalanceResult User::releaseAsset(AssetId assetId)
+    BalanceResult Account::releaseAsset(AssetId assetId)
     {
-        const AssetBalance* balance = this->findBalance(assetId);
-        if (!balance)
+        const std::optional<Balance> reservedBalanceResult = this->queryReservedBalance(assetId);
+        if (!reservedBalanceResult)
         {
             return {BalanceOpResult::NoSuchAsset};
         }
 
-        const Balance reservedBalance = balance->reserved;
-        if (reservedBalance == 0)
-        {
-            return {BalanceOpResult::Success};
-        }
-
+        const Balance reservedBalance = *reservedBalanceResult;
         if (reservedBalance < 0)
         {
             return {BalanceOpResult::Insufficient};
@@ -296,4 +267,24 @@ namespace advmatch
 
         return this->releaseReservedBalance(assetId, static_cast<PositiveBalanceChange>(reservedBalance));
     }
-} // advmatch
+
+    AccountId Account::getAccountId() const noexcept
+    {
+        return this->accountId;
+    }
+
+    UserId Account::getUserId() const noexcept
+    {
+        return this->userId;
+    }
+
+    std::size_t Account::getAssetBalanceCount() const noexcept
+    {
+        return this->overflowBalances ? this->overflowBalances->size() : this->inlineBalances.size();
+    }
+
+    bool Account::isActive() const noexcept
+    {
+        return this->active;
+    }
+}

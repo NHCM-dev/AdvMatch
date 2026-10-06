@@ -4,13 +4,15 @@
 
 #ifndef ADVMATCH_USERMANAGER_H
 #define ADVMATCH_USERMANAGER_H
-#include "../account/User.h"
+#include "advmatch/ledging/User.h"
+#include "AccountManager.h"
 #include "../util/Containers.h"
 
 namespace advmatch
 {
     class UserManager
     {
+        AccountManager accountManager;
         NodeHashMap<UserId, User> users;
         UserId nextUserId = 1;
         std::size_t activeUserCount = 0;
@@ -18,6 +20,7 @@ namespace advmatch
     public:
         void reserve(std::size_t userCount)
         {
+            this->accountManager.reserve(userCount);
             this->users.reserve(userCount);
         }
 
@@ -42,6 +45,18 @@ namespace advmatch
 
         [[nodiscard]]
         std::size_t getUserCount() const noexcept;
+
+        [[nodiscard]]
+        AccountManager& getAccountManager() noexcept
+        {
+            return this->accountManager;
+        }
+
+        [[nodiscard]]
+        const AccountManager& getAccountManager() const noexcept
+        {
+            return this->accountManager;
+        }
 
         auto begin()
         {

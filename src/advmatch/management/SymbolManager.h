@@ -5,7 +5,7 @@
 #ifndef ADVMATCH_SYMBOLMANAGER_H
 #define ADVMATCH_SYMBOLMANAGER_H
 
-#include "advmatch/account/User.h"
+#include "advmatch/ledging/User.h"
 #include "advmatch/trading/Symbol.h"
 #include "advmatch/util/Containers.h"
 

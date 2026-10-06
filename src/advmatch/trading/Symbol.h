@@ -2,23 +2,20 @@
 // Created by NHCM on 2026/9/20.
 //
 
-#ifndef ADVMATCH_TYPES_H
-#define ADVMATCH_TYPES_H
+#ifndef ADVMATCH_SYMBOL_H
+#define ADVMATCH_SYMBOL_H
 
-#include <cstdint>
+#include "../util/Types.h"
 #include <string>
 #include <utility>
-#include "Asset.h"
 
 namespace advmatch
 {
-    using SymbolId = uint32_t;
     class SymbolManager;
-
     enum class SymbolType : uint8_t
     {
         Spot,
-        Futures,
+        Future,
         Perpetual,
         Option
     };
@@ -52,4 +49,4 @@ namespace advmatch
     };
 } // advmatch
 
-#endif //ADVMATCH_TYPES_H
+#endif //ADVMATCH_SYMBOL_H

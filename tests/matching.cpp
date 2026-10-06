@@ -21,10 +21,10 @@ int main()
     CHECK(symbols.createSymbol("BASE1/QUOTE", SymbolType::Spot, 1, 2));
     CHECK(symbols.createSymbol("BASE2/QUOTE", SymbolType::Spot, 3, 2));
     CHECK(symbols.createSymbol("BASE3/QUOTE", SymbolType::Spot, 4, 2));
-    CHECK(users.getUser(seller)->updateBalance(1, 1000));
-    CHECK(users.getUser(seller)->updateBalance(3, 1000));
-    CHECK(users.getUser(seller)->updateBalance(4, 1000));
-    CHECK(users.getUser(buyer)->updateBalance(2, 100000));
+    CHECK(users.getUser(seller)->getSpotAccount().updateBalance(1, 1000));
+    CHECK(users.getUser(seller)->getSpotAccount().updateBalance(3, 1000));
+    CHECK(users.getUser(seller)->getSpotAccount().updateBalance(4, 1000));
+    CHECK(users.getUser(buyer)->getSpotAccount().updateBalance(2, 100000));
     MatchingEngine engine(users, symbols);
     CHECK(engine.addSpotBook(1));
     CHECK(!engine.addSpotBook(1));
@@ -69,7 +69,7 @@ int main()
     CHECK(bestAskAfterQuantityChange->quantity == 6);
 
     const auto fok = engine.placeOrder(buyer, 1, OrderSide::Bid, OrderType::Limit, TimeInForce::FOK, 99, 7, 9, trades);
-    CHECK(!fok && fok.rejectReason == PlaceOrderRejectReason::InsufficientLiquidity);
+    CHECK(!fok && fok.rejectReason == PlaceOrderState::InsufficientLiquidity);
     const auto bestAskAfterRejectedFok = engine.bestAsk(1);
     CHECK(bestAskAfterRejectedFok);
     CHECK(trades.empty() && bestAskAfterRejectedFok->quantity == 6);
@@ -124,10 +124,10 @@ int main()
     CHECK(!cases.bestBid(3));
     CHECK(cases.cancelOrder(buyer, cancelled.orderId, 25).state == CancelOrderState::OrderCancelled);
     const auto invalid = cases.placeOrder(buyer, 3, OrderSide::Bid, OrderType::Market, TimeInForce::GTC, 0, 1, 26, trades);
-    CHECK(!invalid && invalid.rejectReason == PlaceOrderRejectReason::InvalidTimeInForce);
+    CHECK(!invalid && invalid.rejectReason == PlaceOrderState::InvalidTimeInForce);
 
     CHECK(symbols.createSymbol("BASE4/QUOTE", SymbolType::Spot, 5, 2));
-    CHECK(users.getUser(seller)->updateBalance(5, 10));
+    CHECK(users.getUser(seller)->getSpotAccount().updateBalance(5, 10));
     MatchingEngine spill(users, symbols);
     CHECK(spill.addSpotBook(4));
     for (Timestamp timestamp = 27; timestamp < 32; ++timestamp)

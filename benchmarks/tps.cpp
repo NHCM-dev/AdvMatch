@@ -207,8 +207,8 @@ int main(int argumentCount, char** arguments)
         const UserId sellerId = users.createUser();
         const UserId buyerId = users.createUser();
         const Symbol* symbol = symbols.createSymbol("BASE/QUOTE", SymbolType::Spot, 1, 2);
-        if (!symbol || !users.getUser(sellerId)->updateBalance(1, static_cast<BalanceChange>(options.orders)) ||
-            !users.getUser(buyerId)->updateBalance(2, static_cast<BalanceChange>(options.orders * 100)))
+        if (!symbol || !users.getUser(sellerId)->getSpotAccount().updateBalance(1, static_cast<BalanceChange>(options.orders)) ||
+            !users.getUser(buyerId)->getSpotAccount().updateBalance(2, static_cast<BalanceChange>(options.orders * 100)))
         {
             throw std::runtime_error("benchmark setup failed");
         }
@@ -321,10 +321,10 @@ int main(int argumentCount, char** arguments)
 
         const User* seller = users.getUser(sellerId);
         const User* buyer = users.getUser(buyerId);
-        const bool balancesMatch = seller->queryActiveBalance(1).value_or(0) == 0 && seller->queryReservedBalance(1).value_or(0) == 0 &&
-            seller->queryActiveBalance(2).value_or(0) == static_cast<Balance>(options.orders * 100) &&
-            buyer->queryActiveBalance(1).value_or(0) == static_cast<Balance>(options.orders) &&
-            buyer->queryActiveBalance(2).value_or(0) == 0 && buyer->queryReservedBalance(2).value_or(0) == 0;
+        const bool balancesMatch = seller->getSpotAccount().queryActiveBalance(1).value_or(0) == 0 && seller->getSpotAccount().queryReservedBalance(1).value_or(0) == 0 &&
+            seller->getSpotAccount().queryActiveBalance(2).value_or(0) == static_cast<Balance>(options.orders * 100) &&
+            buyer->getSpotAccount().queryActiveBalance(1).value_or(0) == static_cast<Balance>(options.orders) &&
+            buyer->getSpotAccount().queryActiveBalance(2).value_or(0) == 0 && buyer->getSpotAccount().queryReservedBalance(2).value_or(0) == 0;
 
         if (accepted != options.orders || filled != options.orders || trades != options.orders || consumer.bestAsk(symbol->symbolId) || !balancesMatch)
         {

@@ -10,8 +10,8 @@
 
 namespace advmatch
 {
-    // Single-thread object pool for stable-address objects. emplace() and
-    // release() are O(1) on the hot path; growth is amortized O(1).
+    // Single-thread object pool for stable-address objects. emplace(), insert(),
+    // and release() are O(1) on the hot path; growth is amortized O(1).
     //
     // A pointer passed to release() must have been returned by this pool.
     // The pool detects a repeated release, but arbitrary foreign pointers are
@@ -83,6 +83,11 @@ namespace advmatch
 
         template <typename... Args>
         T* emplace(Args&&... args);
+
+        // Store an existing object by copying an lvalue or moving an rvalue.
+        // The pool owns the stored object and returns its stable address.
+        T* insert(const T& value);
+        T* insert(T&& value);
 
         bool release(T* object);
 
