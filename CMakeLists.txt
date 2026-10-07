@@ -280,6 +280,10 @@ if(BUILD_TESTING)
 endif()
 
 if(ADVMATCH_BUILD_BENCHMARKS)
+    add_executable(advmatch_perpetual_benchmark benchmarks/perpetual.cpp)
+    target_link_libraries(advmatch_perpetual_benchmark PRIVATE AdvMatch::core)
+    advmatch_configure_runtime(advmatch_perpetual_benchmark)
+
     add_executable(advmatch_tps_benchmark benchmarks/tps.cpp)
     target_link_libraries(advmatch_tps_benchmark PRIVATE AdvMatch::core)
     advmatch_configure_runtime(advmatch_tps_benchmark)
@@ -296,6 +300,11 @@ if(ADVMATCH_BUILD_BENCHMARKS)
     advmatch_configure_runtime(advmatch_big_allocs_benchmark)
 
     if(BUILD_TESTING)
+        add_test(NAME advmatch_perpetual_smoke COMMAND advmatch_perpetual_benchmark
+            --orders 1000 --warmup 32 --users 20 --symbols 3 --producers 2 --latency-sample 1)
+        add_test(NAME advmatch_perpetual_cross_smoke COMMAND advmatch_perpetual_benchmark
+            --orders 1001 --warmup 0 --users 20 --symbols 7 --producers 3 --ring-size 128
+            --publish-batch 8 --margin-mode cross --leverage 20 --latency-sample 1)
         add_test(NAME advmatch_tps_smoke COMMAND advmatch_tps_benchmark --orders 1000 --producers 2)
         add_test(NAME advmatch_scale_smoke COMMAND advmatch_scale_benchmark)
     endif()
@@ -314,7 +323,7 @@ if(ADVMATCH_BUILD_JNI)
 endif()
 
 if(ADVMATCH_BUILD_BENCHMARKS)
-    install(TARGETS advmatch_tps_benchmark advmatch_scale_benchmark advmatch_big_allocs_benchmark
+    install(TARGETS advmatch_perpetual_benchmark advmatch_tps_benchmark advmatch_scale_benchmark advmatch_big_allocs_benchmark
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
