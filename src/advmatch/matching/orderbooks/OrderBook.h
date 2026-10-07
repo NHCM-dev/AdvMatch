@@ -7,6 +7,7 @@
 #include "../../util/Utils.h"
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <utility>
@@ -14,6 +15,7 @@
 namespace advmatch
 {
     struct OrderNode;
+    struct BasicOrder;
 
     enum class PlaceOrderState : std::uint8_t
     {
@@ -147,6 +149,11 @@ namespace advmatch
 
     public:
         virtual ~OrderBook() = default;
+
+        // Read on the matching thread; callbacks must not mutate the book.
+        // Prices are best first, and orders at each price are FIFO.
+        virtual void forEachLevel(OrderSide side, const std::function<void(const Quote&)>& visitor) const = 0;
+        virtual void forEachOrder(OrderSide side, const std::function<void(const BasicOrder&)>& visitor) const = 0;
 
         [[nodiscard]]
         virtual SymbolId symbolId() const noexcept = 0;

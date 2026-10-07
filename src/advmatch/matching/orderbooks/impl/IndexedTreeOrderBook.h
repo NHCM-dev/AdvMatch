@@ -124,6 +124,49 @@ namespace advmatch
 
         [[nodiscard]]
         std::optional<Balance> estimateMarketBuyCost(Quantity quantity) const noexcept override;
+        void forEachLevel(OrderSide side, const std::function<void(const Quote&)>& visitor) const override
+        {
+            const auto visit = [&](const auto& levels)
+            {
+                for (const auto& [price, level] : levels.ordered)
+                {
+                    visitor(Quote{price, level.totalQuantity, level.orderCount});
+                }
+            };
+
+            if (side == OrderSide::Bid)
+            {
+                visit(this->bids);
+            }
+            else if (side == OrderSide::Ask)
+            {
+                visit(this->asks);
+            }
+        }
+
+        void forEachOrder(OrderSide side, const std::function<void(const BasicOrder&)>& visitor) const override
+        {
+            const auto visit = [&](const auto& levels)
+            {
+                for (const auto& [price, level] : levels.ordered)
+                {
+                    for (const OrderNode* node = level.head; node != nullptr; node = node->next)
+                    {
+                        visitor(node->basicOrder);
+                    }
+                }
+            };
+
+            if (side == OrderSide::Bid)
+            {
+                visit(this->bids);
+            }
+            else if (side == OrderSide::Ask)
+            {
+                visit(this->asks);
+            }
+        }
+
     };
 } // advmatch
 

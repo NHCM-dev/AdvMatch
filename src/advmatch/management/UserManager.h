@@ -77,6 +77,21 @@ namespace advmatch
         {
             return users.end();
         }
+        // Run on the owning thread. The callback must not mutate this manager.
+        template <typename Visitor>
+        void forEachUser(Visitor&& visitor) const
+        {
+            for (const auto& [id, value] : this->users)
+            {
+                if (!value.isActive())
+                {
+                    continue;
+                }
+
+                visitor(id, value);
+            }
+        }
+
     };
 } // advmatch
 

@@ -98,6 +98,27 @@ namespace advmatch
 
         [[nodiscard]]
         bool isActive() const noexcept;
+        // Balances are borrowed only for this call. Do not mutate the account
+        // or retain references in the callback. Asset ordering is unspecified.
+        template <typename Visitor>
+        void forEachBalance(Visitor&& visitor) const
+        {
+            if (this->overflowBalances)
+            {
+                for (const auto& [assetId, balance] : *this->overflowBalances)
+                {
+                    visitor(assetId, balance);
+                }
+            }
+            else
+            {
+                for (const auto& entry : this->inlineBalances)
+                {
+                    visitor(entry.assetId, entry.balance);
+                }
+            }
+        }
+
     };
 }
 

@@ -34,6 +34,39 @@ int main()
     const auto ask2 = engine.placeOrder(seller, 1, OrderSide::Ask, OrderType::Limit, TimeInForce::GTC, 100, 5, 2, trades);
     const auto ask3 = engine.placeOrder(seller, 1, OrderSide::Ask, OrderType::Limit, TimeInForce::GTC, 101, 4, 3, trades);
     CHECK(ask1 && ask2 && ask3);
+    std::size_t visitedBooks = 0;
+    engine.forEachOrderBook([&](const OrderBook& book)
+    {
+        ++visitedBooks;
+        Price previousPrice = 0;
+        std::size_t visitedLevels = 0;
+        book.forEachLevel(OrderSide::Ask, [&](const Quote& level)
+        {
+            CHECK(level.price > previousPrice);
+            previousPrice = level.price;
+            ++visitedLevels;
+        });
+        CHECK(visitedLevels == 2);
+
+        std::size_t visitedOrders = 0;
+        const OrderId expectedIds[] = {ask1.orderId, ask2.orderId, ask3.orderId};
+        book.forEachOrder(OrderSide::Ask, [&](const BasicOrder& order)
+        {
+            CHECK(visitedOrders < 3);
+            CHECK(order.orderId == expectedIds[visitedOrders]);
+            ++visitedOrders;
+        });
+        CHECK(visitedOrders == 3);
+    });
+    CHECK(visitedBooks == 1);
+
+    std::size_t totalOrders = 0;
+    engine.forEachOrder([&](const BasicOrder&)
+    {
+        ++totalOrders;
+    });
+    CHECK(totalOrders == 3);
+
     const auto initialBestAsk = engine.bestAsk(1);
     const auto initialAskLevel = engine.askAt(1, 100);
     CHECK(initialBestAsk);

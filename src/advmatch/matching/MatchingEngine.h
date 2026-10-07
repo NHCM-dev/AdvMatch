@@ -87,6 +87,32 @@ namespace advmatch
         std::optional<Quote> bidAt(SymbolId symbolId, Price price) const noexcept;
         [[nodiscard]]
         std::optional<Quote> askAt(SymbolId symbolId, Price price) const noexcept;
+        // Run on the matching thread. Do not post mutations from the callback.
+        // Includes retained completed/cancelled orders, in order ID order.
+        template <typename Visitor>
+        void forEachOrder(Visitor&& visitor) const
+        {
+            for (const OrderNode* node : this->orders)
+            {
+                if (node != nullptr)
+                {
+                    visitor(static_cast<const BasicOrder&>(node->basicOrder));
+                }
+            }
+        }
+
+        template <typename Visitor>
+        void forEachOrderBook(Visitor&& visitor) const
+        {
+            for (const auto& book : this->orderBooks)
+            {
+                if (book)
+                {
+                    visitor(static_cast<const OrderBook&>(*book));
+                }
+            }
+        }
+
     };
 } // advmatch
 

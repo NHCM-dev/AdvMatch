@@ -90,6 +90,21 @@ namespace advmatch
         {
             return symbols.end();
         }
+        // Run on the owning thread. The callback must not mutate this manager.
+        template <typename Visitor>
+        void forEachSymbol(Visitor&& visitor) const
+        {
+            for (const auto& [id, value] : this->symbols)
+            {
+                if (!value.isActive())
+                {
+                    continue;
+                }
+
+                visitor(id, value);
+            }
+        }
+
     };
 } // advmatch
 

@@ -2,6 +2,7 @@
 #define ADVMATCH_CONTRACT_ACCOUNT_H
 
 #include "../Account.h"
+#include <functional>
 #include "../../../trading/futures/Position.h"
 
 namespace advmatch
@@ -35,6 +36,9 @@ namespace advmatch
 
         [[nodiscard]]
         virtual std::size_t getPositionCount() const noexcept = 0;
+
+        // Run on the owning thread; do not mutate positions in the callback.
+        virtual void forEachPosition(const std::function<void(PositionId, const Position&)>& visitor) const = 0;
     };
 
     class StandardContractAccount final : public ContractAccount
@@ -61,6 +65,14 @@ namespace advmatch
 
         [[nodiscard]]
         std::size_t getPositionCount() const noexcept override;
+        void forEachPosition(const std::function<void(PositionId, const Position&)>& visitor) const override
+        {
+            for (const auto& [positionId, position] : this->positions)
+            {
+                visitor(positionId, position);
+            }
+        }
+
     };
 }
 

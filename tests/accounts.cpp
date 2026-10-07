@@ -79,4 +79,32 @@ int main()
     CHECK(!accounts.getAccount(spotAccountId));
     CHECK(!accounts.getAccount(contractAccountId));
     CHECK(accounts.getAccountCount() == 2);
+    std::size_t visitedUsers = 0;
+    users.forEachUser([&](UserId, const User& user)
+    {
+        CHECK(user.isActive());
+        ++visitedUsers;
+    });
+    CHECK(visitedUsers == 1);
+
+    std::size_t visitedAccounts = 0;
+    accounts.forEachAccount([&](AccountId id, const Account& account)
+    {
+        CHECK(account.isActive() && account.getAccountId() == id);
+        ++visitedAccounts;
+    });
+    CHECK(visitedAccounts == 2);
+
+    for (AssetId id = 2; id <= 12; ++id)
+    {
+        CHECK(secondUser->getSpotAccount().updateBalance(id, 10));
+    }
+
+    std::size_t visitedBalances = 0;
+    secondUser->getSpotAccount().forEachBalance([&](AssetId, const AssetBalance& balance)
+    {
+        CHECK(balance.active == 10);
+        ++visitedBalances;
+    });
+    CHECK(visitedBalances == 12);
 }

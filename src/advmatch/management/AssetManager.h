@@ -71,6 +71,16 @@ namespace advmatch
         {
             return this->assets.end();
         }
+        // Run on the owning thread. The callback must not mutate this manager.
+        template <typename Visitor>
+        void forEachAsset(Visitor&& visitor) const
+        {
+            for (const auto& [id, value] : this->assets)
+            {
+                visitor(id, value);
+            }
+        }
+
     };
 } // advmatch
 

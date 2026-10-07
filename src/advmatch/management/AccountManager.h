@@ -66,6 +66,19 @@ namespace advmatch
 
         [[nodiscard]]
         std::size_t getAccountCount() const noexcept;
+        // Run on the owning thread. The callback must not mutate this manager.
+        template <typename Visitor>
+        void forEachAccount(Visitor&& visitor) const
+        {
+            for (const Account* account : this->accounts)
+            {
+                if (account != nullptr && account->isActive())
+                {
+                    visitor(account->getAccountId(), *account);
+                }
+            }
+        }
+
     };
 }
 
