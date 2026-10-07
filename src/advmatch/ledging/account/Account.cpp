@@ -4,6 +4,43 @@
 
 namespace advmatch
 {
+    bool Account::canApplyBalanceChange(AssetId assetId, BalanceChange activeChange, BalanceChange reservedChange) const noexcept
+    {
+        const AssetBalance* current = this->findBalance(assetId);
+        const WideBalance active = static_cast<WideBalance>(current ? current->active : 0) + activeChange;
+        const WideBalance reserved = static_cast<WideBalance>(current ? current->reserved : 0) + reservedChange;
+        return active >= 0 && reserved >= 0 && active + reserved <= std::numeric_limits<Balance>::max();
+    }
+
+    BalanceResult Account::applyBalanceChange(AssetId assetId, BalanceChange activeChange, BalanceChange reservedChange)
+    {
+        if (!this->canApplyBalanceChange(assetId, activeChange, reservedChange))
+        {
+            return {BalanceOpResult::Insufficient};
+        }
+
+        AssetBalance* current = this->findBalance(assetId);
+        if (!current)
+        {
+            if (activeChange != 0 || reservedChange != 0)
+            {
+                this->addBalance(assetId, {activeChange, reservedChange});
+            }
+        }
+        else
+        {
+            current->active += activeChange;
+            current->reserved += reservedChange;
+        }
+
+        return {BalanceOpResult::Success};
+    }
+
+    bool Account::canWithdraw(AssetId, PositiveBalanceChange) const noexcept
+    {
+        return true;
+    }
+
     void Account::deactivate() noexcept
     {
         this->active = false;
@@ -111,6 +148,11 @@ namespace advmatch
 
     BalanceResult Account::updateBalance(AssetId assetId, BalanceChange balanceChange)
     {
+        if (balanceChange < 0 && !this->canWithdraw(assetId, static_cast<PositiveBalanceChange>(-(balanceChange + 1)) + 1))
+        {
+            return {BalanceOpResult::Insufficient};
+        }
+
         if (balanceChange == 0)
         {
             return {BalanceOpResult::Success};
@@ -130,7 +172,7 @@ namespace advmatch
 
         if (balanceChange > 0)
         {
-            if (util::willAddOverflow(balance->active, balanceChange))
+            if (static_cast<WideBalance>(balance->active) + balance->reserved + balanceChange > std::numeric_limits<Balance>::max())
             {
                 return {BalanceOpResult::Overflow, "Active balance would overflow"};
             }
@@ -158,6 +200,11 @@ namespace advmatch
 
     BalanceResult Account::reserveBalance(AssetId assetId, PositiveBalanceChange amount)
     {
+        if (!this->canWithdraw(assetId, amount))
+        {
+            return {BalanceOpResult::Insufficient};
+        }
+
         if (amount == 0)
         {
             return {BalanceOpResult::Success};

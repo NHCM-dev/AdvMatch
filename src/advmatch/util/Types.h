@@ -10,6 +10,10 @@
 #include <cstdint>
 #include <functional>
 
+#if !defined(__SIZEOF_INT128__) || defined(ADVMATCH_FORCE_PORTABLE_WIDE_BALANCE)
+#include <boost/multiprecision/cpp_int.hpp>
+#endif
+
 namespace advmatch
 {
     using UserId = std::uint64_t;
@@ -26,6 +30,12 @@ namespace advmatch
     // Balance is a stored ledging value. BalanceChange is a signed delta that
     // can credit or debit a balance. PositiveBalanceChange is a non-negative
     // amount used by reserve, release, consume, and settlement operations.
+#if defined(__SIZEOF_INT128__) && !defined(ADVMATCH_FORCE_PORTABLE_WIDE_BALANCE)
+    using WideBalance = __int128;
+#else
+    using WideBalance = boost::multiprecision::int128_t;
+#endif
+
     using Balance = std::int64_t;
     using BalanceChange = std::int64_t;
     using PositiveBalanceChange = std::uint64_t;

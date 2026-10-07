@@ -1,141 +1,180 @@
 #include "ContractRiskEngine.h"
+#include "advmatch/util/ContractMath.h"
+#include "advmatch/matching/contracts/LiquidateEngine.h"
 
-#include "advmatch/ledging/account/Account.h"
-#include "advmatch/ledging/User.h"
-#include "../../../trading/Symbol.h"
-
-#include <limits>
+#include <algorithm>
 
 namespace advmatch
 {
-    std::optional<Balance> ContractRiskEngine::requiredReservationBalance(const BasicOrder& order, Price price,
-                                                                          Quantity remaining,
-                                                                          Balance estimatedMarketBuyBalance) noexcept
+    PlaceOrderState ContractRiskEngine::placeState(ContractState state) noexcept
     {
-        if (order.orderType == OrderType::Market)
+        switch (state)
         {
-            return estimatedMarketBuyBalance < 0
-                       ? std::nullopt
-                       : std::optional<Balance>(estimatedMarketBuyBalance);
+            case ContractState::InvalidLeverage:
+                return PlaceOrderState::InvalidLeverage;
+            case ContractState::InvalidMarginMode:
+                return PlaceOrderState::InvalidMarginMode;
+            case ContractState::InvalidPrice:
+                return PlaceOrderState::InvalidPrice;
+            case ContractState::InvalidTimestamp:
+                return PlaceOrderState::InvalidTimestamp;
+            case ContractState::Expired:
+                return PlaceOrderState::ContractExpired;
+            case ContractState::FundingRequired:
+                return PlaceOrderState::FundingRequired;
+            case ContractState::PositionNotFound:
+                return PlaceOrderState::PositionNotFound;
+            case ContractState::ReduceOnlyViolation:
+                return PlaceOrderState::ReduceOnlyViolation;
+            case ContractState::Overflow:
+                return PlaceOrderState::Overflow;
+            default:
+                return PlaceOrderState::InvalidSymbol;
         }
+    }
 
-        if (price != 0 && remaining > static_cast<Quantity>(std::numeric_limits<Balance>::max()) / price)
+    std::optional<Balance> ContractRiskEngine::reservation(const OrderNode& node, Price price, Quantity quantity) noexcept
+    {
+        if (!node.contractMarket || !node.contractParticipant || node.leverage == 0)
         {
             return std::nullopt;
         }
 
-        // Until leverage and risk tiers are attached to Symbol, contract
-        // orders reserve their full notional in the quote asset (1x leverage).
-        return static_cast<Balance>(price * remaining);
+        const ContractMarket& market = *node.contractMarket;
+        const auto upper = ContractMath::balance(static_cast<WideBalance>(market.markPrice) * (RATE_SCALE + market.spec.priceBandRate) / RATE_SCALE);
+        if (!upper)
+        {
+            return std::nullopt;
+        }
+
+        const auto value = ContractMath::notional(std::max(price, static_cast<Price>(*upper)), quantity, market.spec.contractMultiplier);
+        if (!value || (!node.reduceOnly && *value > market.spec.maxPositionNotional))
+        {
+            return std::nullopt;
+        }
+
+        const Balance fee = ContractMath::rate(*value, std::max(market.spec.makerFeeRate, market.spec.takerFeeRate), true);
+        return ContractMath::balance(static_cast<WideBalance>(fee) + (node.reduceOnly ? 0 : ContractMath::margin(*value, node.leverage)));
     }
 
-    bool ContractRiskEngine::hasAvailableReservation(const OrderNode& node, Balance requiredBalance) noexcept
+    bool ContractRiskEngine::executable(const OrderNode& node, Price price) noexcept
     {
-        if (!node.account || node.account->getAccountType() != AccountType::Contract ||
-            requiredBalance < 0 || node.reservedBalance < 0)
+        const ContractMarket& market = *node.contractMarket;
+        const WideBalance scaled = static_cast<WideBalance>(price) * RATE_SCALE;
+        const WideBalance mark = market.markPrice;
+        if (scaled < mark * (RATE_SCALE - market.spec.priceBandRate) || scaled > mark * (RATE_SCALE + market.spec.priceBandRate))
         {
             return false;
         }
 
+        if (node.basicOrder.orderType == OrderType::Market)
+        {
+            return node.basicOrder.orderSide == OrderSide::Bid ? price <= node.executionPriceLimit : price >= node.executionPriceLimit;
+        }
+
+        return true;
+    }
+
+    bool ContractRiskEngine::hasAvailableReservation(const OrderNode& node, Balance requiredBalance) noexcept
+    {
         if (requiredBalance <= node.reservedBalance)
         {
             return true;
         }
 
-        const PositiveBalanceChange additionalAmount = static_cast<PositiveBalanceChange>(
-            requiredBalance - node.reservedBalance);
-        const Balance availableBalance = node.account->queryActiveBalance(node.reservationAssetId).value_or(0);
-        return availableBalance >= 0 && static_cast<PositiveBalanceChange>(availableBalance) >= additionalAmount;
+        const ContractParticipant& participant = *node.contractParticipant;
+        const Balance additional = requiredBalance - node.reservedBalance;
+        const Balance active = node.account->queryActiveBalance(node.reservationAssetId).value_or(0);
+        const CrossMarginState& cross = *participant.crossMargin;
+        return active >= additional && !cross.liquidating &&
+            static_cast<WideBalance>(active) + cross.unrealizedPnL - additional >= cross.initialMargin;
     }
 
-    PlaceOrderRiskDecision ContractRiskEngine::checkPlaceOrder(const OrderNode& node,
-                                                               Balance estimatedMarketBuyBalance) const
+    PlaceOrderRiskDecision ContractRiskEngine::checkPlaceOrder(const OrderNode& node, Balance) const
     {
-        const BasicOrder& order = node.basicOrder;
-        const User& user = *node.user;
-        const Symbol& symbol = *node.symbol;
-
-        if (symbol.symbolId != order.symbolId || symbol.symbolType == SymbolType::Spot)
+        if (!node.contractMarket || !node.contractParticipant || node.account->getAccountType() != AccountType::Contract)
         {
             return PlaceOrderRiskDecision(PlaceOrderState::InvalidSymbol);
         }
 
-        if (user.getUserId() != order.userId || node.account != &user.getContractAccount())
+        const ContractMarket& market = *node.contractMarket;
+        const Position& position = *node.contractParticipant->position;
+        if (market.status != ContractStatus::Trading || (market.spec.expiryTimestamp != 0 && market.commandTimestamp >= market.spec.expiryTimestamp))
         {
-            return PlaceOrderRiskDecision(PlaceOrderState::UserNotFound);
+            return PlaceOrderRiskDecision(PlaceOrderState::ContractExpired);
         }
 
-        const auto requiredBalance = requiredReservationBalance(order, order.getPrice(), order.getUnfilledQuantity(),
-                                                                estimatedMarketBuyBalance);
-        if (!requiredBalance)
+        if (node.reduceOnly && (position.positionSize == 0 || node.basicOrder.getUnfilledQuantity() > position.positionSize))
+        {
+            return PlaceOrderRiskDecision(PlaceOrderState::ReduceOnlyViolation);
+        }
+
+        if (!node.liquidationOrder && (position.liquidating || node.contractParticipant->crossMargin->liquidating ||
+            (position.positionSize != 0 && LiquidateEngine::required(market, *node.contractParticipant))))
+        {
+            return PlaceOrderRiskDecision(PlaceOrderState::Liquidating);
+        }
+
+        if (node.liquidationOrder)
+        {
+            return PlaceOrderRiskDecision(Balance(0));
+        }
+
+        const auto required = reservation(node, node.basicOrder.getPrice(), node.basicOrder.getUnfilledQuantity());
+        if (!required)
         {
             return PlaceOrderRiskDecision(PlaceOrderState::Overflow);
         }
 
-        if (!hasAvailableReservation(node, *requiredBalance))
-        {
-            return PlaceOrderRiskDecision(PlaceOrderState::InsufficientBalance);
-        }
-
-        return PlaceOrderRiskDecision(*requiredBalance);
+        return hasAvailableReservation(node, *required) ? PlaceOrderRiskDecision(*required)
+            : PlaceOrderRiskDecision(PlaceOrderState::InsufficientBalance);
     }
 
     ModifyOrderRiskDecision ContractRiskEngine::checkModifyPrice(const OrderNode& node, Price price) const
     {
-        const auto requiredBalance = requiredReservationBalance(node.basicOrder, price,
-                                                                node.basicOrder.getUnfilledQuantity());
-        if (!requiredBalance)
+        const ContractMarket& market = *node.contractMarket;
+        if (market.status != ContractStatus::Trading || node.contractParticipant->position->liquidating || node.contractParticipant->crossMargin->liquidating ||
+            (market.spec.expiryTimestamp != 0 && market.commandTimestamp >= market.spec.expiryTimestamp))
+        {
+            return ModifyOrderRiskDecision(ModifyOrderState::TradingDisabled);
+        }
+
+        const auto required = reservation(node, price, node.basicOrder.getUnfilledQuantity());
+        if (!required)
         {
             return ModifyOrderRiskDecision(ModifyOrderState::Overflow);
         }
 
-        if (!hasAvailableReservation(node, *requiredBalance))
-        {
-            return ModifyOrderRiskDecision(ModifyOrderState::InsufficientBalance);
-        }
-
-        return ModifyOrderRiskDecision(*requiredBalance);
+        return hasAvailableReservation(node, *required) ? ModifyOrderRiskDecision(*required)
+            : ModifyOrderRiskDecision(ModifyOrderState::InsufficientBalance);
     }
 
-    ModifyOrderRiskDecision ContractRiskEngine::checkModifyQuantity(const OrderNode& node,
-                                                                    QuantityChange quantityChange) const
+    ModifyOrderRiskDecision ContractRiskEngine::checkModifyQuantity(const OrderNode& node, QuantityChange change) const
     {
-        const Quantity currentQuantity = node.basicOrder.getUnfilledQuantity();
-        Quantity newQuantity = currentQuantity;
-
-        if (quantityChange > 0)
+        const WideBalance quantity = static_cast<WideBalance>(node.basicOrder.getUnfilledQuantity()) + change;
+        if (quantity < 0 || quantity > std::numeric_limits<Quantity>::max())
         {
-            const Quantity increase = static_cast<Quantity>(quantityChange);
-            if (increase > std::numeric_limits<Quantity>::max() - currentQuantity)
-            {
-                return ModifyOrderRiskDecision(ModifyOrderState::Overflow);
-            }
-
-            newQuantity += increase;
-        }
-        else if (quantityChange < 0)
-        {
-            const Quantity decrease = static_cast<Quantity>(-(quantityChange + 1)) + 1;
-            if (decrease > currentQuantity)
-            {
-                return ModifyOrderRiskDecision(ModifyOrderState::InsufficientQuantity);
-            }
-
-            newQuantity -= decrease;
+            return ModifyOrderRiskDecision(ModifyOrderState::InvalidQuantity);
         }
 
-        const auto requiredBalance = requiredReservationBalance(node.basicOrder, node.basicOrder.getPrice(),
-                                                                newQuantity);
-        if (!requiredBalance)
+        if (node.reduceOnly && quantity > node.contractParticipant->position->positionSize)
+        {
+            return ModifyOrderRiskDecision(ModifyOrderState::ReduceOnlyViolation);
+        }
+
+        const auto required = reservation(node, node.basicOrder.getPrice(), static_cast<Quantity>(quantity));
+        if (!required)
         {
             return ModifyOrderRiskDecision(ModifyOrderState::Overflow);
         }
 
-        if (!hasAvailableReservation(node, *requiredBalance))
+        const auto permission = this->checkModifyPrice(node, node.basicOrder.getPrice());
+        if (!permission)
         {
-            return ModifyOrderRiskDecision(ModifyOrderState::InsufficientBalance);
+            return permission;
         }
 
-        return ModifyOrderRiskDecision(*requiredBalance);
+        return hasAvailableReservation(node, *required) ? ModifyOrderRiskDecision(*required)
+            : ModifyOrderRiskDecision(ModifyOrderState::InsufficientBalance);
     }
 }

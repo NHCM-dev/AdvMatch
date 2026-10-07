@@ -49,8 +49,12 @@ namespace advmatch
             return false;
         }
 
+        if (!this->accountManager.removeAccounts(userId))
+        {
+            return false;
+        }
+
         iterator->second.deactivate();
-        static_cast<void>(this->accountManager.removeAccounts(userId));
         --this->activeUserCount;
         return true;
     }

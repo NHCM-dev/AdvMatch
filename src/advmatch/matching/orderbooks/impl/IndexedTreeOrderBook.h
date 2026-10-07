@@ -70,6 +70,7 @@ namespace advmatch
         };
 
         SymbolId bookSymbolId;
+        MatchPolicy* matchPolicy = nullptr;
         Levels<std::greater<>> bids;
         Levels<std::less<>> asks;
 
@@ -82,7 +83,8 @@ namespace advmatch
         void unlink(OrderNode& node, Quantity remaining) noexcept;
 
     public:
-        explicit IndexedTreeOrderBook(SymbolId symbolId) : bookSymbolId(symbolId)
+        explicit IndexedTreeOrderBook(SymbolId symbolId, MatchPolicy* matchPolicy = nullptr)
+            : bookSymbolId(symbolId), matchPolicy(matchPolicy)
         {
         }
 
@@ -144,7 +146,7 @@ namespace advmatch
             }
         }
 
-        void forEachOrder(OrderSide side, const std::function<void(const BasicOrder&)>& visitor) const override
+        void forEachOrderWhile(OrderSide side, const std::function<bool(const BasicOrder&)>& visitor) const override
         {
             const auto visit = [&](const auto& levels)
             {
@@ -152,7 +154,10 @@ namespace advmatch
                 {
                     for (const OrderNode* node = level.head; node != nullptr; node = node->next)
                     {
-                        visitor(node->basicOrder);
+                        if (!visitor(node->basicOrder))
+                        {
+                            return;
+                        }
                     }
                 }
             };
@@ -165,6 +170,15 @@ namespace advmatch
             {
                 visit(this->asks);
             }
+        }
+
+        void forEachOrder(OrderSide side, const std::function<void(const BasicOrder&)>& visitor) const override
+        {
+            this->forEachOrderWhile(side, [&](const BasicOrder& order)
+            {
+                visitor(order);
+                return true;
+            });
         }
 
     };

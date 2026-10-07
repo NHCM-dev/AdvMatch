@@ -90,6 +90,11 @@ namespace advmatch
             return false;
         }
 
+        if (static_cast<ContractAccount*>(contractAccount)->hasTradingExposure())
+        {
+            return false;
+        }
+
         spotAccount->deactivate();
         contractAccount->deactivate();
         this->activeAccountCount -= 2;

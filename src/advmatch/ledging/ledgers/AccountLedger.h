@@ -11,6 +11,8 @@ namespace advmatch
     class AccountLedger
     {
     protected:
+        virtual void reservationChanged(OrderNode& node, Balance previousBalance) const noexcept;
+
         [[nodiscard]]
         virtual Account& accountFor(User& user) const noexcept = 0;
 

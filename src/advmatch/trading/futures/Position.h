@@ -5,6 +5,7 @@
 #ifndef ADVMATCH_POSITION_H
 #define ADVMATCH_POSITION_H
 #include "../../util/Types.h"
+#include <optional>
 
 namespace advmatch
 {
@@ -35,6 +36,16 @@ namespace advmatch
 
     struct Position
     {
+        Position(PositionId positionId, UserId userId, SymbolId symbolId, PositionSide side,
+            MarginMode mode, LeverageMultiplier leverage, Quantity multiplier, Timestamp timestamp)
+            : positionId(positionId), userId(userId), symbolId(symbolId), positionSide(side), marginMode(mode),
+              averageEntryPrice(0), predictLiquidatePrice(0), predictBankruptPrice(0), positionSize(0),
+              realizedPnL(0), updatedUnrealizedPnl(0), initialMargin(0), mmr(0), maintenanceMargin(0),
+              closed(true), contractMultiplier(multiplier), leverage(leverage), createdTimestamp(timestamp),
+              updatedTimestamp(timestamp)
+        {
+        }
+
         const PositionId positionId;
         const UserId userId;
         const SymbolId symbolId;
@@ -59,11 +70,21 @@ namespace advmatch
 
         bool closed;
 
+        // Exact entry value avoids losing PnL when averageEntryPrice rounds.
+        Balance entryNotional = 0;
+        Balance estimatedCloseFee = 0;
+        Quantity contractMultiplier = 1;
+        LeverageMultiplier leverage = 1;
+        BalanceChange fundingPnL = 0;
+        Balance paidFees = 0;
+        bool liquidating = false;
+        bool managed = false;
+
         const Timestamp createdTimestamp;
         Timestamp updatedTimestamp;
 
         [[nodiscard]]
-        BalanceChange getUnrealizedPnL(Price settlePrice) const;
+        std::optional<BalanceChange> getUnrealizedPnL(Price settlePrice) const noexcept;
     };
 
     struct PositionEntry

@@ -153,6 +153,21 @@ add_library(advmatch_core STATIC
     src/advmatch/management/AccountManager.h
     src/advmatch/management/AssetManager.cpp
     src/advmatch/management/AssetManager.h
+    src/advmatch/trading/futures/Contract.h
+    src/advmatch/util/ContractMath.h
+    src/advmatch/util/ContractUtil.h
+    src/advmatch/matching/contracts/ContractMarket.h
+    src/advmatch/matching/contracts/ContractSettlementBatch.h
+    src/advmatch/matching/contracts/ContractEngine.h
+    src/advmatch/matching/contracts/LiquidateEngine.h
+    src/advmatch/matching/contracts/FundingRateEngine.h
+    src/advmatch/matching/contracts/DeliveryEngine.h
+    src/advmatch/matching/settleengines/impl/ContractSettleEngine.h
+    src/advmatch/matching/contracts/ContractEngine.cpp
+    src/advmatch/matching/contracts/LiquidateEngine.cpp
+    src/advmatch/matching/contracts/FundingRateEngine.cpp
+    src/advmatch/matching/contracts/DeliveryEngine.cpp
+    src/advmatch/matching/settleengines/impl/ContractSettleEngine.cpp
     src/advmatch/matching/MatchingEngine.cpp
     src/advmatch/matching/MatchingEngine.h
     src/advmatch/matching/Matching.h
@@ -228,6 +243,10 @@ if(ADVMATCH_BUILD_JNI)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(advmatch_contract_tests tests/contracts.cpp)
+    target_link_libraries(advmatch_contract_tests PRIVATE AdvMatch::core)
+    advmatch_configure_runtime(advmatch_contract_tests)
+    add_test(NAME advmatch_contract_tests COMMAND advmatch_contract_tests)
     add_executable(advmatch_smoke tests/smoke.cpp)
     target_compile_definitions(advmatch_smoke PRIVATE ADVMATCH_EXPECTED_VERSION="${PROJECT_VERSION}")
     target_link_libraries(advmatch_smoke PRIVATE AdvMatch::core advmatch)

@@ -1,59 +1,27 @@
-//
-// Created by NHCM on 2026/9/23.
-//
+#ifndef ADVMATCH_CONTRACT_UTIL_H
+#define ADVMATCH_CONTRACT_UTIL_H
 
-#ifndef ADVMATCH_CONTRACTUTIL_H
-#define ADVMATCH_CONTRACTUTIL_H
-#include "advmatch/trading/Asset.h"
-#include "advmatch/trading/OrderTypes.h"
-#include "advmatch/trading/futures/Position.h"
+#include "ContractMath.h"
 
 namespace advmatch::util
 {
     [[nodiscard]]
-    static Balance getMaintenanceMargin(MMRRate mmr, Balance notionalPosition)
+    inline std::optional<Balance> getMaintenanceMargin(MMRRate mmr, Balance notionalPosition) noexcept
     {
-        if (notionalPosition < 0)
+        if (notionalPosition < 0 || mmr > RATE_SCALE)
         {
-            throw std::invalid_argument(
-                "Notional position cannot be negative"
-            );
+            return std::nullopt;
         }
 
-        if (mmr > RATE_SCALE)
-        {
-            throw std::range_error(
-                "MMR cannot exceed 100%"
-            );
-        }
-
-        const __int128 numerator =
-            static_cast<__int128>(notionalPosition) *
-            static_cast<__int128>(mmr);
-
-        // Risk requirement should round upward instead of downward.
-        const __int128 result =
-            (numerator + RATE_SCALE - 1) / RATE_SCALE;
-
-        if (result > std::numeric_limits<Balance>::max())
-        {
-            throw std::overflow_error(
-                "Maintenance margin overflow"
-            );
-        }
-
-        return static_cast<Balance>(result);
+        return ContractMath::rate(notionalPosition, mmr, true);
     }
 
     [[nodiscard]]
-    static Balance getMaintenanceMargin(MMRRate mmr, Price settlePrice, Quantity positionSize)
+    inline std::optional<Balance> getMaintenanceMargin(MMRRate mmr, Price settlePrice, Quantity positionSize) noexcept
     {
-        if (willMultiplyOverflow(settlePrice, positionSize))
-        {
-            throw std::invalid_argument("notional position value will overflow");
-        }
-        return getMaintenanceMargin(mmr, static_cast<Balance>(settlePrice * positionSize));
+        const auto notional = ContractMath::notional(settlePrice, positionSize);
+        return notional ? getMaintenanceMargin(mmr, *notional) : std::nullopt;
     }
-} // advmatch
+}
 
-#endif //ADVMATCH_CONTRACTUTIL_H
+#endif // ADVMATCH_CONTRACT_UTIL_H

@@ -47,6 +47,8 @@ namespace advmatch
         void removeBalance(AssetId assetId);
 
     protected:
+        virtual bool canWithdraw(AssetId assetId, PositiveBalanceChange amount) const noexcept;
+
         Account(AccountId accountId, UserId userId)
             : accountId(accountId), userId(userId)
         {
@@ -54,6 +56,12 @@ namespace advmatch
 
     public:
         virtual ~Account() = default;
+
+        [[nodiscard]]
+        bool canApplyBalanceChange(AssetId assetId, BalanceChange activeChange, BalanceChange reservedChange) const noexcept;
+
+        [[nodiscard]]
+        BalanceResult applyBalanceChange(AssetId assetId, BalanceChange activeChange, BalanceChange reservedChange);
 
         Account(const Account&) = delete;
         Account& operator=(const Account&) = delete;

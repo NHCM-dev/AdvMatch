@@ -8,6 +8,7 @@ namespace advmatch
     class ContractAccountLedger final : public AccountLedger
     {
     protected:
+        void reservationChanged(OrderNode& node, Balance previousBalance) const noexcept override;
         [[nodiscard]]
         Account& accountFor(User& user) const noexcept override;
 

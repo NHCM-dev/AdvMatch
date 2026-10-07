@@ -1,33 +1,23 @@
-//
-// Created by NHCM on 2026/9/23.
-//
+#ifndef ADVMATCH_CONTRACT_RISK_ENGINE_H
+#define ADVMATCH_CONTRACT_RISK_ENGINE_H
 
-#ifndef ADVMATCH_CONTRACTRISKENGINE_H
-#define ADVMATCH_CONTRACTRISKENGINE_H
-#include "advmatch/matching/riskengines/RiskEngine.h"
+#include "../RiskEngine.h"
+#include "advmatch/matching/contracts/ContractMarket.h"
 
 namespace advmatch
 {
     class ContractRiskEngine final : public RiskEngine
     {
-        [[nodiscard]]
-        static std::optional<Balance> requiredReservationBalance(const BasicOrder& order, Price price,
-                                                                 Quantity remaining,
-                                                                 Balance estimatedMarketBuyBalance = 0) noexcept;
-
-        [[nodiscard]]
         static bool hasAvailableReservation(const OrderNode& node, Balance requiredBalance) noexcept;
 
     public:
-        [[nodiscard]]
+        static PlaceOrderState placeState(ContractState state) noexcept;
+        static std::optional<Balance> reservation(const OrderNode& node, Price price, Quantity quantity) noexcept;
+        static bool executable(const OrderNode& node, Price price) noexcept;
         PlaceOrderRiskDecision checkPlaceOrder(const OrderNode& node, Balance estimatedMarketBuyBalance) const override;
-
-        [[nodiscard]]
-        ModifyOrderRiskDecision checkModifyPrice(const OrderNode& order, Price price) const override;
-
-        [[nodiscard]]
-        ModifyOrderRiskDecision checkModifyQuantity(const OrderNode& order, QuantityChange quantityChange) const override;
+        ModifyOrderRiskDecision checkModifyPrice(const OrderNode& node, Price price) const override;
+        ModifyOrderRiskDecision checkModifyQuantity(const OrderNode& node, QuantityChange change) const override;
     };
-} // advmatch
+}
 
-#endif //ADVMATCH_CONTRACTRISKENGINE_H
+#endif // ADVMATCH_CONTRACT_RISK_ENGINE_H

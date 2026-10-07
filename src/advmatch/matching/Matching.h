@@ -7,6 +7,8 @@
 
 namespace advmatch
 {
+    struct ContractParticipant;
+    struct ContractMarket;
     class Account;
     class User;
     struct Symbol;
@@ -31,7 +33,15 @@ namespace advmatch
         const Symbol* const symbol;
         const AssetId baseAssetId;
         const AssetId quoteAssetId;
-        const AssetId reservationAssetId;
+        AssetId reservationAssetId;
+        ContractMarket* contractMarket = nullptr;
+        ContractParticipant* contractParticipant = nullptr;
+        OrderNode* contractPrev = nullptr;
+        OrderNode* contractNext = nullptr;
+        LeverageMultiplier leverage = 1;
+        bool reduceOnly = false;
+        bool liquidationOrder = false;
+        Price executionPriceLimit = 0;
         Balance reservedBalance = 0;
         PriceLevel* priceLevel = nullptr;
         OrderNode* prev = nullptr;

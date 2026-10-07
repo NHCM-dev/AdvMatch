@@ -3,6 +3,7 @@
 
 #include "../management/UserManager.h"
 #include "Matching.h"
+#include "advmatch/trading/futures/Contract.h"
 #include "TradeBuffer.h"
 #include "orderbooks/OrderBook.h"
 #include "advmatch/ledging/ledgers/impl/SpotAccountLedger.h"
@@ -19,12 +20,29 @@
 
 namespace advmatch
 {
+    class ContractEngine;
     // Single-writer matching state. Queue consumers call this object; producer
     // threads must not call its mutating methods directly. The referenced
     // managers must outlive this engine because OrderNode caches their stable
     // User and Symbol addresses.
     class MatchingEngine
     {
+        struct BookServices
+        {
+            RiskEngine* risk = nullptr;
+            AccountLedger* ledger = nullptr;
+            SettleEngine* settlement = nullptr;
+        };
+
+        std::unique_ptr<ContractEngine> contracts;
+        std::vector<BookServices> bookServices;
+        friend class ContractEngine;
+        friend class LiquidateEngine;
+        friend class ContractSettleEngine;
+
+        PlaceOrderResult submitOrder(UserId userId, SymbolId symbolId, OrderSide side, OrderType type,
+            TimeInForce timeInForce, Price price, Quantity quantity, Timestamp timestamp, TradeBuffer& trades,
+            const ContractOrderOptions* options, bool liquidation);
         UserManager& userManager;
         SymbolManager& symbolManager;
         SpotAccountLedger accountLedger;
@@ -46,10 +64,15 @@ namespace advmatch
         OrderBook* findBook(SymbolId symbolId) noexcept;
 
     public:
-        explicit MatchingEngine(UserManager& userManager, SymbolManager& symbolManager)
-            : userManager(userManager), symbolManager(symbolManager), settleEngine(this->accountLedger)
-        {
-        }
+        explicit MatchingEngine(UserManager& userManager, SymbolManager& symbolManager);
+        ~MatchingEngine();
+
+        ContractEngine& getContractEngine() noexcept;
+        const ContractEngine& getContractEngine() const noexcept;
+        ContractResult addContractBook(SymbolId symbolId, const ContractSpec& spec, Price markPrice, Timestamp timestamp);
+        PlaceOrderResult placeContractOrder(UserId userId, SymbolId symbolId, OrderSide side, OrderType type,
+            TimeInForce timeInForce, Price price, Quantity quantity, Timestamp timestamp,
+            const ContractOrderOptions& options, TradeBuffer& trades);
 
         // activeOrderCount is retained for source compatibility. Reservation
         // state is stored directly in OrderNode, so it needs no separate table.

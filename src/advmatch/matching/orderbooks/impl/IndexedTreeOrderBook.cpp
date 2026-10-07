@@ -181,17 +181,38 @@ namespace advmatch
             }
 
             OrderNode& maker = *level->head;
-            const Quantity quantity = std::min(taker.basicOrder.getUnfilledQuantity(), maker.basicOrder.getUnfilledQuantity());
+            Quantity quantity = std::min(taker.basicOrder.getUnfilledQuantity(), maker.basicOrder.getUnfilledQuantity());
+            if (this->matchPolicy)
+            {
+                const MatchAction action = this->matchPolicy->prepare(maker, taker, level->price, quantity);
+                if (action == MatchAction::CancelMaker)
+                {
+                    static_cast<void>(this->cancel(maker, timestamp));
+                    this->matchPolicy->cancelled(maker);
+                    continue;
+                }
+
+                if (action == MatchAction::CancelTaker)
+                {
+                    static_cast<void>(taker.basicOrder.cancel(timestamp));
+                    this->matchPolicy->cancelled(taker);
+                    break;
+                }
+            }
 
             appendTrade(trades, {maker.basicOrder.orderId, taker.basicOrder.orderId, level->price, quantity}, maker,
                         taker);
             [[maybe_unused]] auto makerResult = maker.basicOrder.fill(quantity, timestamp);
             [[maybe_unused]] auto takerResult = taker.basicOrder.fill(quantity, timestamp);
             level->totalQuantity -= quantity;
-
             if (maker.basicOrder.getUnfilledQuantity() == 0)
             {
                 unlink(maker, 0);
+            }
+
+            if (this->matchPolicy)
+            {
+                this->matchPolicy->commit(trades[trades.size() - 1], maker, taker, timestamp);
             }
         }
     }
@@ -230,7 +251,7 @@ namespace advmatch
             return reject(PlaceOrderState::InvalidTimeInForce);
         }
 
-        if (order.timeInForce == TimeInForce::FOK && !canFillAll(order))
+        if (order.timeInForce == TimeInForce::FOK && (!canFillAll(order) || (this->matchPolicy && !this->matchPolicy->canFillAll(node, *this))))
         {
             return reject(PlaceOrderState::InsufficientLiquidity);
         }
@@ -248,7 +269,7 @@ namespace advmatch
 
         match(node, timestamp, trades);
 
-        if (order.getUnfilledQuantity() != 0)
+        if (order.getUnfilledQuantity() != 0 && !isOrderStatusTerminal(order.getStatus()))
         {
             if (order.orderType == OrderType::Limit && order.timeInForce == TimeInForce::GTC)
             {
@@ -303,7 +324,7 @@ namespace advmatch
 
         match(node, timestamp, trades);
 
-        if (order.getUnfilledQuantity() != 0)
+        if (order.getUnfilledQuantity() != 0 && !isOrderStatusTerminal(order.getStatus()))
         {
             append(node);
         }

@@ -7,15 +7,65 @@
 
 namespace advmatch
 {
+    struct CrossMarginState
+    {
+        Balance initialMargin = 0;
+        Balance maintenanceMargin = 0;
+        Balance liquidationFeeReserve = 0;
+        BalanceChange unrealizedPnL = 0;
+        Balance orderReservation = 0;
+        bool liquidating = false;
+    };
+
     class ContractAccount : public Account
     {
+        NodeHashMap<AssetId, CrossMarginState> crossMargins;
+        // These maps index stable Position nodes; never borrow addresses of
+        // index entries across insertion/erasure.
+        DenseMap<PositionId, const Position*> activePositions;
+        DenseMap<PositionId, const Position*> tradingPositions;
+        std::size_t managedPositionCount = 0;
+        std::size_t managedOrderCount = 0;
+        friend class ContractSettleEngine;
+
     protected:
+        bool canWithdraw(AssetId assetId, PositiveBalanceChange amount) const noexcept override;
+
         ContractAccount(AccountId accountId, UserId userId)
             : Account(accountId, userId)
         {
         }
 
     public:
+        // Stable state address. Matching engines update these cached totals;
+        // queries and transfers never scan all positions in an account.
+        template <typename Visitor>
+        void forEachActivePosition(Visitor&& visitor) const
+        {
+            for (const auto& [id, position] : this->activePositions)
+            {
+                visitor(id, *position);
+            }
+        }
+
+        // Includes open positions and positions with pending orders.
+        template <typename Visitor>
+        void forEachTradingPosition(Visitor&& visitor) const
+        {
+            for (const auto& [id, position] : this->tradingPositions)
+            {
+                visitor(id, *position);
+            }
+        }
+
+        bool hasTradingExposure() const noexcept
+        {
+            return this->managedPositionCount != 0 || this->managedOrderCount != 0;
+        }
+
+        CrossMarginState& crossMargin(AssetId assetId);
+        const CrossMarginState* findCrossMargin(AssetId assetId) const noexcept;
+
         [[nodiscard]]
         AccountType getAccountType() const noexcept final
         {

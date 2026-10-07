@@ -9,6 +9,10 @@
 
 namespace advmatch
 {
+    void AccountLedger::reservationChanged(OrderNode&, Balance) const noexcept
+    {
+    }
+
     bool AccountLedger::reserve(OrderNode& node, Balance requiredBalance) const
     {
         if (!node.account || node.account->getAccountType() != this->getAccountType() ||
@@ -29,7 +33,9 @@ namespace advmatch
             return false;
         }
 
+        const Balance previousBalance = node.reservedBalance;
         node.reservedBalance = requiredBalance;
+        this->reservationChanged(node, previousBalance);
         return true;
     }
 
@@ -53,7 +59,9 @@ namespace advmatch
             throw std::logic_error("ledging reservation cannot be released");
         }
 
+        const Balance previousBalance = node.reservedBalance;
         node.reservedBalance = requiredBalance;
+        this->reservationChanged(node, previousBalance);
     }
 
     void AccountLedger::releaseAll(OrderNode& node) const
@@ -79,7 +87,9 @@ namespace advmatch
             throw std::logic_error("ledging reservation cannot be consumed");
         }
 
+        const Balance previousBalance = node.reservedBalance;
         node.reservedBalance -= static_cast<Balance>(amount);
+        this->reservationChanged(node, previousBalance);
     }
 
     void AccountLedger::credit(User& user, AssetId assetId, PositiveBalanceChange amount) const
