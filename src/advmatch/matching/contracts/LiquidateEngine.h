@@ -10,6 +10,8 @@ namespace advmatch
 
     class LiquidateEngine
     {
+        mutable SmallVector<ContractParticipant*, 8> targetsWorkspace;
+
     public:
         static void enqueue(ContractMarket& market, ContractParticipant& participant);
         static bool required(const ContractMarket& market, const ContractParticipant& participant) noexcept;

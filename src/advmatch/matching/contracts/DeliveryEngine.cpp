@@ -25,7 +25,8 @@ namespace advmatch
             return {price == 0 ? ContractState::InvalidPrice : ContractState::InvalidTimestamp};
         }
 
-        ContractSettlementBatch batch;
+        auto& batch = this->workspace;
+        batch.reset(market.activePositions.size());
         for (const auto& [id, participantPointer] : market.activePositions)
         {
             ContractParticipant& participant = *participantPointer;

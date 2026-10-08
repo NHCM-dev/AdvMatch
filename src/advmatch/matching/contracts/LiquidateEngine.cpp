@@ -32,15 +32,8 @@ namespace advmatch
             return equity <= static_cast<WideBalance>(state.maintenanceMargin) + state.liquidationFeeReserve;
         }
 
-        const auto notional = ContractMath::notional(market.markPrice, position.positionSize, market.spec.contractMultiplier);
-        if (!notional)
-        {
-            return true;
-        }
-
-        const Balance fee = ContractMath::rate(*notional, market.spec.liquidationFeeRate, true);
         return static_cast<WideBalance>(position.initialMargin) + position.updatedUnrealizedPnl <=
-            static_cast<WideBalance>(position.maintenanceMargin) + fee;
+            static_cast<WideBalance>(position.maintenanceMargin) + position.estimatedCloseFee;
     }
 
     ContractResult LiquidateEngine::execute(ContractEngine& contracts, MatchingEngine& matching,
@@ -63,7 +56,8 @@ namespace advmatch
             return {ContractState::LiquidationNotRequired};
         }
 
-        SmallVector<ContractParticipant*, 4> targets;
+        auto& targets = this->targetsWorkspace;
+        targets.clear();
         if (position.marginMode == MarginMode::Cross)
         {
             participant.crossMargin->liquidating = true;

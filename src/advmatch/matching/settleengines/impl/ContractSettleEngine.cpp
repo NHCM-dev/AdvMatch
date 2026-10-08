@@ -9,13 +9,45 @@
 
 namespace advmatch
 {
+    struct ContractSettleEngine::SimulationWorkspace
+    {
+        PositionPool positions;
+        BigAllocs<ContractParticipant> participants;
+        BigAllocs<StandardContractAccount, 1, 16> accountPool;
+        BigAllocs<OrderNode, 1, 64> orderPool;
+        ContractMarket market;
+        DenseMap<ContractAccount*, StandardContractAccount*> accounts;
+
+        void reset()
+        {
+            this->orderPool.clear();
+            this->accountPool.clear();
+            this->participants.clear();
+            this->market.participants.clear();
+            this->market.activePositions.clear();
+            this->market.orderParticipants.clear();
+            this->market.pendingLiquidations.clear();
+            this->market.participantPool = &this->participants;
+            this->accounts.clear();
+        }
+    };
+
+    ContractSettleEngine::ContractSettleEngine(ContractAccountLedger& accountLedger, MatchingEngine& matching)
+        : accountLedger(accountLedger), matching(matching)
+    {
+    }
+
+    ContractSettleEngine::~ContractSettleEngine() = default;
+
     ContractState ContractSettleEngine::plan(const ContractMarket& market, const ContractParticipant& participant,
         OrderSide side, Price price, Quantity quantity, Balance fee, Balance reservation,
-        Balance oldReservation, bool liquidation, PositionPlan& result, bool batch) noexcept
+        Balance oldReservation, bool liquidation, PositionPlan& result, bool batch,
+        std::optional<Balance> executionNotional, Account::BalanceUpdate* balanceUpdate) noexcept
     {
         const Position& position = *participant.position;
         const bool opening = (side == OrderSide::Bid) == (position.positionSide == PositionSide::Long);
-        const auto value = ContractMath::notional(price, quantity, market.spec.contractMultiplier);
+        const auto value = executionNotional ? executionNotional : ContractMath::notional(price, quantity, market.spec.contractMultiplier);
+        const auto balance = participant.account->captureBalance(market.symbol->quoteAssetId);
         if (!value || quantity == 0 || fee < 0 || reservation < 0)
         {
             return ContractState::Overflow;
@@ -80,7 +112,7 @@ namespace advmatch
             // Isolated losses cannot consume the trader's other collateral.
             // Cross liquidation can consume the whole cross collateral pool.
             const WideBalance available = isolated ? -static_cast<WideBalance>(marginChange) + result.realizedPnL - fee
-                : static_cast<WideBalance>(participant.account->queryActiveBalance(market.symbol->quoteAssetId).value_or(0)) + activeChange;
+                : static_cast<WideBalance>(balance.active()) + activeChange;
             if (available < 0 && (isolated || !batch))
             {
                 const auto deficit = ContractMath::balance(-available);
@@ -99,12 +131,17 @@ namespace advmatch
         }
 
         const auto active = ContractMath::balance(activeChange);
-        if (!active || (!batch && !participant.account->canApplyBalanceChange(market.symbol->quoteAssetId, *active, *reserved)))
+        const auto prepared = active && !batch ? participant.account->prepareBalanceChange(balance, *active, *reserved) : std::nullopt;
+        if (!active || (!batch && !prepared))
         {
             return ContractState::InsufficientBalance;
         }
 
         result.activeChange = *active;
+        if (balanceUpdate && prepared)
+        {
+            *balanceUpdate = *prepared;
+        }
         const CrossMarginState& cross = *participant.crossMargin;
         const auto crossInitial = ContractMath::balance(static_cast<WideBalance>(cross.initialMargin) + (isolated ? 0 : result.margin - position.initialMargin));
         const auto crossMaintenance = ContractMath::balance(static_cast<WideBalance>(cross.maintenanceMargin) + (isolated ? 0 : result.maintenanceMargin - position.maintenanceMargin));
@@ -118,7 +155,7 @@ namespace advmatch
         if (opening)
         {
             const WideBalance equity = isolated ? static_cast<WideBalance>(result.margin) + result.unrealizedPnL
-                : static_cast<WideBalance>(participant.account->queryActiveBalance(market.symbol->quoteAssetId).value_or(0)) + *active + *crossPnl;
+                : static_cast<WideBalance>(balance.active()) + *active + *crossPnl;
             const WideBalance requirement = isolated ? static_cast<WideBalance>(result.maintenanceMargin) + result.estimatedCloseFee : *crossInitial;
             if (isolated ? equity <= requirement : equity < requirement)
             {
@@ -130,12 +167,14 @@ namespace advmatch
     }
 
     void ContractSettleEngine::apply(ContractMarket& market, ContractParticipant& participant,
-        const PositionPlan& plan, Timestamp timestamp, bool applyAccount, bool applyCross, bool applyMarket)
+        const PositionPlan& plan, Timestamp timestamp, bool applyAccount, bool applyCross, bool applyMarket,
+        const Account::BalanceUpdate* balanceUpdate)
     {
         Position& position = *participant.position;
         if (applyAccount)
         {
-            const auto result = participant.account->applyBalanceChange(market.symbol->quoteAssetId, plan.activeChange, plan.reservedChange);
+            const auto result = balanceUpdate ? participant.account->commitBalanceChange(*balanceUpdate)
+                : participant.account->applyBalanceChange(market.symbol->quoteAssetId, plan.activeChange, plan.reservedChange);
             assert(result);
             static_cast<void>(result);
         }
@@ -265,7 +304,14 @@ namespace advmatch
         // untouched if any fill is ineligible. Ordinary GTC/IOC never allocate
         // these shadow accounts or orders.
         const ContractMarket& source = *taker.contractMarket;
-        ContractMarket shadow;
+        if (!this->simulation)
+        {
+            this->simulation = std::make_unique<SimulationWorkspace>();
+        }
+
+        auto& workspace = *this->simulation;
+        workspace.reset();
+        ContractMarket& shadow = workspace.market;
         shadow.symbol = source.symbol;
         shadow.spec = source.spec;
         shadow.markPrice = source.markPrice;
@@ -273,8 +319,7 @@ namespace advmatch
         shadow.insuranceBalance = source.insuranceBalance;
         shadow.clearingBalance = source.clearingBalance;
         shadow.feeBalance = source.feeBalance;
-        DenseMap<ContractAccount*, std::unique_ptr<StandardContractAccount>> accounts;
-        SmallVector<std::unique_ptr<OrderNode>, 16> orders;
+        auto& accounts = workspace.accounts;
         ContractSettleEngine policy(this->accountLedger, this->matching);
 
         const auto copyOrder = [&](const OrderNode& original) -> OrderNode&
@@ -284,32 +329,34 @@ namespace advmatch
             auto [accountIterator, newAccount] = accounts.try_emplace(originalAccount);
             if (newAccount)
             {
-                auto account = std::make_unique<StandardContractAccount>(originalAccount->getAccountId(), originalAccount->getUserId());
+                auto* account = workspace.accountPool.emplace(originalAccount->getAccountId(), originalAccount->getUserId(), &workspace.positions);
                 static_cast<void>(account->applyBalanceChange(source.symbol->quoteAssetId,
                     originalAccount->queryActiveBalance(source.symbol->quoteAssetId).value_or(0),
                     originalAccount->queryReservedBalance(source.symbol->quoteAssetId).value_or(0)));
                 account->crossMargin(source.symbol->quoteAssetId) = *originalParticipant.crossMargin;
                 account->managedPositionCount = originalAccount->managedPositionCount;
                 account->managedOrderCount = originalAccount->managedOrderCount;
-                accountIterator->second = std::move(account);
+                accountIterator->second = account;
             }
 
             ContractAccount& account = *accountIterator->second;
             const PositionId id = originalParticipant.position->positionId;
-            auto [iterator, newParticipant] = shadow.participants.try_emplace(id);
+            const bool newParticipant = !shadow.participants.contains(id);
+            ContractParticipant& participant = shadow.createParticipant(id);
             if (newParticipant)
             {
                 static_cast<void>(account.recordPosition(*originalParticipant.position));
-                iterator->second.market = &shadow;
-                iterator->second.account = &account;
-                iterator->second.position = account.findPosition(id);
-                iterator->second.crossMargin = &account.crossMargin(source.symbol->quoteAssetId);
+                participant.market = &shadow;
+                participant.account = &account;
+                participant.position = account.findPosition(id);
+                participant.crossMargin = &account.crossMargin(source.symbol->quoteAssetId);
             }
 
-            auto node = std::make_unique<OrderNode>(original.basicOrder, *original.user, account,
+            auto* node = workspace.orderPool.emplace(original.basicOrder, *original.user, account,
                 *original.symbol, original.baseAssetId, original.quoteAssetId);
             node->contractMarket = &shadow;
-            node->contractParticipant = &iterator->second;
+            node->contractParticipant = &participant;
+            ++participant.orderReferences;
             node->reservationAssetId = original.reservationAssetId;
             node->reservedBalance = original.reservedBalance;
             node->leverage = original.leverage;
@@ -317,8 +364,7 @@ namespace advmatch
             node->liquidationOrder = original.liquidationOrder;
             node->executionPriceLimit = original.executionPriceLimit;
             attach(*node);
-            orders.push_back(std::move(node));
-            return *orders.back();
+            return *node;
         };
 
         OrderNode& shadowTaker = copyOrder(taker);
@@ -405,7 +451,7 @@ namespace advmatch
             return MatchAction::CancelTaker;
         }
 
-        auto prepareNode = [&](OrderNode& node, PositionPlan& result, MMRRate feeRate)
+        auto prepareNode = [&](OrderNode& node, PositionPlan& result, Account::BalanceUpdate& balanceUpdate, MMRRate feeRate)
         {
             const Quantity remaining = node.basicOrder.getUnfilledQuantity() - quantity;
             const auto reservation = node.liquidationOrder || remaining == 0 ? std::optional<Balance>(0)
@@ -416,16 +462,16 @@ namespace advmatch
             }
 
             return plan(market, *node.contractParticipant, node.basicOrder.orderSide, price, quantity,
-                ContractMath::rate(*value, feeRate, true), *reservation, node.reservedBalance, node.liquidationOrder, result);
+                ContractMath::rate(*value, feeRate, true), *reservation, node.reservedBalance, node.liquidationOrder, result, false, value, &balanceUpdate);
         };
 
-        if (prepareNode(maker, this->makerPlan, market.spec.makerFeeRate) != ContractState::Success)
+        if (prepareNode(maker, this->makerPlan, this->makerBalance, market.spec.makerFeeRate) != ContractState::Success)
         {
             return MatchAction::CancelMaker;
         }
 
         const MMRRate takerFee = taker.liquidationOrder ? market.spec.liquidationFeeRate : market.spec.takerFeeRate;
-        if (prepareNode(taker, this->takerPlan, takerFee) != ContractState::Success)
+        if (prepareNode(taker, this->takerPlan, this->takerBalance, takerFee) != ContractState::Success)
         {
             return MatchAction::CancelTaker;
         }
@@ -447,8 +493,8 @@ namespace advmatch
     void ContractSettleEngine::commit(const Trade&, OrderNode& maker, OrderNode& taker, Timestamp timestamp)
     {
         ContractMarket& market = *taker.contractMarket;
-        apply(market, *maker.contractParticipant, this->makerPlan, timestamp, true, true, false);
-        apply(market, *taker.contractParticipant, this->takerPlan, timestamp, true, true, false);
+        apply(market, *maker.contractParticipant, this->makerPlan, timestamp, true, true, false, &this->makerBalance);
+        apply(market, *taker.contractParticipant, this->takerPlan, timestamp, true, true, false, &this->takerBalance);
         market.clearingBalance = static_cast<BalanceChange>(static_cast<WideBalance>(market.clearingBalance) - this->makerPlan.realizedPnL - this->takerPlan.realizedPnL);
         market.insuranceBalance -= this->makerPlan.insurance + this->takerPlan.insurance;
         market.feeBalance += this->makerPlan.fee + this->takerPlan.fee;

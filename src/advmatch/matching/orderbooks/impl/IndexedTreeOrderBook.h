@@ -35,6 +35,11 @@ namespace advmatch
 
             PriceLevel& getOrCreate(Price price)
             {
+                if (PriceLevel* level = this->find(price))
+                {
+                    return *level;
+                }
+
                 auto [it, inserted] = this->ordered.try_emplace(price, price);
                 if (inserted)
                 {

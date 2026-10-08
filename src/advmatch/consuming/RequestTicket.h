@@ -22,7 +22,8 @@ namespace advmatch::consuming
         Available,
         Pending,
         Completed,
-        Failed
+        Failed,
+        Waiting
     };
 
     template <typename Response>
@@ -52,15 +53,37 @@ namespace advmatch::consuming
         void complete(Response response)
         {
             this->response.emplace(std::move(response));
-            this->state.store(ResponseState::Completed, std::memory_order_release);
-            this->state.notify_one();
+            if (this->state.exchange(ResponseState::Completed, std::memory_order_acq_rel) == ResponseState::Waiting)
+            {
+                this->state.notify_one();
+            }
         }
 
         void fail(std::exception_ptr error) noexcept
         {
             this->error = std::move(error);
-            this->state.store(ResponseState::Failed, std::memory_order_release);
-            this->state.notify_one();
+            if (this->state.exchange(ResponseState::Failed, std::memory_order_acq_rel) == ResponseState::Waiting)
+            {
+                this->state.notify_one();
+            }
+        }
+
+        ResponseState waitUntilComplete() noexcept
+        {
+            ResponseState observed = this->state.load(std::memory_order_acquire);
+            while (observed == ResponseState::Pending || observed == ResponseState::Waiting)
+            {
+                if (observed == ResponseState::Pending &&
+                    !this->state.compare_exchange_weak(observed, ResponseState::Waiting, std::memory_order_acq_rel))
+                {
+                    continue;
+                }
+
+                this->state.wait(ResponseState::Waiting, std::memory_order_acquire);
+                observed = this->state.load(std::memory_order_acquire);
+            }
+
+            return observed;
         }
 
         void release() noexcept
@@ -99,15 +122,37 @@ namespace advmatch::consuming
 
         void complete() noexcept
         {
-            this->state.store(ResponseState::Completed, std::memory_order_release);
-            this->state.notify_one();
+            if (this->state.exchange(ResponseState::Completed, std::memory_order_acq_rel) == ResponseState::Waiting)
+            {
+                this->state.notify_one();
+            }
         }
 
         void fail(std::exception_ptr error) noexcept
         {
             this->error = std::move(error);
-            this->state.store(ResponseState::Failed, std::memory_order_release);
-            this->state.notify_one();
+            if (this->state.exchange(ResponseState::Failed, std::memory_order_acq_rel) == ResponseState::Waiting)
+            {
+                this->state.notify_one();
+            }
+        }
+
+        ResponseState waitUntilComplete() noexcept
+        {
+            ResponseState observed = this->state.load(std::memory_order_acquire);
+            while (observed == ResponseState::Pending || observed == ResponseState::Waiting)
+            {
+                if (observed == ResponseState::Pending &&
+                    !this->state.compare_exchange_weak(observed, ResponseState::Waiting, std::memory_order_acq_rel))
+                {
+                    continue;
+                }
+
+                this->state.wait(ResponseState::Waiting, std::memory_order_acquire);
+                observed = this->state.load(std::memory_order_acquire);
+            }
+
+            return observed;
         }
 
         void release() noexcept
@@ -167,12 +212,7 @@ namespace advmatch::consuming
                 throw std::logic_error("request ticket has no response");
             }
 
-            ResponseState state = this->slot->state.load(std::memory_order_acquire);
-            while (state == ResponseState::Pending)
-            {
-                this->slot->state.wait(ResponseState::Pending, std::memory_order_acquire);
-                state = this->slot->state.load(std::memory_order_acquire);
-            }
+            const ResponseState state = this->slot->waitUntilComplete();
 
             ResponseSlot<Response>* slot = std::exchange(this->slot, nullptr);
             if (state == ResponseState::Failed)
@@ -238,12 +278,7 @@ namespace advmatch::consuming
                 throw std::logic_error("request ticket has no response");
             }
 
-            ResponseState state = this->slot->state.load(std::memory_order_acquire);
-            while (state == ResponseState::Pending)
-            {
-                this->slot->state.wait(ResponseState::Pending, std::memory_order_acquire);
-                state = this->slot->state.load(std::memory_order_acquire);
-            }
+            const ResponseState state = this->slot->waitUntilComplete();
 
             ResponseSlot<void>* slot = std::exchange(this->slot, nullptr);
             if (state == ResponseState::Failed)

@@ -32,6 +32,7 @@ namespace advmatch
         const AccountId accountId;
         const UserId userId;
         bool active = true;
+        std::uint64_t balanceGeneration = 0;
 
         friend class AccountManager;
 
@@ -55,6 +56,41 @@ namespace advmatch
         }
 
     public:
+        // Borrowed locations never escape these opaque tokens. Structural
+        // mutations invalidate tokens; commit checks before dereferencing.
+        class BalanceSnapshot
+        {
+            friend class Account;
+            const Account* owner = nullptr;
+            const AssetBalance* location = nullptr;
+            AssetBalance before{};
+            AssetId assetId = 0;
+            std::uint64_t generation = 0;
+
+        public:
+            Balance active() const noexcept
+            {
+                return this->before.active;
+            }
+
+            Balance reserved() const noexcept
+            {
+                return this->before.reserved;
+            }
+        };
+
+        class BalanceUpdate
+        {
+            friend class Account;
+            BalanceSnapshot snapshot;
+            AssetBalance after{};
+        };
+
+        BalanceSnapshot captureBalance(AssetId assetId) const noexcept;
+        std::optional<BalanceUpdate> prepareBalanceChange(const BalanceSnapshot& snapshot,
+            BalanceChange activeChange, BalanceChange reservedChange) const noexcept;
+        BalanceResult commitBalanceChange(const BalanceUpdate& update);
+
         virtual ~Account() = default;
 
         [[nodiscard]]

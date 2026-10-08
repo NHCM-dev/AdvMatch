@@ -172,6 +172,7 @@ add_library(advmatch_core STATIC
     src/advmatch/matching/MatchingEngine.h
     src/advmatch/matching/Matching.h
     src/advmatch/matching/TradeBuffer.h
+    src/advmatch/matching/HistorySink.h
         src/advmatch/ledging/ledgers/AccountLedger.cpp
         src/advmatch/ledging/ledgers/AccountLedger.h
         src/advmatch/ledging/ledgers/impl/SpotAccountLedger.cpp
@@ -243,6 +244,12 @@ if(ADVMATCH_BUILD_JNI)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(advmatch_optimization_tests tests/optimizations.cpp)
+    target_link_libraries(advmatch_optimization_tests PRIVATE AdvMatch::core)
+    advmatch_configure_runtime(advmatch_optimization_tests)
+    add_test(NAME advmatch_optimization_tests COMMAND advmatch_optimization_tests)
+    set_tests_properties(advmatch_optimization_tests PROPERTIES TIMEOUT 30)
+
     add_executable(advmatch_contract_tests tests/contracts.cpp)
     target_link_libraries(advmatch_contract_tests PRIVATE AdvMatch::core)
     advmatch_configure_runtime(advmatch_contract_tests)

@@ -28,6 +28,7 @@ namespace advmatch
             WideBalance crossFee = 0;
             WideBalance crossPnl = 0;
             std::size_t firstEntry = 0;
+            Account::BalanceUpdate balanceUpdate;
         };
 
         SmallVector<Entry, 16> entries;
@@ -38,6 +39,17 @@ namespace advmatch
         WideBalance funding = 0;
 
     public:
+        void reset(std::size_t positionCount)
+        {
+            this->entries.clear();
+            this->entries.reserve(positionCount);
+            this->movements.clear();
+            this->insurance = 0;
+            this->realized = 0;
+            this->fees = 0;
+            this->funding = 0;
+        }
+
         void add(ContractParticipant& participant, const PositionPlan& plan)
         {
             this->entries.push_back({&participant, plan});
@@ -132,7 +144,8 @@ namespace advmatch
         {
             for (auto& [account, movement] : this->movements)
             {
-                const WideBalance active = account->queryActiveBalance(market.symbol->quoteAssetId).value_or(0);
+                const auto balance = account->captureBalance(market.symbol->quoteAssetId);
+                const WideBalance active = balance.active();
                 if (active + movement.active < 0)
                 {
                     if (!coverCrossDeficit)
@@ -170,10 +183,13 @@ namespace advmatch
 
                 const auto activeChange = ContractMath::balance(movement.active);
                 const auto reservedChange = ContractMath::balance(movement.reserved);
-                if (!activeChange || !reservedChange || !account->canApplyBalanceChange(market.symbol->quoteAssetId, *activeChange, *reservedChange))
+                const auto prepared = activeChange && reservedChange ? account->prepareBalanceChange(balance, *activeChange, *reservedChange) : std::nullopt;
+                if (!prepared)
                 {
                     return ContractState::Overflow;
                 }
+
+                movement.balanceUpdate = *prepared;
             }
 
             if (this->insurance > market.insuranceBalance)
@@ -195,8 +211,7 @@ namespace advmatch
         {
             for (auto& [account, movement] : this->movements)
             {
-                const auto result = account->applyBalanceChange(market.symbol->quoteAssetId,
-                    static_cast<BalanceChange>(movement.active), static_cast<BalanceChange>(movement.reserved));
+                const auto result = account->commitBalanceChange(movement.balanceUpdate);
                 assert(result);
                 static_cast<void>(result);
                 CrossMarginState& cross = *this->entries[movement.firstEntry].participant->crossMargin;

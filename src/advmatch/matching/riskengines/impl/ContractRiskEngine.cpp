@@ -41,13 +41,13 @@ namespace advmatch
         }
 
         const ContractMarket& market = *node.contractMarket;
-        const auto upper = ContractMath::balance(static_cast<WideBalance>(market.markPrice) * (RATE_SCALE + market.spec.priceBandRate) / RATE_SCALE);
-        if (!upper)
+        const Price upper = market.priceBand().second;
+        if (upper > static_cast<Price>(std::numeric_limits<Balance>::max()))
         {
             return std::nullopt;
         }
 
-        const auto value = ContractMath::notional(std::max(price, static_cast<Price>(*upper)), quantity, market.spec.contractMultiplier);
+        const auto value = ContractMath::notional(std::max(price, upper), quantity, market.spec.contractMultiplier);
         if (!value || (!node.reduceOnly && *value > market.spec.maxPositionNotional))
         {
             return std::nullopt;
@@ -60,9 +60,8 @@ namespace advmatch
     bool ContractRiskEngine::executable(const OrderNode& node, Price price) noexcept
     {
         const ContractMarket& market = *node.contractMarket;
-        const WideBalance scaled = static_cast<WideBalance>(price) * RATE_SCALE;
-        const WideBalance mark = market.markPrice;
-        if (scaled < mark * (RATE_SCALE - market.spec.priceBandRate) || scaled > mark * (RATE_SCALE + market.spec.priceBandRate))
+        const auto [lower, upper] = market.priceBand();
+        if (price < lower || price > upper)
         {
             return false;
         }

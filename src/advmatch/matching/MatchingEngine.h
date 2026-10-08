@@ -5,6 +5,7 @@
 #include "Matching.h"
 #include "advmatch/trading/futures/Contract.h"
 #include "TradeBuffer.h"
+#include "HistorySink.h"
 #include "orderbooks/OrderBook.h"
 #include "advmatch/ledging/ledgers/impl/SpotAccountLedger.h"
 #include "riskengines/impl/SpotRiskEngine.h"
@@ -57,6 +58,8 @@ namespace advmatch
         std::vector<OrderNode*> orders;
         std::vector<std::unique_ptr<OrderBook>> orderBooks;
         OrderId nextOrderId = 1;
+        std::size_t historyCursor = 0;
+        bool historyPositionTurn = false;
 
         OrderNode* findNode(OrderId orderId) noexcept;
         const OrderNode* findNode(OrderId orderId) const noexcept;
@@ -85,6 +88,16 @@ namespace advmatch
         }
 
         bool addSpotBook(SymbolId symbolId);
+
+        // Explicit retention boundary: queryOrder/queryPosition no longer
+        // return records acknowledged by sink. IDs are never reused. Budget
+        // bounds scanning work; active orders and referenced positions survive.
+        HistoryArchiveResult archiveHistory(HistorySink& sink, std::size_t scanBudget = 1024);
+
+        std::size_t retainedOrderCount() const noexcept
+        {
+            return this->orderPool.size();
+        }
 
         PlaceOrderResult placeOrder(UserId userId, SymbolId symbolId, OrderSide side, OrderType type,
                                     TimeInForce timeInForce, Price price, Quantity quantity, Timestamp timestamp,

@@ -4,6 +4,14 @@
 
 namespace advmatch
 {
+    StandardContractAccount::~StandardContractAccount()
+    {
+        for (const auto& [id, position] : this->positions)
+        {
+            this->positionPool->release(position);
+        }
+    }
+
     CrossMarginState& ContractAccount::crossMargin(AssetId assetId)
     {
         return this->crossMargins[assetId];
@@ -30,13 +38,13 @@ namespace advmatch
     Position* StandardContractAccount::findPosition(PositionId positionId) noexcept
     {
         const auto iterator = this->positions.find(positionId);
-        return iterator == this->positions.end() ? nullptr : &iterator->second;
+        return iterator == this->positions.end() ? nullptr : iterator->second;
     }
 
     const Position* StandardContractAccount::findPosition(PositionId positionId) const noexcept
     {
         const auto iterator = this->positions.find(positionId);
-        return iterator == this->positions.end() ? nullptr : &iterator->second;
+        return iterator == this->positions.end() ? nullptr : iterator->second;
     }
 
     bool StandardContractAccount::recordPosition(Position position)
@@ -46,18 +54,42 @@ namespace advmatch
             return false;
         }
 
-        return this->positions.emplace(position.positionId, std::move(position)).second;
+        if (this->positions.contains(position.positionId))
+        {
+            return false;
+        }
+
+        if (!this->positionPool)
+        {
+            this->ownedPositionPool = std::make_unique<PositionPool>();
+            this->positionPool = this->ownedPositionPool.get();
+        }
+
+        Position* stored = this->positionPool->emplace(std::move(position));
+        try
+        {
+            this->positions.emplace(stored->positionId, stored);
+        }
+        catch (...)
+        {
+            this->positionPool->release(stored);
+            throw;
+        }
+
+        return true;
     }
 
     bool StandardContractAccount::removePosition(PositionId positionId)
     {
         const auto iterator = this->positions.find(positionId);
-        if (iterator == this->positions.end() || iterator->second.managed || iterator->second.positionSize != 0)
+        if (iterator == this->positions.end() || iterator->second->managed || iterator->second->positionSize != 0)
         {
             return false;
         }
 
+        Position* position = iterator->second;
         this->positions.erase(iterator);
+        this->positionPool->release(position);
         return true;
     }
 

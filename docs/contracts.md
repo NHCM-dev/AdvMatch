@@ -43,7 +43,9 @@ maintenanceMargin = ceil(markNotional × maintenanceMarginRate / 1,000,000)
 
 全仓强平判断的权益包含全仓挂单已预留的资金。触发时先撤销该抵押资产下全部全仓挂单，再处理同一账户、同一抵押资产下的全仓仓位，跨交易对也包含在内。逐仓仓位和现货账户的资金不会用于补全仓亏损。
 
-引擎管理的仓位不会被 removePosition 删除；尚有仓位或合约挂单的用户不能被移除。Position 对象由账户拥有，OrderNode 与撮合策略借用稳定地址。已关闭仓位保留供查询；活动索引只包含仍有仓位或挂单的对象，标记价和资金费率处理不扫描全部历史仓位。
+引擎管理的仓位不会被 removePosition 删除；尚有仓位或合约挂单的用户不能被移除。AccountManager 的共享对象池保存 Position，账户通过 ID 索引管理其生命周期；独立创建的 StandardContractAccount 会按需创建自己的池。OrderNode 与撮合策略借用稳定地址，池扩容和索引 rehash 都不移动仓位对象。
+
+已关闭仓位默认保留供查询。显式调用 MatchingEngine::archiveHistory，并由 HistorySink 确认接收后，才回收已结束且没有订单引用的仓位。归档后 queryPosition 返回空，之前借用的 Position 指针失效；调用方必须复制历史值。活动索引只包含仍有仓位或挂单的对象，标记价和资金费率处理不扫描全部历史仓位。详见 [性能优化与历史归档](performance-optimization.md)。
 
 ## 强平
 

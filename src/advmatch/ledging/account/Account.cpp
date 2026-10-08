@@ -4,6 +4,59 @@
 
 namespace advmatch
 {
+    Account::BalanceSnapshot Account::captureBalance(AssetId assetId) const noexcept
+    {
+        BalanceSnapshot snapshot;
+        snapshot.owner = this;
+        snapshot.assetId = assetId;
+        snapshot.generation = this->balanceGeneration;
+        snapshot.location = this->findBalance(assetId);
+        snapshot.before = snapshot.location ? *snapshot.location : AssetBalance{};
+        return snapshot;
+    }
+
+    std::optional<Account::BalanceUpdate> Account::prepareBalanceChange(const BalanceSnapshot& snapshot,
+        BalanceChange activeChange, BalanceChange reservedChange) const noexcept
+    {
+        const WideBalance active = static_cast<WideBalance>(snapshot.before.active) + activeChange;
+        const WideBalance reserved = static_cast<WideBalance>(snapshot.before.reserved) + reservedChange;
+        if (snapshot.owner != this || snapshot.generation != this->balanceGeneration ||
+            active < 0 || reserved < 0 || active + reserved > std::numeric_limits<Balance>::max())
+        {
+            return std::nullopt;
+        }
+
+        BalanceUpdate update;
+        update.snapshot = snapshot;
+        update.after = {static_cast<Balance>(active), static_cast<Balance>(reserved)};
+        return update;
+    }
+
+    BalanceResult Account::commitBalanceChange(const BalanceUpdate& update)
+    {
+        const auto& snapshot = update.snapshot;
+        if (snapshot.owner != this || snapshot.generation != this->balanceGeneration)
+        {
+            return {BalanceOpResult::StaleUpdate};
+        }
+
+        if (snapshot.location)
+        {
+            if (snapshot.location->active != snapshot.before.active || snapshot.location->reserved != snapshot.before.reserved)
+            {
+                return {BalanceOpResult::StaleUpdate};
+            }
+
+            *const_cast<AssetBalance*>(snapshot.location) = update.after;
+        }
+        else if (update.after.active != 0 || update.after.reserved != 0)
+        {
+            this->addBalance(snapshot.assetId, update.after);
+        }
+
+        return {BalanceOpResult::Success};
+    }
+
     bool Account::canApplyBalanceChange(AssetId assetId, BalanceChange activeChange, BalanceChange reservedChange) const noexcept
     {
         const AssetBalance* current = this->findBalance(assetId);
@@ -14,26 +67,13 @@ namespace advmatch
 
     BalanceResult Account::applyBalanceChange(AssetId assetId, BalanceChange activeChange, BalanceChange reservedChange)
     {
-        if (!this->canApplyBalanceChange(assetId, activeChange, reservedChange))
+        const auto update = this->prepareBalanceChange(this->captureBalance(assetId), activeChange, reservedChange);
+        if (!update)
         {
             return {BalanceOpResult::Insufficient};
         }
 
-        AssetBalance* current = this->findBalance(assetId);
-        if (!current)
-        {
-            if (activeChange != 0 || reservedChange != 0)
-            {
-                this->addBalance(assetId, {activeChange, reservedChange});
-            }
-        }
-        else
-        {
-            current->active += activeChange;
-            current->reserved += reservedChange;
-        }
-
-        return {BalanceOpResult::Success};
+        return this->commitBalanceChange(*update);
     }
 
     bool Account::canWithdraw(AssetId, PositiveBalanceChange) const noexcept
@@ -86,6 +126,7 @@ namespace advmatch
 
     AssetBalance& Account::addBalance(AssetId assetId, AssetBalance balance)
     {
+        ++this->balanceGeneration;
         if (this->overflowBalances)
         {
             return this->overflowBalances->emplace(assetId, balance).first->second;
@@ -113,6 +154,7 @@ namespace advmatch
 
     void Account::removeBalance(AssetId assetId)
     {
+        ++this->balanceGeneration;
         if (this->overflowBalances)
         {
             this->overflowBalances->erase(assetId);

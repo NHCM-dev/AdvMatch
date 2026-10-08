@@ -2,14 +2,14 @@
 #define ADVMATCH_SPOT_SETTLE_ENGINE_H
 
 #include "../SettleEngine.h"
-#include "advmatch/ledging/ledgers/AccountLedger.h"
+#include "advmatch/ledging/ledgers/impl/SpotAccountLedger.h"
 #include "advmatch/trading/Asset.h"
 
 namespace advmatch
 {
     class SpotSettleEngine final : public SettleEngine
     {
-        AccountLedger& accountLedger;
+        SpotAccountLedger& accountLedger;
 
         [[nodiscard]]
         static Balance requiredReservationBalance(const OrderNode& node);
@@ -17,7 +17,7 @@ namespace advmatch
         void settleTrade(const Trade& trade, OrderNode& maker, OrderNode& taker) override;
 
     public:
-        explicit SpotSettleEngine(AccountLedger& accountLedger)
+        explicit SpotSettleEngine(SpotAccountLedger& accountLedger)
             : accountLedger(accountLedger)
         {
         }

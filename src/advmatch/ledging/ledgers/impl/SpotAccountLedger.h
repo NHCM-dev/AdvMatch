@@ -15,6 +15,8 @@ namespace advmatch
         const Account& accountFor(const User& user) const noexcept override;
 
     public:
+        bool settle(OrderNode& buyer, OrderNode& seller, PositiveBalanceChange baseAmount, PositiveBalanceChange quoteAmount) const;
+
         [[nodiscard]]
         AccountType getAccountType() const noexcept override;
     };

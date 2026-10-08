@@ -24,6 +24,8 @@ namespace advmatch
             AccountId contractAccountId;
         };
 
+        // Declared first so every account is destroyed before its position pool.
+        PositionPool positionPool;
         BigAllocs<SpotAccount> spotAccountPool;
         BigAllocs<StandardContractAccount> contractAccountPool;
         std::vector<Account*> accounts;

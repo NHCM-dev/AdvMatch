@@ -4,9 +4,12 @@
 #include "../Account.h"
 #include <functional>
 #include "../../../trading/futures/Position.h"
+#include "advmatch/util/BigAllocs.h"
 
 namespace advmatch
 {
+    using PositionPool = BigAllocs<Position>;
+
     struct CrossMarginState
     {
         Balance initialMargin = 0;
@@ -93,13 +96,18 @@ namespace advmatch
 
     class StandardContractAccount final : public ContractAccount
     {
-        NodeHashMap<PositionId, Position> positions;
+        // Owning pools never move Position objects. Only pointer indexes rehash.
+        std::unique_ptr<PositionPool> ownedPositionPool;
+        PositionPool* positionPool;
+        DenseMap<PositionId, Position*> positions;
 
     public:
-        StandardContractAccount(AccountId accountId, UserId userId)
-            : ContractAccount(accountId, userId)
+        StandardContractAccount(AccountId accountId, UserId userId, PositionPool* positionPool = nullptr)
+            : ContractAccount(accountId, userId), positionPool(positionPool)
         {
         }
+
+        ~StandardContractAccount() override;
 
         [[nodiscard]]
         Position* findPosition(PositionId positionId) noexcept override;
@@ -119,7 +127,7 @@ namespace advmatch
         {
             for (const auto& [positionId, position] : this->positions)
             {
-                visitor(positionId, position);
+                visitor(positionId, *position);
             }
         }
 

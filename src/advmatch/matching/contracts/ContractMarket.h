@@ -5,6 +5,9 @@
 #include "advmatch/matching/Matching.h"
 #include "advmatch/trading/futures/Contract.h"
 
+#include <limits>
+#include <utility>
+
 namespace advmatch
 {
     struct ContractParticipant
@@ -15,6 +18,7 @@ namespace advmatch
         CrossMarginState* crossMargin = nullptr;
         OrderNode* firstOrder = nullptr;
         std::size_t openOrderCount = 0;
+        std::size_t orderReferences = 0;
     };
 
     struct ContractMarket
@@ -35,10 +39,63 @@ namespace advmatch
         BalanceChange clearingBalance = 0;
         Balance feeBalance = 0;
         Balance fundingRoundingBalance = 0;
-        NodeHashMap<PositionId, ContractParticipant> participants;
+        std::uint64_t liquidityRevision = 0;
+        std::uint64_t lastLiquidationRevision = std::numeric_limits<std::uint64_t>::max();
+        mutable Price bandMarkPrice = 0;
+        mutable MMRRate bandRate = 0;
+        mutable std::pair<Price, Price> cachedPriceBand{};
+        BigAllocs<ContractParticipant>* participantPool = nullptr;
+        DenseMap<PositionId, ContractParticipant*> participants;
         DenseMap<PositionId, ContractParticipant*> activePositions;
         DenseMap<PositionId, ContractParticipant*> orderParticipants;
         DenseMap<PositionId, ContractParticipant*> pendingLiquidations;
+
+        std::pair<Price, Price> priceBand() const noexcept
+        {
+            if (this->bandMarkPrice != this->markPrice || this->bandRate != this->spec.priceBandRate)
+            {
+                const WideBalance mark = this->markPrice;
+                this->cachedPriceBand = {
+                    static_cast<Price>((mark * (RATE_SCALE - this->spec.priceBandRate) + RATE_SCALE - 1) / RATE_SCALE),
+                    static_cast<Price>(mark * (RATE_SCALE + this->spec.priceBandRate) / RATE_SCALE)};
+                this->bandMarkPrice = this->markPrice;
+                this->bandRate = this->spec.priceBandRate;
+            }
+
+            return this->cachedPriceBand;
+        }
+
+        ContractParticipant& createParticipant(PositionId id)
+        {
+            if (auto it = this->participants.find(id); it != this->participants.end())
+            {
+                return *it->second;
+            }
+
+            ContractParticipant* participant = this->participantPool->emplace();
+            try
+            {
+                this->participants.emplace(id, participant);
+            }
+            catch (...)
+            {
+                this->participantPool->release(participant);
+                throw;
+            }
+
+            return *participant;
+        }
+
+        void removeParticipant(PositionId id)
+        {
+            auto it = this->participants.find(id);
+            if (it != this->participants.end())
+            {
+                ContractParticipant* participant = it->second;
+                this->participants.erase(it);
+                this->participantPool->release(participant);
+            }
+        }
     };
 
     struct PositionPlan

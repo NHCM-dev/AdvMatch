@@ -4,6 +4,40 @@
 
 namespace advmatch
 {
+    HistoryArchiveResult ContractEngine::archiveHistory(HistorySink& sink, std::size_t scanBudget)
+    {
+        HistoryArchiveResult result;
+        const std::size_t limit = std::min(scanBudget, this->positionIndex.size());
+        while (result.scannedPositions < limit && !this->positionIndex.empty())
+        {
+            this->historyCursor %= this->positionIndex.size();
+            const auto [id, participant] = *(this->positionIndex.begin() + this->historyCursor);
+            ++result.scannedPositions;
+            Position* position = participant->position;
+            if (!position->closed || participant->openOrderCount != 0 || participant->orderReferences != 0 || !sink.archivePosition(*position))
+            {
+                ++this->historyCursor;
+                continue;
+            }
+
+            position->managed = false;
+            if (!participant->account->removePosition(id))
+            {
+                position->managed = true;
+                ++this->historyCursor;
+                continue;
+            }
+
+            ContractMarket* market = participant->market;
+            market->pendingLiquidations.erase(id);
+            this->positionIndex.erase(id);
+            market->removeParticipant(id);
+            ++result.archivedPositions;
+        }
+
+        return result;
+    }
+
     ContractState ContractEngine::commandState(const ContractMarket& market, Timestamp timestamp) noexcept
     {
         if (timestamp < market.commandTimestamp)
@@ -96,6 +130,7 @@ namespace advmatch
         auto [iterator, inserted] = this->markets.try_emplace(symbol.symbolId);
         ContractMarket& market = iterator->second;
         market.symbol = &symbol;
+        market.participantPool = &this->participantPool;
         market.eventSink = this->eventSink;
         market.spec = spec;
         market.markPrice = markPrice;
@@ -105,19 +140,21 @@ namespace advmatch
         return {};
     }
 
-    void ContractEngine::discardPreparedOrder(const OrderNode& node)
+    void ContractEngine::discardPreparedOrder(OrderNode& node)
     {
         ContractParticipant* participant = node.contractParticipant;
-        if (!participant || participant->position->positionSize != 0 || participant->openOrderCount != 0)
+        if (!participant || participant->position->positionSize != 0 || participant->openOrderCount != 0 || participant->orderReferences != 1)
         {
             return;
         }
 
         const PositionId id = participant->position->positionId;
+        --participant->orderReferences;
+        node.contractParticipant = nullptr;
         participant->position->managed = false;
         static_cast<void>(participant->account->removePosition(id));
         this->positionIndex.erase(id);
-        participant->market->participants.erase(id);
+        participant->market->removeParticipant(id);
     }
 
     ContractState ContractEngine::prepareOrder(OrderNode& node, const ContractOrderOptions& options, Timestamp timestamp)
@@ -189,8 +226,7 @@ namespace advmatch
                 return ContractState::PositionNotFound;
             }
 
-            auto [iterator, inserted] = market->participants.try_emplace(id);
-            participant = &iterator->second;
+            participant = &market->createParticipant(id);
             participant->market = market;
             participant->account = &account;
             participant->position = account.findPosition(id);
@@ -206,6 +242,7 @@ namespace advmatch
 
         node.contractMarket = market;
         node.contractParticipant = participant;
+        ++participant->orderReferences;
         node.reservationAssetId = market->symbol->quoteAssetId;
         node.leverage = participant->position->leverage;
         node.reduceOnly = closing;
@@ -332,29 +369,18 @@ namespace advmatch
             return {ContractState::InvalidPrice};
         }
 
-        struct Update
-        {
-            ContractParticipant* participant;
-            BalanceChange pnl;
-            Balance maintenance;
-            Balance closeFee;
-        };
-
-        struct CrossUpdate
-        {
-            WideBalance pnl = 0;
-            WideBalance maintenance = 0;
-            WideBalance closeFee = 0;
-        };
-
-        SmallVector<Update, 16> updates;
-        DenseMap<CrossMarginState*, CrossUpdate> crossUpdates;
+        auto& updates = this->markUpdates;
+        auto& crossUpdates = this->crossUpdates;
+        updates.clear();
+        updates.reserve(market->activePositions.size());
+        crossUpdates.clear();
         for (const auto& [id, participantPointer] : market->activePositions)
         {
             ContractParticipant& participant = *participantPointer;
             Position& position = *participant.position;
             const auto value = ContractMath::notional(price, position.positionSize, market->spec.contractMultiplier);
-            const auto pnl = position.getUnrealizedPnL(price);
+            const auto pnl = value ? ContractMath::balance(position.positionSide == PositionSide::Long
+                ? static_cast<WideBalance>(*value) - position.entryNotional : static_cast<WideBalance>(position.entryNotional) - *value) : std::nullopt;
             if (!value || !pnl)
             {
                 return {ContractState::Overflow};
@@ -382,7 +408,7 @@ namespace advmatch
             }
         }
 
-        for (const Update& update : updates)
+        for (const MarkUpdate& update : updates)
         {
             update.participant->position->updatedUnrealizedPnl = update.pnl;
             update.participant->position->maintenanceMargin = update.maintenance;
@@ -400,7 +426,8 @@ namespace advmatch
         market->markPrice = price;
         market->markTimestamp = timestamp;
         market->commandTimestamp = timestamp;
-        for (const Update& update : updates)
+        ++market->liquidityRevision;
+        for (const MarkUpdate& update : updates)
         {
             LiquidateEngine::enqueue(*market, *update.participant);
         }
@@ -428,6 +455,7 @@ namespace advmatch
         }
 
         market->insuranceBalance = *total;
+        ++market->liquidityRevision;
         return {};
     }
 
@@ -474,6 +502,7 @@ namespace advmatch
 
         if (result)
         {
+            ++market->liquidityRevision;
             for (const auto& [id, participant] : market->activePositions)
             {
                 LiquidateEngine::enqueue(*market, *participant);
@@ -546,7 +575,7 @@ namespace advmatch
         return this->liquidation.execute(*this, this->matching, *participant->market, *participant, timestamp, trades);
     }
 
-    ContractResult ContractEngine::processLiquidations(SymbolId symbolId, Timestamp timestamp)
+    ContractResult ContractEngine::processLiquidations(SymbolId symbolId, Timestamp timestamp, bool force)
     {
         ContractMarket* market = this->findMarket(symbolId);
         if (!market)
@@ -557,6 +586,11 @@ namespace advmatch
         if (this->processingLiquidations)
         {
             return {};
+        }
+
+        if (!force && market->lastLiquidationRevision == market->liquidityRevision)
+        {
+            return {market->pendingLiquidations.empty() ? ContractState::Success : ContractState::PendingLiquidation};
         }
 
         // Restores the guard even if a resource allocation fails.
@@ -575,7 +609,10 @@ namespace advmatch
 
         TradeBuffer trades;
         ContractResult result;
-        SmallVector<ContractParticipant*, 16> pending;
+        auto& pending = this->pendingWorkspace;
+        pending.clear();
+        pending.reserve(market->pendingLiquidations.size());
+        this->visitedCrossLiquidations.clear();
         for (const auto& [id, participant] : market->pendingLiquidations)
         {
             pending.push_back(participant);
@@ -583,6 +620,12 @@ namespace advmatch
 
         for (ContractParticipant* participant : pending)
         {
+            if (participant->position->marginMode == MarginMode::Cross &&
+                !this->visitedCrossLiquidations.insert(participant->crossMargin).second)
+            {
+                continue;
+            }
+
             if (participant->position->positionSize != 0 && (participant->position->liquidating || LiquidateEngine::required(*market, *participant)))
             {
                 const ContractResult attempt = this->liquidation.execute(*this, this->matching, *market, *participant, timestamp, trades);
@@ -595,6 +638,8 @@ namespace advmatch
 
             LiquidateEngine::enqueue(*market, *participant);
         }
+
+        market->lastLiquidationRevision = market->liquidityRevision;
 
         return result;
     }

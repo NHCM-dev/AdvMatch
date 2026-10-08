@@ -27,6 +27,10 @@ namespace advmatch
         {
         }
 
+        ~OrderNode();
+        OrderNode(const OrderNode&) = delete;
+        OrderNode& operator=(const OrderNode&) = delete;
+
         BasicOrder basicOrder;
         User* const user;
         Account* const account;

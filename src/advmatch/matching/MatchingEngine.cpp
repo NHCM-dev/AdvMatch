@@ -6,6 +6,14 @@
 
 namespace advmatch
 {
+    OrderNode::~OrderNode()
+    {
+        if (this->contractParticipant)
+        {
+            --this->contractParticipant->orderReferences;
+        }
+    }
+
     MatchingEngine::MatchingEngine(UserManager& userManager, SymbolManager& symbolManager)
         : contracts(std::make_unique<ContractEngine>(*this)), userManager(userManager), symbolManager(symbolManager),
           settleEngine(this->accountLedger)
@@ -13,6 +21,36 @@ namespace advmatch
     }
 
     MatchingEngine::~MatchingEngine() = default;
+
+    HistoryArchiveResult MatchingEngine::archiveHistory(HistorySink& sink, std::size_t scanBudget)
+    {
+        HistoryArchiveResult result;
+        const std::size_t orderBudget = std::min(this->orders.size(), scanBudget / 2 + (scanBudget % 2 != 0 && !this->historyPositionTurn));
+        this->historyPositionTurn = !this->historyPositionTurn;
+        while (result.scannedOrders < orderBudget)
+        {
+            this->historyCursor %= this->orders.size();
+            OrderNode*& node = this->orders[this->historyCursor++];
+            ++result.scannedOrders;
+            if (!node || !isOrderStatusTerminal(node->basicOrder.getStatus()) || node->reservedBalance != 0 || node->priceLevel ||
+                node->contractPrev || node->contractNext || (node->contractParticipant && node->contractParticipant->firstOrder == node))
+            {
+                continue;
+            }
+
+            if (sink.archiveOrder(node->basicOrder))
+            {
+                this->orderPool.release(node);
+                node = nullptr;
+                ++result.archivedOrders;
+            }
+        }
+
+        const auto positions = this->contracts->archiveHistory(sink, scanBudget - result.scannedOrders);
+        result.scannedPositions = positions.scannedPositions;
+        result.archivedPositions = positions.archivedPositions;
+        return result;
+    }
 
     ContractEngine& MatchingEngine::getContractEngine() noexcept
     {
@@ -255,7 +293,12 @@ namespace advmatch
         services.settlement->reconcileReservation(*node);
         if (contract && !liquidation)
         {
-            static_cast<void>(this->contracts->processLiquidations(symbolId, timestamp));
+            if (node->priceLevel || !trades.empty())
+            {
+                ++node->contractMarket->liquidityRevision;
+            }
+
+            static_cast<void>(this->contracts->processLiquidations(symbolId, timestamp, false));
             PlaceOrderResult refreshed(result.orderId, node->basicOrder.getFillingStatus());
             refreshed.positionId = result.positionId;
             return refreshed;
@@ -336,7 +379,12 @@ namespace advmatch
         services.settlement->reconcileReservation(*node);
         if (node->contractMarket)
         {
-            static_cast<void>(this->contracts->processLiquidations(node->basicOrder.symbolId, timestamp));
+            if (result)
+            {
+                ++node->contractMarket->liquidityRevision;
+            }
+
+            static_cast<void>(this->contracts->processLiquidations(node->basicOrder.symbolId, timestamp, false));
         }
 
         return result;

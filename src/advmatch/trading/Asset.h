@@ -51,7 +51,8 @@ namespace advmatch
         Insufficient,
         NoSuchAsset,
         InvalidAccount,
-        Unknown
+        Unknown,
+        StaleUpdate
     };
 
     struct BalanceResult : Result<BalanceOpResult>

@@ -85,27 +85,10 @@ namespace advmatch
         OrderNode& seller = makerOrder.basicOrder.orderSide == OrderSide::Ask ? makerOrder : takerOrder;
         const PositiveBalanceChange baseAmount = static_cast<PositiveBalanceChange>(trade.quantity);
         const PositiveBalanceChange quoteAmount = static_cast<PositiveBalanceChange>(trade.price * trade.quantity);
-        const Balance buyerBaseBalance = buyer.account->queryActiveBalance(buyer.baseAssetId).value_or(0);
-        const Balance sellerQuoteBalance = seller.account->queryActiveBalance(seller.quoteAssetId).value_or(0);
-
-        if (buyer.reservedBalance < 0 || seller.reservedBalance < 0 ||
-            quoteAmount > static_cast<PositiveBalanceChange>(buyer.reservedBalance) ||
-            baseAmount > static_cast<PositiveBalanceChange>(seller.reservedBalance))
+        if (!this->accountLedger.settle(buyer, seller, baseAmount, quoteAmount))
         {
-            throw std::logic_error("spot trade reservation is insufficient");
+            throw std::logic_error("spot settlement balances or reservations are invalid");
         }
-
-        if (buyerBaseBalance < 0 || sellerQuoteBalance < 0 ||
-            baseAmount > static_cast<PositiveBalanceChange>(std::numeric_limits<Balance>::max() - buyerBaseBalance) ||
-            quoteAmount > static_cast<PositiveBalanceChange>(std::numeric_limits<Balance>::max() - sellerQuoteBalance))
-        {
-            throw std::overflow_error("spot settlement balance would overflow");
-        }
-
-        this->accountLedger.consume(buyer, quoteAmount);
-        this->accountLedger.consume(seller, baseAmount);
-        this->accountLedger.credit(*buyer.user, buyer.baseAssetId, baseAmount);
-        this->accountLedger.credit(*seller.user, seller.quoteAssetId, quoteAmount);
     }
 
     void SpotSettleEngine::reconcileReservation(OrderNode& order)

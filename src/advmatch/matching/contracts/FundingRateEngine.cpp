@@ -21,7 +21,8 @@ namespace advmatch
             return {ContractState::InvalidConfiguration};
         }
 
-        ContractSettlementBatch batch;
+        auto& batch = this->workspace;
+        batch.reset(market.activePositions.size());
         for (const auto& [id, participantPointer] : market.activePositions)
         {
             ContractParticipant& participant = *participantPointer;

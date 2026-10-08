@@ -39,7 +39,7 @@ namespace advmatch
 
         try
         {
-            contractAccount = this->contractAccountPool.emplace(contractAccountId, userId);
+            contractAccount = this->contractAccountPool.emplace(contractAccountId, userId, &this->positionPool);
         }
         catch (...)
         {

@@ -2,6 +2,7 @@
 #define ADVMATCH_CONTRACT_ENGINE_H
 
 #include "ContractMarket.h"
+#include "advmatch/matching/HistorySink.h"
 #include "FundingRateEngine.h"
 #include "DeliveryEngine.h"
 #include "LiquidateEngine.h"
@@ -22,9 +23,28 @@ namespace advmatch
         MatchingEngine& matching;
         ContractEventSink* eventSink = nullptr;
         bool processingLiquidations = false;
+        struct MarkUpdate
+        {
+            ContractParticipant* participant;
+            BalanceChange pnl;
+            Balance maintenance;
+            Balance closeFee;
+        };
+        struct CrossUpdate
+        {
+            WideBalance pnl = 0;
+            WideBalance maintenance = 0;
+            WideBalance closeFee = 0;
+        };
+        SmallVector<MarkUpdate, 16> markUpdates;
+        DenseMap<CrossMarginState*, CrossUpdate> crossUpdates;
+        SmallVector<ContractParticipant*, 16> pendingWorkspace;
+        DenseSet<CrossMarginState*> visitedCrossLiquidations;
+        BigAllocs<ContractParticipant> participantPool;
         NodeHashMap<SymbolId, ContractMarket> markets;
         PositionId nextPositionId = 1;
-        NodeHashMap<PositionId, ContractParticipant*> positionIndex;
+        std::size_t historyCursor = 0;
+        DenseMap<PositionId, ContractParticipant*> positionIndex;
         ContractAccountLedger ledger;
         ContractRiskEngine risk;
         ContractSettleEngine settlement;
@@ -33,6 +53,7 @@ namespace advmatch
         LiquidateEngine liquidation;
 
     public:
+        HistoryArchiveResult archiveHistory(HistorySink& sink, std::size_t scanBudget);
         explicit ContractEngine(MatchingEngine& matching)
             : matching(matching), settlement(this->ledger, matching)
         {
@@ -42,6 +63,7 @@ namespace advmatch
         {
             this->markets.reserve(marketCount);
             this->positionIndex.reserve(positionCount);
+            this->participantPool.reserve(positionCount);
         }
 
         void setEventSink(ContractEventSink* sink) noexcept;
@@ -50,7 +72,7 @@ namespace advmatch
         ContractMarket* findMarket(SymbolId symbolId) noexcept;
         const ContractMarket* findMarket(SymbolId symbolId) const noexcept;
         ContractResult addMarket(const Symbol& symbol, const ContractSpec& spec, Price markPrice, Timestamp timestamp);
-        void discardPreparedOrder(const OrderNode& node);
+        void discardPreparedOrder(OrderNode& node);
         ContractState prepareOrder(OrderNode& node, const ContractOrderOptions& options, Timestamp timestamp);
         ContractResult setLeverage(PositionId positionId, UserId userId, SymbolId symbolId,
             LeverageMultiplier leverage, Timestamp timestamp);
@@ -61,7 +83,7 @@ namespace advmatch
         ContractResult expire(SymbolId symbolId, Timestamp timestamp);
         ContractResult deliver(SymbolId symbolId, Price price, Timestamp timestamp);
         ContractResult liquidate(SymbolId symbolId, PositionId positionId, Timestamp timestamp, TradeBuffer& trades);
-        ContractResult processLiquidations(SymbolId symbolId, Timestamp timestamp);
+        ContractResult processLiquidations(SymbolId symbolId, Timestamp timestamp, bool force = true);
         void cancelOrders(ContractMarket& market, ContractParticipant& participant, Timestamp timestamp);
 
         RiskEngine& getRiskEngine() noexcept

@@ -8,7 +8,6 @@
 #include <atomic>
 #include <cstdint>
 #include <exception>
-#include <future>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -40,26 +39,13 @@ namespace advmatch::consuming
         enum class EventType : std::uint8_t
         {
             Empty,
-            Future,
             Ticket,
             Stop
-        };
-
-        struct Request
-        {
-            explicit Request(Command command)
-                : command(std::move(command))
-            {
-            }
-
-            Command command;
-            std::promise<Response> promise;
         };
 
         struct Event
         {
             std::optional<Command> command;
-            std::shared_ptr<Request> request;
             ResponseSlot<Response>* responseSlot = nullptr;
             EventType type = EventType::Empty;
         };
@@ -84,6 +70,7 @@ namespace advmatch::consuming
         std::mutex lifecycleMutex;
         std::atomic<Lifecycle> lifecycle{Lifecycle::Created};
         std::atomic<std::uint32_t> activeSubmitters{0};
+        std::size_t progressBatchSize = 1;
 
         void beginSubmit()
         {
@@ -125,6 +112,7 @@ namespace advmatch::consuming
             for (;;)
             {
                 const auto available = this->barrier->waitFor(next);
+                std::int64_t flushAt = next + static_cast<std::int64_t>(this->progressBatchSize) - 1;
                 for (; next <= available; ++next)
                 {
                     Event& event = this->ring->get(next);
@@ -134,27 +122,7 @@ namespace advmatch::consuming
                         return;
                     }
 
-                    if (event.type == EventType::Future)
-                    {
-                        std::shared_ptr<Request> request = std::move(event.request);
-                        try
-                        {
-                            if constexpr (std::is_void_v<Response>)
-                            {
-                                consume(std::move(request->command));
-                                request->promise.set_value();
-                            }
-                            else
-                            {
-                                request->promise.set_value(consume(std::move(request->command)));
-                            }
-                        }
-                        catch (...)
-                        {
-                            request->promise.set_exception(std::current_exception());
-                        }
-                    }
-                    else if (event.type == EventType::Ticket)
+                    if (event.type == EventType::Ticket)
                     {
                         ResponseSlot<Response>* responseSlot = event.responseSlot;
                         try
@@ -179,7 +147,13 @@ namespace advmatch::consuming
                     }
 
                     event.type = EventType::Empty;
-                    this->consumed.set(next);
+                    // Flush bounded chunks and always release progress before
+                    // waiting for another publication, including tiny rings.
+                    if (next == available || next >= flushAt)
+                    {
+                        this->consumed.set(next);
+                        flushAt = next + static_cast<std::int64_t>(this->progressBatchSize);
+                    }
                 }
             }
         }
@@ -210,7 +184,7 @@ namespace advmatch::consuming
         SingleThreadConsumer(const SingleThreadConsumer&) = delete;
         SingleThreadConsumer& operator=(const SingleThreadConsumer&) = delete;
 
-        void start(int ringSize)
+        void start(int ringSize, std::size_t progressBatchSize = 0)
         {
             std::lock_guard lock(this->lifecycleMutex);
             if (this->lifecycle.load(std::memory_order_relaxed) != Lifecycle::Created)
@@ -218,6 +192,13 @@ namespace advmatch::consuming
                 throw std::logic_error("consumer can only be started once");
             }
 
+            if (ringSize <= 0 || progressBatchSize > static_cast<std::size_t>(ringSize))
+            {
+                throw std::invalid_argument("progress batch must fit in a positive ring size");
+            }
+
+            this->progressBatchSize = progressBatchSize == 0
+                ? std::min<std::size_t>(32, std::max(1, ringSize / 4)) : progressBatchSize;
             this->ring = Ring::createMultiProducer(std::make_shared<EventFactory>(), ringSize, this->waitStrategy);
             this->ring->addGatingSequences(this->consumed);
             this->barrier = this->ring->newBarrier();
@@ -238,7 +219,6 @@ namespace advmatch::consuming
 
                 const auto sequence = this->claimNext();
                 Event& event = this->ring->get(sequence);
-                event.request.reset();
                 event.command.emplace(std::move(command));
                 event.responseSlot = &responseSlot;
                 event.type = EventType::Ticket;
@@ -316,7 +296,6 @@ namespace advmatch::consuming
                 for (std::size_t index = 0; index < count; ++index)
                 {
                     Event& event = this->ring->get(lowSequence + static_cast<std::int64_t>(index));
-                    event.request.reset();
                     event.command.emplace(std::move(commands[offset + index]));
                     event.responseSlot = &responseSlots[offset + index];
                     event.type = EventType::Ticket;
@@ -354,7 +333,6 @@ namespace advmatch::consuming
             const auto sequence = this->claimNext();
             Event& event = this->ring->get(sequence);
             event.command.reset();
-            event.request.reset();
             event.responseSlot = nullptr;
             event.type = EventType::Stop;
             this->ring->publish(sequence);
