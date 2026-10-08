@@ -89,6 +89,17 @@ namespace advmatch
                 }
             }
         }
+
+        const PriceLevel* next(Price price) const noexcept
+        {
+            const auto iterator = this->ordered.upper_bound(price);
+            return iterator == this->ordered.end() ? nullptr : &iterator->second;
+        }
+
+        std::size_t size() const noexcept
+        {
+            return this->ordered.size();
+        }
     };
 }
 

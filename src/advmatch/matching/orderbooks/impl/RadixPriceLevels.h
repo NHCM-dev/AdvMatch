@@ -65,6 +65,23 @@ namespace advmatch
                 entry = Descending ? entry->previous : entry->next;
             }
         }
+
+        const PriceLevel* next(Price price) const noexcept
+        {
+            const auto* entry = this->prices.find(price);
+            if (entry == nullptr)
+            {
+                return nullptr;
+            }
+
+            entry = Descending ? entry->previous : entry->next;
+            return entry != nullptr ? &entry->value : nullptr;
+        }
+
+        std::size_t size() const noexcept
+        {
+            return this->prices.size();
+        }
     };
 }
 

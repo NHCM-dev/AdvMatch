@@ -40,6 +40,7 @@ include(GNUInstallDirs)
 
 option(ADVMATCH_USE_SYSTEM_DEPENDENCIES "Use compatible dependencies installed on the host" OFF)
 option(ADVMATCH_BUILD_BENCHMARKS "Build the standalone performance benchmarks" ON)
+option(ADVMATCH_BUILD_EXAMPLES "Build developer usage examples" ON)
 option(ADVMATCH_STATIC_MINGW_RUNTIME "Statically link the MinGW runtime into distributable binaries" ON)
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
 
@@ -132,8 +133,31 @@ if(NOT TARGET absl::flat_hash_map OR NOT TARGET absl::node_hash_map)
 endif()
 
 add_library(advmatch_core STATIC
+    src/advmatch/Exchange.cpp
+    src/advmatch/Exchange.h
+    src/advmatch/api/async/impl/ThreadPoolExecutor.cpp
+    src/advmatch/observe/model/ObservationTypes.h
+    src/advmatch/observe/impl/TradingObserver.h
+    src/advmatch/observe/impl/TradingObserver.cpp
+    src/advmatch/observe/impl/ObservationReads.cpp
+    src/advmatch/observe/impl/ObservationReadHelpers.h
+    src/advmatch/observe/abstract/OrderBookListener.h
+    src/advmatch/observe/cache/ObservationCache.h
+    src/advmatch/observe/consuming/ObservedConsumer.h
+    src/advmatch/observe/impl/ObservationEventSink.h
+    src/advmatch/persistence/Persistence.h
+    src/advmatch/persistence/codec/BinaryCodec.h
+    src/advmatch/persistence/impl/FilePersistenceStore.h
+    src/advmatch/api/command/model/TradingCommand.h
+    src/advmatch/persistence/codec/CommandCodec.h
+    src/advmatch/persistence/command/CommandExecutor.h
+    src/advmatch/persistence/impl/PersistentTradingEngine.h
+    src/advmatch/persistence/impl/FilePersistenceStore.cpp
+    src/advmatch/persistence/codec/CommandCodec.cpp
+    src/advmatch/persistence/command/CommandExecutor.cpp
+    src/advmatch/persistence/impl/PersistentTradingEngine.cpp
     src/advmatch/util/Types.h
-    src/advmatch/core.cpp
+        src/advmatch/api/core.cpp
     include/advmatch/core.hpp
     src/advmatch/trading/Asset.h
         src/advmatch/ledging/account/Account.cpp
@@ -211,6 +235,56 @@ add_library(advmatch_core STATIC
     src/advmatch/matching/riskengines/impl/ContractRiskEngine.cpp
     src/advmatch/matching/riskengines/impl/ContractRiskEngine.h
     src/advmatch/util/ContractUtil.h)
+target_sources(advmatch_core PRIVATE
+    src/advmatch/api/ApiError.h
+    src/advmatch/api/async/CompletableFuture.h
+    src/advmatch/api/async/CompletionSource.h
+    src/advmatch/api/async/detail/FutureState.h
+    src/advmatch/api/async/Executor.h
+    src/advmatch/api/async/FutureError.h
+    src/advmatch/api/async/impl/ThreadPoolExecutor.h
+    src/advmatch/api/command/account/AccountCommands.h
+    src/advmatch/api/command/Command.h
+    src/advmatch/api/command/CommandContext.h
+    src/advmatch/api/command/Commands.h
+    src/advmatch/api/command/contract/ContractCommands.h
+    src/advmatch/api/command/maintenance/HistoryCommands.h
+    src/advmatch/api/command/management/AssetCommands.h
+    src/advmatch/api/command/management/SymbolCommands.h
+    src/advmatch/api/command/management/UserCommands.h
+    src/advmatch/api/command/order/OrderCommands.h
+    src/advmatch/api/command/persistence/PersistenceCommands.h
+    src/advmatch/api/command/read/ReadCommands.h
+    src/advmatch/api/command/trading/TradingOperation.h
+    src/advmatch/api/detail/CommandTask.h
+    src/advmatch/api/ExchangeApi.h
+    src/advmatch/api/model/CommandResult.h
+    src/advmatch/api/model/ReadResponse.h
+    src/advmatch/api/service/TradingService.h
+    src/advmatch/config/ExchangeConfig.h
+    src/advmatch/observe/abstract/ObservationService.h
+    src/advmatch/observe/impl/ObserverService.h
+    src/advmatch/observe/ObservationCache.h
+    src/advmatch/observe/ObservationEventSink.h
+    src/advmatch/observe/ObservationReadHelpers.h
+    src/advmatch/observe/ObservationTypes.h
+    src/advmatch/observe/ObservedConsumer.h
+    src/advmatch/observe/OrderBookListener.h
+    src/advmatch/observe/TradingObserver.h
+    src/advmatch/persistence/abstract/PersistenceService.h
+    src/advmatch/persistence/abstract/PersistenceStore.h
+    src/advmatch/persistence/abstract/PersistentEventSink.h
+    src/advmatch/persistence/BinaryCodec.h
+    src/advmatch/persistence/CommandCodec.h
+    src/advmatch/persistence/CommandExecutor.h
+    src/advmatch/persistence/config/PersistenceConfig.h
+    src/advmatch/persistence/FilePersistenceStore.h
+    src/advmatch/persistence/impl/EnginePersistenceService.h
+    src/advmatch/persistence/model/CommittedCommand.h
+    src/advmatch/persistence/model/PersistenceStatus.h
+    src/advmatch/persistence/model/PersistenceTypes.h
+    src/advmatch/persistence/PersistentTradingEngine.h
+    src/advmatch/persistence/TradingCommand.h)
 add_library(AdvMatch::core ALIAS advmatch_core)
 set_target_properties(advmatch_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_features(advmatch_core PUBLIC cxx_std_20)
@@ -225,7 +299,7 @@ target_link_libraries(advmatch_core
 
 # Stable C symbols and plain C data types provide the boundary for JNI/PInvoke.
 add_library(advmatch SHARED
-    src/advmatch/c_api.cpp
+        src/advmatch/api/c_api.cpp
     include/advmatch/advmatch.h
 )
 target_compile_features(advmatch PRIVATE cxx_std_20)
@@ -241,7 +315,7 @@ endif()
 
 if(ADVMATCH_BUILD_JNI)
     find_package(JNI REQUIRED)
-    add_library(advmatch_jni SHARED src/advmatch/jni_bridge.cpp)
+    add_library(advmatch_jni SHARED src/advmatch/api/jni_bridge.cpp)
     target_link_libraries(advmatch_jni PRIVATE advmatch JNI::JNI)
     advmatch_configure_runtime(advmatch_jni)
     set_target_properties(advmatch_jni PROPERTIES OUTPUT_NAME advmatch_jni)
@@ -250,7 +324,36 @@ if(ADVMATCH_BUILD_JNI)
     endif()
 endif()
 
+if(ADVMATCH_BUILD_EXAMPLES)
+    add_executable(advmatch_exchange_example examples/exchange/main.cpp)
+    target_link_libraries(advmatch_exchange_example PRIVATE AdvMatch::core)
+    advmatch_configure_runtime(advmatch_exchange_example)
+
+    add_executable(advmatch_observe_example examples/observe/main.cpp)
+    target_link_libraries(advmatch_observe_example PRIVATE AdvMatch::core)
+    advmatch_configure_runtime(advmatch_observe_example)
+    add_executable(advmatch_persistence_example examples/persistence/main.cpp)
+    target_link_libraries(advmatch_persistence_example PRIVATE AdvMatch::core)
+    advmatch_configure_runtime(advmatch_persistence_example)
+endif()
+
 if(BUILD_TESTING)
+    add_executable(advmatch_api_tests tests/api.cpp)
+    target_link_libraries(advmatch_api_tests PRIVATE AdvMatch::core)
+    advmatch_configure_runtime(advmatch_api_tests)
+    add_test(NAME advmatch_api_tests COMMAND advmatch_api_tests)
+    set_tests_properties(advmatch_api_tests PROPERTIES TIMEOUT 60)
+
+    add_executable(advmatch_observe_tests tests/observe.cpp)
+    target_link_libraries(advmatch_observe_tests PRIVATE AdvMatch::core)
+    advmatch_configure_runtime(advmatch_observe_tests)
+    add_test(NAME advmatch_observe_tests COMMAND advmatch_observe_tests)
+    set_tests_properties(advmatch_observe_tests PROPERTIES TIMEOUT 60)
+    add_executable(advmatch_persistence_tests tests/persistence.cpp)
+    target_link_libraries(advmatch_persistence_tests PRIVATE AdvMatch::core)
+    advmatch_configure_runtime(advmatch_persistence_tests)
+    add_test(NAME advmatch_persistence_tests COMMAND advmatch_persistence_tests)
+    set_tests_properties(advmatch_persistence_tests PROPERTIES TIMEOUT 60)
     add_executable(advmatch_radix_tests tests/radix.cpp)
     target_link_libraries(advmatch_radix_tests PRIVATE AdvMatch::core)
     advmatch_configure_runtime(advmatch_radix_tests)
@@ -299,6 +402,9 @@ if(BUILD_TESTING)
 endif()
 
 if(ADVMATCH_BUILD_BENCHMARKS)
+    add_executable(advmatch_observe_benchmark benchmarks/observe.cpp)
+    target_link_libraries(advmatch_observe_benchmark PRIVATE AdvMatch::core)
+    advmatch_configure_runtime(advmatch_observe_benchmark)
     add_executable(advmatch_liquidation_benchmark benchmarks/liquidation.cpp)
     target_link_libraries(advmatch_liquidation_benchmark PRIVATE AdvMatch::core)
     advmatch_configure_runtime(advmatch_liquidation_benchmark)
@@ -356,12 +462,18 @@ if(ADVMATCH_BUILD_JNI)
 endif()
 
 if(ADVMATCH_BUILD_BENCHMARKS)
-    install(TARGETS advmatch_liquidation_benchmark advmatch_perpetual_benchmark advmatch_tps_benchmark advmatch_scale_benchmark advmatch_big_allocs_benchmark
+    install(TARGETS advmatch_observe_benchmark advmatch_liquidation_benchmark advmatch_perpetual_benchmark advmatch_tps_benchmark advmatch_scale_benchmark advmatch_big_allocs_benchmark
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
 install(FILES include/advmatch/advmatch.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/advmatch)
-install(FILES README.md DESTINATION .)
+if(ADVMATCH_BUILD_EXAMPLES)
+    install(TARGETS advmatch_exchange_example advmatch_observe_example advmatch_persistence_example RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+install(FILES docs/exchange-api.md docs/persistence.md docs/observe.md DESTINATION docs)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
+    install(FILES README.md DESTINATION .)
+endif()
 install(FILES third_party/disruptor-cpp/LICENSE DESTINATION licenses/disruptor-cpp)
 
 set(CPACK_GENERATOR ZIP)

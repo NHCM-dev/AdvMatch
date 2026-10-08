@@ -1,6 +1,7 @@
 /build/
 /cmake-build-*/
 /out/
+/data/
 /.idea/
 /CMakeUserPresets.json
 /.clangd

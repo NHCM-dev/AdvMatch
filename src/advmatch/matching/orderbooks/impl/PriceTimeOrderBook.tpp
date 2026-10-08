@@ -122,6 +122,8 @@ namespace advmatch
         node.prev = nullptr;
         node.next = nullptr;
 
+        this->notifyRemoved(node);
+
         if (level->orderCount == 0)
         {
             if (node.basicOrder.orderSide == OrderSide::Bid)
@@ -165,6 +167,7 @@ namespace advmatch
         level.tail = &node;
         level.totalQuantity += quantity;
         ++level.orderCount;
+        this->notifyRested(node);
     }
 
     template <typename BidLevels, typename AskLevels>

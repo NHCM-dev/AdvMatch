@@ -20,6 +20,7 @@ namespace advmatch
 
     class Account
     {
+        friend class observe::TradingObserver;
         static constexpr std::size_t InlineBalanceCapacity = 10;
 
         // Most accounts keep their balances inline. Promotion to DenseMap

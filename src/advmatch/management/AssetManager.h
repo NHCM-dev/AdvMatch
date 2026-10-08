@@ -10,6 +10,7 @@ namespace advmatch
 {
     class AssetManager
     {
+        friend class observe::TradingObserver;
         NodeHashMap<AssetId, Asset> assets;
         DenseMap<std::string, AssetId> assetsByName;
         AssetId nextAssetId = 1;

@@ -1,0 +1,6 @@
+#ifndef ADVMATCH_COMPLETION_SOURCE_H
+#define ADVMATCH_COMPLETION_SOURCE_H
+
+#include "CompletableFuture.h"
+
+#endif // ADVMATCH_COMPLETION_SOURCE_H

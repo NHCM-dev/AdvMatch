@@ -29,6 +29,7 @@ namespace advmatch
 
     class ContractAccount : public Account
     {
+        friend class observe::TradingObserver;
         NodeHashMap<AssetId, CrossMarginState> crossMargins;
         // These maps index stable Position nodes; never borrow addresses of
         // index entries across insertion/erasure.
@@ -39,6 +40,7 @@ namespace advmatch
         friend class ContractSettleEngine;
 
     protected:
+        virtual const Position* observedPositionAt(std::size_t index) const noexcept = 0;
         bool canWithdraw(AssetId assetId, PositiveBalanceChange amount) const noexcept override;
 
         ContractAccount(AccountId accountId, UserId userId)
@@ -103,10 +105,16 @@ namespace advmatch
 
     class StandardContractAccount final : public ContractAccount
     {
+        friend class observe::TradingObserver;
         // Owning pools never move Position objects. Only pointer indexes rehash.
         std::unique_ptr<PositionPool> ownedPositionPool;
         PositionPool* positionPool;
         DenseMap<PositionId, Position*> positions;
+
+        const Position* observedPositionAt(std::size_t index) const noexcept override
+        {
+            return index < this->positions.size() ? this->positions.values()[index].second : nullptr;
+        }
 
     public:
         StandardContractAccount(AccountId accountId, UserId userId, PositionPool* positionPool = nullptr)

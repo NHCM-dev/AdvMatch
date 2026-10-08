@@ -5,6 +5,7 @@
 #include "../../trading/OrderTypes.h"
 #include "../../util/Types.h"
 #include "../../util/Utils.h"
+#include "advmatch/observe/OrderBookListener.h"
 
 #include <cstdint>
 #include <functional>
@@ -16,6 +17,7 @@ namespace advmatch
 {
     struct OrderNode;
     struct BasicOrder;
+    struct PriceLevel;
 
     enum class PlaceOrderState : std::uint8_t
     {
@@ -178,7 +180,31 @@ namespace advmatch
     // The engine owns orders. One matching thread calls these methods.
     class OrderBook
     {
+        friend class observe::TradingObserver;
+        friend class MatchingEngine;
+        mutable observe::OrderBookListener* observationListener = nullptr;
+
+        virtual const PriceLevel* observedBestLevel(OrderSide side) const noexcept = 0;
+        virtual const PriceLevel* observedNextLevel(OrderSide side, Price price) const noexcept = 0;
+        virtual std::size_t observedLevelCount(OrderSide side) const noexcept = 0;
+
     protected:
+        void notifyRested(const OrderNode& node) noexcept
+        {
+            if (this->observationListener != nullptr)
+            {
+                this->observationListener->onRested(node);
+            }
+        }
+
+        void notifyRemoved(const OrderNode& node) noexcept
+        {
+            if (this->observationListener != nullptr)
+            {
+                this->observationListener->onRemoved(node);
+            }
+        }
+
         static void appendTrade(TradeBuffer& trades, Trade trade, OrderNode& maker, OrderNode& taker)
         {
             trades.append(trade, maker, taker);

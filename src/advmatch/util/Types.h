@@ -16,6 +16,11 @@
 
 namespace advmatch
 {
+    namespace observe
+    {
+        class TradingObserver;
+    }
+
     using UserId = std::uint64_t;
     using AccountId = std::uint64_t;
     using AssetId = std::uint32_t;

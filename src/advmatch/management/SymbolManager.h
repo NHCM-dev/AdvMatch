@@ -13,6 +13,7 @@ namespace advmatch
 {
     class SymbolManager
     {
+        friend class observe::TradingObserver;
         struct SymbolKey
         {
             SymbolType type;

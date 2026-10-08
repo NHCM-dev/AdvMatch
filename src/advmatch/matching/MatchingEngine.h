@@ -28,6 +28,9 @@ namespace advmatch
     // User and Symbol addresses.
     class MatchingEngine
     {
+        friend class observe::TradingObserver;
+        mutable observe::OrderBookListener* observationListener = nullptr;
+        std::size_t orderBookCount = 0;
         struct BookServices
         {
             RiskEngine* risk = nullptr;

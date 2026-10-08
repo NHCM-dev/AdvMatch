@@ -40,6 +40,7 @@ namespace advmatch::consuming
         {
             Empty,
             Ticket,
+            Detached,
             Stop
         };
 
@@ -118,8 +119,23 @@ namespace advmatch::consuming
                     Event& event = this->ring->get(next);
                     if (event.type == EventType::Stop)
                     {
+                        this->onStopped();
                         this->consumed.set(next);
                         return;
+                    }
+
+                    if (event.type == EventType::Detached)
+                    {
+                        try
+                        {
+                            consume(std::move(*event.command));
+                        }
+                        catch (...)
+                        {
+                            this->onDetachedFailure(std::current_exception());
+                        }
+
+                        event.command.reset();
                     }
 
                     if (event.type == EventType::Ticket)
@@ -160,6 +176,15 @@ namespace advmatch::consuming
 
     protected:
         virtual Response consume(Command&& command) = 0;
+
+        virtual void onStopped() noexcept
+        {
+        }
+
+        virtual void onDetachedFailure(std::exception_ptr) noexcept
+        {
+            std::terminate();
+        }
 
         void stopBeforeDerivedDestruction() noexcept
         {
@@ -232,6 +257,29 @@ namespace advmatch::consuming
                 this->endSubmit();
                 throw;
             }
+        }
+
+        // A future-owning command does not need an external ResponseSlot.
+        // Queue exhaustion returns false immediately; command execution must
+        // route failures to its own completion source (or override the hook).
+        bool tryPostDetached(Command& command) requires std::is_void_v<Response>
+        {
+            static_assert(std::is_nothrow_move_constructible_v<Command>);
+            this->beginSubmit();
+            const auto sequence = this->ring->tryNext();
+            if (!sequence)
+            {
+                this->endSubmit();
+                return false;
+            }
+
+            Event& event = this->ring->get(sequence.value());
+            event.command.emplace(std::move(command));
+            event.responseSlot = nullptr;
+            event.type = EventType::Detached;
+            this->ring->publish(sequence.value());
+            this->endSubmit();
+            return true;
         }
 
         // Claims and publishes several adjacent ring entries at once. This

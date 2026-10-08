@@ -17,6 +17,7 @@ namespace advmatch
     // Accounts own positions. All commands execute on the matching thread.
     class ContractEngine
     {
+        friend class observe::TradingObserver;
         friend class MatchingEngine;
         ContractState beginCommand(SymbolId symbolId, Timestamp timestamp);
         static ContractState commandState(const ContractMarket& market, Timestamp timestamp) noexcept;

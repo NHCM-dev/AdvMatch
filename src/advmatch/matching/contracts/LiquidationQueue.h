@@ -5,6 +5,10 @@
 
 namespace advmatch
 {
+    namespace observe
+    {
+        class TradingObserver;
+    }
     struct ContractParticipant;
 
     struct LiquidationLink
@@ -20,6 +24,7 @@ namespace advmatch
     // work until the next pass without copying or invalidating an iterator.
     class LiquidationQueue
     {
+        friend class observe::TradingObserver;
         LiquidationLink* head = nullptr;
         LiquidationLink* tail = nullptr;
         std::size_t count = 0;

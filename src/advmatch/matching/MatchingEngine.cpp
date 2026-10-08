@@ -94,6 +94,8 @@ namespace advmatch
         this->orderBooks.resize(std::max(this->orderBooks.size(), static_cast<std::size_t>(symbolId)));
         this->bookServices.resize(this->orderBooks.size());
         this->orderBooks[symbolId - 1] = createOrderBook(symbolId, &this->contracts->getSettleEngine(), implementation);
+        this->orderBooks[symbolId - 1]->observationListener = this->observationListener;
+        ++this->orderBookCount;
         this->bookServices[symbolId - 1] = {&this->contracts->getRiskEngine(), &this->contracts->getLedger(), &this->contracts->getSettleEngine()};
         return {};
     }
@@ -137,6 +139,8 @@ namespace advmatch
         }
 
         book = createOrderBook(symbolId, nullptr, implementation);
+        book->observationListener = this->observationListener;
+        ++this->orderBookCount;
         this->bookServices.resize(this->orderBooks.size());
         this->bookServices[symbolId - 1] = {&this->riskEngine, &this->accountLedger, &this->settleEngine};
         return true;

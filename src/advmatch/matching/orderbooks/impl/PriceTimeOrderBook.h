@@ -25,6 +25,21 @@ namespace advmatch
         void append(OrderNode& node);
         void unlink(OrderNode& node, Quantity remaining) noexcept;
 
+        const PriceLevel* observedBestLevel(OrderSide side) const noexcept override
+        {
+            return side == OrderSide::Bid ? this->bids.best() : this->asks.best();
+        }
+
+        const PriceLevel* observedNextLevel(OrderSide side, Price price) const noexcept override
+        {
+            return side == OrderSide::Bid ? this->bids.next(price) : this->asks.next(price);
+        }
+
+        std::size_t observedLevelCount(OrderSide side) const noexcept override
+        {
+            return side == OrderSide::Bid ? this->bids.size() : this->asks.size();
+        }
+
     public:
         explicit PriceTimeOrderBook(SymbolId symbolId, MatchPolicy* matchPolicy = nullptr)
             : bookSymbolId(symbolId), matchPolicy(matchPolicy)

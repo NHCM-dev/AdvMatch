@@ -12,6 +12,7 @@ namespace advmatch
 {
     class UserManager
     {
+        friend class observe::TradingObserver;
         AccountManager accountManager;
         NodeHashMap<UserId, User> users;
         UserId nextUserId = 1;
