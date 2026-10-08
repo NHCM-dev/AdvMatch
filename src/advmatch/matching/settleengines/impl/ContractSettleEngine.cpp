@@ -20,13 +20,13 @@ namespace advmatch
 
         void reset()
         {
+            this->market.pendingLiquidations.clear();
             this->orderPool.clear();
             this->accountPool.clear();
             this->participants.clear();
             this->market.participants.clear();
             this->market.activePositions.clear();
             this->market.orderParticipants.clear();
-            this->market.pendingLiquidations.clear();
             this->market.participantPool = &this->participants;
             this->accounts.clear();
         }
@@ -188,6 +188,7 @@ namespace advmatch
 
         if (position.positionSize == 0 && plan.size != 0)
         {
+            linkTradingParticipant(participant);
             ++participant.account->managedPositionCount;
             participant.account->activePositions[position.positionId] = &position;
             participant.account->tradingPositions[position.positionId] = &position;
@@ -201,6 +202,7 @@ namespace advmatch
             if (participant.openOrderCount == 0)
             {
                 participant.account->tradingPositions.erase(position.positionId);
+                unlinkTradingParticipant(participant);
             }
         }
 
@@ -248,6 +250,7 @@ namespace advmatch
     void ContractSettleEngine::attach(OrderNode& node) noexcept
     {
         ContractParticipant& participant = *node.contractParticipant;
+        linkTradingParticipant(participant);
         node.contractNext = participant.firstOrder;
         if (participant.firstOrder)
         {
@@ -293,8 +296,53 @@ namespace advmatch
             if (participant.position->positionSize == 0)
             {
                 participant.account->tradingPositions.erase(participant.position->positionId);
+                unlinkTradingParticipant(participant);
             }
         }
+    }
+
+    void ContractSettleEngine::linkTradingParticipant(ContractParticipant& participant) noexcept
+    {
+        if (participant.crossLinked || participant.position->marginMode != MarginMode::Cross)
+        {
+            return;
+        }
+
+        CrossMarginState& state = *participant.crossMargin;
+        participant.crossNext = state.firstParticipant;
+        if (state.firstParticipant)
+        {
+            state.firstParticipant->crossPrevious = &participant;
+        }
+
+        state.firstParticipant = &participant;
+        participant.crossLinked = true;
+    }
+
+    void ContractSettleEngine::unlinkTradingParticipant(ContractParticipant& participant) noexcept
+    {
+        if (!participant.crossLinked)
+        {
+            return;
+        }
+
+        if (participant.crossPrevious)
+        {
+            participant.crossPrevious->crossNext = participant.crossNext;
+        }
+        else
+        {
+            participant.crossMargin->firstParticipant = participant.crossNext;
+        }
+
+        if (participant.crossNext)
+        {
+            participant.crossNext->crossPrevious = participant.crossPrevious;
+        }
+
+        participant.crossPrevious = nullptr;
+        participant.crossNext = nullptr;
+        participant.crossLinked = false;
     }
 
     bool ContractSettleEngine::canFillAll(OrderNode& taker, const OrderBook& book)
@@ -334,6 +382,10 @@ namespace advmatch
                     originalAccount->queryActiveBalance(source.symbol->quoteAssetId).value_or(0),
                     originalAccount->queryReservedBalance(source.symbol->quoteAssetId).value_or(0)));
                 account->crossMargin(source.symbol->quoteAssetId) = *originalParticipant.crossMargin;
+                auto& shadowCross = account->crossMargin(source.symbol->quoteAssetId);
+                shadowCross.firstParticipant = nullptr;
+                shadowCross.nextLiquidationVisited = nullptr;
+                shadowCross.liquidationVisited = false;
                 account->managedPositionCount = originalAccount->managedPositionCount;
                 account->managedOrderCount = originalAccount->managedOrderCount;
                 accountIterator->second = account;

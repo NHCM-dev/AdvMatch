@@ -4,6 +4,7 @@
 #include "advmatch/ledging/account/impl/ContractAccount.h"
 #include "advmatch/matching/Matching.h"
 #include "advmatch/trading/futures/Contract.h"
+#include "LiquidationQueue.h"
 
 #include <limits>
 #include <utility>
@@ -19,6 +20,10 @@ namespace advmatch
         OrderNode* firstOrder = nullptr;
         std::size_t openOrderCount = 0;
         std::size_t orderReferences = 0;
+        LiquidationLink liquidationLink;
+        ContractParticipant* crossPrevious = nullptr;
+        ContractParticipant* crossNext = nullptr;
+        bool crossLinked = false;
     };
 
     struct ContractMarket
@@ -48,7 +53,13 @@ namespace advmatch
         DenseMap<PositionId, ContractParticipant*> participants;
         DenseMap<PositionId, ContractParticipant*> activePositions;
         DenseMap<PositionId, ContractParticipant*> orderParticipants;
-        DenseMap<PositionId, ContractParticipant*> pendingLiquidations;
+        LiquidationQueue pendingLiquidations;
+
+        bool hasPendingLiquidation(PositionId id) const noexcept
+        {
+            const auto it = this->participants.find(id);
+            return it != this->participants.end() && it->second->liquidationLink.linked;
+        }
 
         std::pair<Price, Price> priceBand() const noexcept
         {
@@ -92,6 +103,7 @@ namespace advmatch
             if (it != this->participants.end())
             {
                 ContractParticipant* participant = it->second;
+                this->pendingLiquidations.remove(participant->liquidationLink);
                 this->participants.erase(it);
                 this->participantPool->release(participant);
             }

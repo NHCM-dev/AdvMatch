@@ -1,11 +1,25 @@
 #include "MatchingEngine.h"
 #include "contracts/ContractEngine.h"
 #include "orderbooks/impl/IndexedTreeOrderBook.h"
+#include "orderbooks/impl/RadixOrderBook.h"
 
 #include <limits>
 
 namespace advmatch
 {
+    namespace
+    {
+        std::unique_ptr<OrderBook> createOrderBook(SymbolId symbolId, MatchPolicy* policy, OrderBookImplementation implementation)
+        {
+            if (implementation == OrderBookImplementation::IndexedTree)
+            {
+                return std::make_unique<IndexedTreeOrderBook>(symbolId, policy);
+            }
+
+            return std::make_unique<RadixOrderBook>(symbolId, policy);
+        }
+    }
+
     OrderNode::~OrderNode()
     {
         if (this->contractParticipant)
@@ -62,7 +76,8 @@ namespace advmatch
         return *this->contracts;
     }
 
-    ContractResult MatchingEngine::addContractBook(SymbolId symbolId, const ContractSpec& spec, Price markPrice, Timestamp timestamp)
+    ContractResult MatchingEngine::addContractBook(SymbolId symbolId, const ContractSpec& spec, Price markPrice, Timestamp timestamp,
+        OrderBookImplementation implementation)
     {
         const Symbol* symbol = this->symbolManager.getSymbol(symbolId);
         if (!symbol || this->findBook(symbolId))
@@ -78,7 +93,7 @@ namespace advmatch
 
         this->orderBooks.resize(std::max(this->orderBooks.size(), static_cast<std::size_t>(symbolId)));
         this->bookServices.resize(this->orderBooks.size());
-        this->orderBooks[symbolId - 1] = std::make_unique<IndexedTreeOrderBook>(symbolId, &this->contracts->getSettleEngine());
+        this->orderBooks[symbolId - 1] = createOrderBook(symbolId, &this->contracts->getSettleEngine(), implementation);
         this->bookServices[symbolId - 1] = {&this->contracts->getRiskEngine(), &this->contracts->getLedger(), &this->contracts->getSettleEngine()};
         return {};
     }
@@ -90,7 +105,19 @@ namespace advmatch
         return this->submitOrder(userId, symbolId, side, type, timeInForce, price, quantity, timestamp, trades, &options, false);
     }
 
-    bool MatchingEngine::addSpotBook(SymbolId symbolId)
+    bool MatchingEngine::reservePriceLevels(SymbolId symbolId, std::size_t bidLevels, std::size_t askLevels)
+    {
+        OrderBook* book = this->findBook(symbolId);
+        if (!book)
+        {
+            return false;
+        }
+
+        book->reservePriceLevels(bidLevels, askLevels);
+        return true;
+    }
+
+    bool MatchingEngine::addSpotBook(SymbolId symbolId, OrderBookImplementation implementation)
     {
         const Symbol* symbol = this->symbolManager.getSymbol(symbolId);
         if (!symbol || symbol->symbolType != SymbolType::Spot || symbol->baseAssetId == symbol->quoteAssetId)
@@ -109,7 +136,7 @@ namespace advmatch
             return false;
         }
 
-        book = std::make_unique<IndexedTreeOrderBook>(symbolId);
+        book = createOrderBook(symbolId, nullptr, implementation);
         this->bookServices.resize(this->orderBooks.size());
         this->bookServices[symbolId - 1] = {&this->riskEngine, &this->accountLedger, &this->settleEngine};
         return true;

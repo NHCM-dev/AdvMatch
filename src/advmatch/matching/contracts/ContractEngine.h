@@ -23,6 +23,7 @@ namespace advmatch
         MatchingEngine& matching;
         ContractEventSink* eventSink = nullptr;
         bool processingLiquidations = false;
+        std::size_t automaticLiquidationBudget = std::numeric_limits<std::size_t>::max();
         struct MarkUpdate
         {
             ContractParticipant* participant;
@@ -38,8 +39,6 @@ namespace advmatch
         };
         SmallVector<MarkUpdate, 16> markUpdates;
         DenseMap<CrossMarginState*, CrossUpdate> crossUpdates;
-        SmallVector<ContractParticipant*, 16> pendingWorkspace;
-        DenseSet<CrossMarginState*> visitedCrossLiquidations;
         BigAllocs<ContractParticipant> participantPool;
         NodeHashMap<SymbolId, ContractMarket> markets;
         PositionId nextPositionId = 1;
@@ -57,6 +56,16 @@ namespace advmatch
         explicit ContractEngine(MatchingEngine& matching)
             : matching(matching), settlement(this->ledger, matching)
         {
+        }
+
+        ~ContractEngine();
+
+        // Applies to automatic passes after marks/funding/orders. Explicit
+        // force=true passes retain their own maxCandidates budget. Zero pauses
+        // automatic execution; risk checks and enqueue still run normally.
+        void setAutomaticLiquidationBudget(std::size_t maxCandidates) noexcept
+        {
+            this->automaticLiquidationBudget = maxCandidates;
         }
 
         void reserve(std::size_t marketCount, std::size_t positionCount)
@@ -83,7 +92,10 @@ namespace advmatch
         ContractResult expire(SymbolId symbolId, Timestamp timestamp);
         ContractResult deliver(SymbolId symbolId, Price price, Timestamp timestamp);
         ContractResult liquidate(SymbolId symbolId, PositionId positionId, Timestamp timestamp, TradeBuffer& trades);
-        ContractResult processLiquidations(SymbolId symbolId, Timestamp timestamp, bool force = true);
+        // maxCandidates caps queue scheduling, not the number of fills or
+        // orders canceled by one account liquidation. Zero does no work.
+        ContractResult processLiquidations(SymbolId symbolId, Timestamp timestamp, bool force = true,
+            std::size_t maxCandidates = std::numeric_limits<std::size_t>::max());
         void cancelOrders(ContractMarket& market, ContractParticipant& participant, Timestamp timestamp);
 
         RiskEngine& getRiskEngine() noexcept

@@ -353,8 +353,8 @@ namespace
         CHECK(fixture.engine().updateMarkPrice(2, 89, 6).state == ContractState::PendingLiquidation);
         CHECK(fixture.engine().queryPosition(longId)->liquidating);
         CHECK(fixture.engine().queryPosition(bid.positionId)->liquidating);
-        CHECK(fixture.engine().findMarket(1)->pendingLiquidations.contains(longId));
-        CHECK(fixture.engine().findMarket(2)->pendingLiquidations.contains(bid.positionId));
+        CHECK(fixture.engine().findMarket(1)->hasPendingLiquidation(longId));
+        CHECK(fixture.engine().findMarket(2)->hasPendingLiquidation(bid.positionId));
     }
 
     void fundingOverflowAtomicity()

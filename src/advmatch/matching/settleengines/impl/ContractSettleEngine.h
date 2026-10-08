@@ -41,6 +41,8 @@ namespace advmatch
             const PositionPlan& plan, Timestamp timestamp) noexcept;
         static void attach(OrderNode& node) noexcept;
         static void detach(OrderNode& node) noexcept;
+        static void linkTradingParticipant(ContractParticipant& participant) noexcept;
+        static void unlinkTradingParticipant(ContractParticipant& participant) noexcept;
 
         bool canFillAll(OrderNode& taker, const OrderBook& book) override;
         MatchAction prepare(OrderNode& maker, OrderNode& taker, Price price, Quantity& quantity) override;

@@ -25,7 +25,7 @@ maintenanceMargin = ceil(markNotional × maintenanceMarginRate / 1,000,000)
 | BasicOrderFactory | 通用订单参数与 BasicOrder 创建，现货和合约复用 |
 | ContractEngine | 产品登记、命令时序、仓位绑定、杠杆和保证金调整、协调生命周期 |
 | ContractRiskEngine | 下单/改单校验、保证金预留计算、执行价格边界 |
-| IndexedTreeOrderBook | 价格优先、同价 FIFO 撮合，通过 MatchPolicy 调用合约策略 |
+| PriceTimeOrderBook / RadixOrderBook | 共用价格优先、同价 FIFO 撮合；默认使用 64 位 Radix 价格索引，通过 MatchPolicy 调用合约策略 |
 | ContractSettleEngine | 成交前生成双方 PositionPlan；成交后提交余额、仓位、盈亏与费用 |
 | ContractSettlementBatch | 资金费率和交割共用的账户净额预检查与批量提交 |
 | LiquidateEngine | 判断保证金不足、撤单、通过真实订单簿减仓、管理待强平状态 |
@@ -48,6 +48,10 @@ maintenanceMargin = ceil(markNotional × maintenanceMarginRate / 1,000,000)
 已关闭仓位默认保留供查询。显式调用 MatchingEngine::archiveHistory，并由 HistorySink 确认接收后，才回收已结束且没有订单引用的仓位。归档后 queryPosition 返回空，之前借用的 Position 指针失效；调用方必须复制历史值。活动索引只包含仍有仓位或挂单的对象，标记价和资金费率处理不扫描全部历史仓位。详见 [性能优化与历史归档](performance-optimization.md)。
 
 ## 强平
+
+待强平任务采用侵入式队列，入队、去重、移除和出队是 O(1)，没有哈希分配或队列快照拷贝。全仓按账户和抵押资产组织交易中仓位链表，只遍历本次需要撤单/减仓的对象。空对手盘口不生成无效 IOC 历史订单。强平压力模型、构建和运行参数见 [连锁强平 benchmark](liquidation-benchmark.md)。
+
+`setAutomaticLiquidationBudget(N)` 限制标记价、资金费和普通订单后自动处理的候选数；默认不限制，0 暂停自动执行，但风险校验和入队仍然生效。`processLiquidations(symbolId, timestamp, true, N)` 可显式分轮处理。预算限制候选调度，不限制单个账户的撤单、仓位数或成交数。不能将整场强平或标记价重估称为 O(1)。
 
 逐仓使用 `positionMargin + unrealizedPnL <= maintenanceMargin + estimatedLiquidationFee` 判定；全仓使用账户缓存的权益与同一抵押资产的总要求判定。价格采用标记价，成交价格采用真实对手订单价格。
 
@@ -135,8 +139,9 @@ setEventSink 可注册 ContractEventSink，接收成交、资金费、强平和�
 | OrderId 查询 | 最坏 O(1)，直接数组下标 |
 | PositionId、市场 ID、余额、风险缓存查询 | 平均 O(1)，哈希索引；内联余额最多检查 10 项 |
 | 单笔成交的仓位、账户与风险更新 | 平均 O(1) |
-| 撤单脱链 | O(1)；最后一个价格档的树删除另计 O(log L) |
-| 插入价格档、删除价格档 | O(log L) |
+| 撤单脱链 | O(1)；默认 Radix 删除空价格档的索引工作也有固定宽度上界 |
+| 默认 Radix 价格定位、插入/删除价格档 | O(w)，w = 64；每条压缩路径至多 64 层，相对于档位数量固定成本；对象池扩容另计 |
+| 可选 IndexedTree 插入/删除价格档 | O(log L) |
 | 撮合 | 与实际成交及风险取消的对手订单数量相关；不是固定 O(1) |
 | FOK 模拟 | O(F) 次状态更新与访问，按价格档遍历；只复制涉及的账户/仓位 |
 | 标记价、资金费、交割 | O(P)，P 为该产品活动仓位数 |

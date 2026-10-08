@@ -9,11 +9,11 @@ namespace advmatch
     {
         if (participant.position->positionSize != 0 && (participant.position->liquidating || required(market, participant)))
         {
-            market.pendingLiquidations[participant.position->positionId] = &participant;
+            market.pendingLiquidations.enqueue(participant, participant.liquidationLink);
         }
         else
         {
-            market.pendingLiquidations.erase(participant.position->positionId);
+            market.pendingLiquidations.remove(participant.liquidationLink);
         }
     }
 
@@ -61,15 +61,10 @@ namespace advmatch
         if (position.marginMode == MarginMode::Cross)
         {
             participant.crossMargin->liquidating = true;
-            participant.account->forEachTradingPosition([&](PositionId id, const Position& candidate)
+            for (ContractParticipant* target = participant.crossMargin->firstParticipant; target; target = target->crossNext)
             {
-                ContractParticipant* target = contracts.findParticipant(id);
-                if (target && candidate.marginMode == MarginMode::Cross &&
-                    target->market->symbol->quoteAssetId == market.symbol->quoteAssetId)
-                {
-                    targets.push_back(target);
-                }
-            });
+                targets.push_back(target);
+            }
         }
         else
         {
@@ -78,7 +73,7 @@ namespace advmatch
 
         // All orders are removed first so their reservations become available
         // before a cross liquidation consumes collateral. Intrusive lists make
-        // each cancellation O(1) except removal of an empty tree price level.
+        // each cancellation fixed pointer work plus the selected price index.
         for (ContractParticipant* target : targets)
         {
             target->position->liquidating = target->position->positionSize != 0;
@@ -97,6 +92,15 @@ namespace advmatch
 
             ContractMarket& targetMarket = *target->market;
             const bool buy = candidate.positionSide == PositionSide::Short;
+            // An empty opposing side cannot produce a fill. Keep the risk
+            // state queued without allocating a doomed IOC OrderNode/history
+            // record for every position on every liquidity-starved pass.
+            if (!(buy ? matching.bestAsk(candidate.symbolId) : matching.bestBid(candidate.symbolId)))
+            {
+                result.state = ContractState::PendingLiquidation;
+                continue;
+            }
+
             const WideBalance boundedPrice = static_cast<WideBalance>(targetMarket.markPrice) *
                 (buy ? RATE_SCALE + targetMarket.spec.priceBandRate : RATE_SCALE - targetMarket.spec.priceBandRate) / RATE_SCALE;
             const auto limit = ContractMath::balance(boundedPrice);

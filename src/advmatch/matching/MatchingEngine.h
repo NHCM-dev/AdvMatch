@@ -72,7 +72,8 @@ namespace advmatch
 
         ContractEngine& getContractEngine() noexcept;
         const ContractEngine& getContractEngine() const noexcept;
-        ContractResult addContractBook(SymbolId symbolId, const ContractSpec& spec, Price markPrice, Timestamp timestamp);
+        ContractResult addContractBook(SymbolId symbolId, const ContractSpec& spec, Price markPrice, Timestamp timestamp,
+            OrderBookImplementation implementation = OrderBookImplementation::Radix);
         PlaceOrderResult placeContractOrder(UserId userId, SymbolId symbolId, OrderSide side, OrderType type,
             TimeInForce timeInForce, Price price, Quantity quantity, Timestamp timestamp,
             const ContractOrderOptions& options, TradeBuffer& trades);
@@ -87,7 +88,8 @@ namespace advmatch
             static_cast<void>(activeOrderCount);
         }
 
-        bool addSpotBook(SymbolId symbolId);
+        bool addSpotBook(SymbolId symbolId, OrderBookImplementation implementation = OrderBookImplementation::Radix);
+        bool reservePriceLevels(SymbolId symbolId, std::size_t bidLevels, std::size_t askLevels);
 
         // Explicit retention boundary: queryOrder/queryPosition no longer
         // return records acknowledged by sink. IDs are never reused. Budget

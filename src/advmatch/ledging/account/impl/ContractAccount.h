@@ -8,6 +8,7 @@
 
 namespace advmatch
 {
+    struct ContractParticipant;
     using PositionPool = BigAllocs<Position>;
 
     struct CrossMarginState
@@ -18,6 +19,12 @@ namespace advmatch
         BalanceChange unrealizedPnL = 0;
         Balance orderReservation = 0;
         bool liquidating = false;
+        // Only trading participants for this account and collateral asset.
+        // The nodes belong to ContractEngine and are linked/unlinked by the
+        // settlement lifecycle. Unrelated products/assets are never scanned.
+        ContractParticipant* firstParticipant = nullptr;
+        CrossMarginState* nextLiquidationVisited = nullptr;
+        bool liquidationVisited = false;
     };
 
     class ContractAccount : public Account

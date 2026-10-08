@@ -4,6 +4,14 @@
 
 namespace advmatch
 {
+    ContractEngine::~ContractEngine()
+    {
+        for (auto& [id, participant] : this->positionIndex)
+        {
+            ContractSettleEngine::unlinkTradingParticipant(*participant);
+        }
+    }
+
     HistoryArchiveResult ContractEngine::archiveHistory(HistorySink& sink, std::size_t scanBudget)
     {
         HistoryArchiveResult result;
@@ -29,7 +37,7 @@ namespace advmatch
             }
 
             ContractMarket* market = participant->market;
-            market->pendingLiquidations.erase(id);
+            market->pendingLiquidations.remove(participant->liquidationLink);
             this->positionIndex.erase(id);
             market->removeParticipant(id);
             ++result.archivedPositions;
@@ -432,7 +440,7 @@ namespace advmatch
             LiquidateEngine::enqueue(*market, *update.participant);
         }
 
-        return this->processLiquidations(symbolId, timestamp);
+        return this->processLiquidations(symbolId, timestamp, false);
     }
 
     ContractResult ContractEngine::fundInsurance(SymbolId symbolId, Account& source, PositiveBalanceChange amount)
@@ -483,14 +491,10 @@ namespace advmatch
                 }
 
                 SmallVector<ContractParticipant*, 8> targets;
-                participant.account->forEachTradingPosition([&](PositionId positionId, const Position& position)
+                for (ContractParticipant* target = participant.crossMargin->firstParticipant; target; target = target->crossNext)
                 {
-                    ContractParticipant* target = this->findParticipant(positionId);
-                    if (target && position.marginMode == MarginMode::Cross && target->market->symbol->quoteAssetId == market->symbol->quoteAssetId)
-                    {
-                        targets.push_back(target);
-                    }
-                });
+                    targets.push_back(target);
+                }
                 for (ContractParticipant* target : targets)
                 {
                     this->cancelOrders(*target->market, *target, timestamp);
@@ -508,7 +512,7 @@ namespace advmatch
                 LiquidateEngine::enqueue(*market, *participant);
             }
 
-            static_cast<void>(this->processLiquidations(symbolId, timestamp));
+            static_cast<void>(this->processLiquidations(symbolId, timestamp, false));
         }
 
         return result;
@@ -575,7 +579,7 @@ namespace advmatch
         return this->liquidation.execute(*this, this->matching, *participant->market, *participant, timestamp, trades);
     }
 
-    ContractResult ContractEngine::processLiquidations(SymbolId symbolId, Timestamp timestamp, bool force)
+    ContractResult ContractEngine::processLiquidations(SymbolId symbolId, Timestamp timestamp, bool force, std::size_t maxCandidates)
     {
         ContractMarket* market = this->findMarket(symbolId);
         if (!market)
@@ -593,36 +597,64 @@ namespace advmatch
             return {market->pendingLiquidations.empty() ? ContractState::Success : ContractState::PendingLiquidation};
         }
 
+        if (!force)
+        {
+            maxCandidates = std::min(maxCandidates, this->automaticLiquidationBudget);
+        }
+
         // Restores the guard even if a resource allocation fails.
         struct ProcessingGuard
         {
             bool& flag;
+            CrossMarginState* visited = nullptr;
             explicit ProcessingGuard(bool& flag) : flag(flag)
             {
                 this->flag = true;
             }
             ~ProcessingGuard()
             {
+                while (this->visited)
+                {
+                    CrossMarginState* state = this->visited;
+                    this->visited = state->nextLiquidationVisited;
+                    state->nextLiquidationVisited = nullptr;
+                    state->liquidationVisited = false;
+                }
+
                 this->flag = false;
+            }
+
+            bool visit(CrossMarginState& state) noexcept
+            {
+                if (state.liquidationVisited)
+                {
+                    return false;
+                }
+
+                state.liquidationVisited = true;
+                state.nextLiquidationVisited = this->visited;
+                this->visited = &state;
+                return true;
             }
         } guard(this->processingLiquidations);
 
         TradeBuffer trades;
         ContractResult result;
-        auto& pending = this->pendingWorkspace;
-        pending.clear();
-        pending.reserve(market->pendingLiquidations.size());
-        this->visitedCrossLiquidations.clear();
-        for (const auto& [id, participant] : market->pendingLiquidations)
+        LiquidationQueue::Pass pass(market->pendingLiquidations);
+        std::size_t scanned = 0;
+        while (scanned < maxCandidates)
         {
-            pending.push_back(participant);
-        }
-
-        for (ContractParticipant* participant : pending)
-        {
-            if (participant->position->marginMode == MarginMode::Cross &&
-                !this->visitedCrossLiquidations.insert(participant->crossMargin).second)
+            ContractParticipant* participant = pass.next();
+            if (!participant)
             {
+                break;
+            }
+
+            ++scanned;
+            if (participant->position->marginMode == MarginMode::Cross &&
+                !guard.visit(*participant->crossMargin))
+            {
+                LiquidateEngine::enqueue(*market, *participant);
                 continue;
             }
 
@@ -639,7 +671,15 @@ namespace advmatch
             LiquidateEngine::enqueue(*market, *participant);
         }
 
-        market->lastLiquidationRevision = market->liquidityRevision;
+        if (pass.exhausted())
+        {
+            market->lastLiquidationRevision = market->liquidityRevision;
+        }
+
+        if (!market->pendingLiquidations.empty() && result.state == ContractState::Success)
+        {
+            result.state = ContractState::PendingLiquidation;
+        }
 
         return result;
     }

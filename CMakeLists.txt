@@ -157,6 +157,7 @@ add_library(advmatch_core STATIC
     src/advmatch/util/ContractMath.h
     src/advmatch/util/ContractUtil.h
     src/advmatch/matching/contracts/ContractMarket.h
+    src/advmatch/matching/contracts/LiquidationQueue.h
     src/advmatch/matching/contracts/ContractSettlementBatch.h
     src/advmatch/matching/contracts/ContractEngine.h
     src/advmatch/matching/contracts/LiquidateEngine.h
@@ -182,6 +183,12 @@ add_library(advmatch_core STATIC
     src/advmatch/matching/orderbooks/OrderBook.h
     src/advmatch/matching/orderbooks/impl/IndexedTreeOrderBook.cpp
     src/advmatch/matching/orderbooks/impl/IndexedTreeOrderBook.h
+    src/advmatch/matching/orderbooks/impl/PriceTimeOrderBook.h
+    src/advmatch/matching/orderbooks/impl/PriceTimeOrderBook.tpp
+    src/advmatch/matching/orderbooks/impl/TreePriceLevels.h
+    src/advmatch/matching/orderbooks/impl/RadixPriceLevels.h
+    src/advmatch/matching/orderbooks/impl/RadixOrderBook.h
+    src/advmatch/util/RadixIndex.h
     src/advmatch/consuming/SingleThreadConsumer.h
     src/advmatch/consuming/RequestTicket.h
     src/advmatch/trading/Order.cpp
@@ -244,6 +251,11 @@ if(ADVMATCH_BUILD_JNI)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(advmatch_radix_tests tests/radix.cpp)
+    target_link_libraries(advmatch_radix_tests PRIVATE AdvMatch::core)
+    advmatch_configure_runtime(advmatch_radix_tests)
+    add_test(NAME advmatch_radix_tests COMMAND advmatch_radix_tests)
+    set_tests_properties(advmatch_radix_tests PROPERTIES TIMEOUT 30)
     add_executable(advmatch_optimization_tests tests/optimizations.cpp)
     target_link_libraries(advmatch_optimization_tests PRIVATE AdvMatch::core)
     advmatch_configure_runtime(advmatch_optimization_tests)
@@ -287,6 +299,13 @@ if(BUILD_TESTING)
 endif()
 
 if(ADVMATCH_BUILD_BENCHMARKS)
+    add_executable(advmatch_liquidation_benchmark benchmarks/liquidation.cpp)
+    target_link_libraries(advmatch_liquidation_benchmark PRIVATE AdvMatch::core)
+    advmatch_configure_runtime(advmatch_liquidation_benchmark)
+    if(WIN32)
+        target_link_libraries(advmatch_liquidation_benchmark PRIVATE Psapi)
+    endif()
+
     add_executable(advmatch_perpetual_benchmark benchmarks/perpetual.cpp)
     target_link_libraries(advmatch_perpetual_benchmark PRIVATE AdvMatch::core)
     advmatch_configure_runtime(advmatch_perpetual_benchmark)
@@ -307,6 +326,13 @@ if(ADVMATCH_BUILD_BENCHMARKS)
     advmatch_configure_runtime(advmatch_big_allocs_benchmark)
 
     if(BUILD_TESTING)
+        add_test(NAME advmatch_liquidation_smoke COMMAND advmatch_liquidation_benchmark
+            --users 200 --positions-per-user 4 --symbols 7 --waves 6)
+        add_test(NAME advmatch_liquidation_up_smoke COMMAND advmatch_liquidation_benchmark
+            --users 120 --positions-per-user 3 --symbols 5 --waves 6 --direction up --book tree)
+        add_test(NAME advmatch_liquidation_starvation_smoke COMMAND advmatch_liquidation_benchmark
+            --users 80 --positions-per-user 4 --symbols 4 --waves 4 --depth-percent 0 --insurance-percent 0 --recover 0)
+        set_tests_properties(advmatch_liquidation_smoke advmatch_liquidation_up_smoke advmatch_liquidation_starvation_smoke PROPERTIES TIMEOUT 30)
         add_test(NAME advmatch_perpetual_smoke COMMAND advmatch_perpetual_benchmark
             --orders 1000 --warmup 32 --users 20 --symbols 3 --producers 2 --latency-sample 1)
         add_test(NAME advmatch_perpetual_cross_smoke COMMAND advmatch_perpetual_benchmark
@@ -330,7 +356,7 @@ if(ADVMATCH_BUILD_JNI)
 endif()
 
 if(ADVMATCH_BUILD_BENCHMARKS)
-    install(TARGETS advmatch_perpetual_benchmark advmatch_tps_benchmark advmatch_scale_benchmark advmatch_big_allocs_benchmark
+    install(TARGETS advmatch_liquidation_benchmark advmatch_perpetual_benchmark advmatch_tps_benchmark advmatch_scale_benchmark advmatch_big_allocs_benchmark
         RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 

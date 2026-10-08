@@ -159,6 +159,12 @@ namespace advmatch
     // contract risk/settlement is supplied by the owning engine.
     class OrderBook;
 
+    enum class OrderBookImplementation : std::uint8_t
+    {
+        Radix,
+        IndexedTree
+    };
+
     class MatchPolicy
     {
     public:
@@ -180,6 +186,12 @@ namespace advmatch
 
     public:
         virtual ~OrderBook() = default;
+
+        // Reserve the expected live price levels before trading. Algorithms
+        // have bounded index work; allocator and OS latency remain unbounded.
+        virtual void reservePriceLevels(std::size_t, std::size_t)
+        {
+        }
 
         // Read on the matching thread; callbacks must not mutate the book.
         // Prices are best first, and orders at each price are FIFO.
