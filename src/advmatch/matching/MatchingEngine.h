@@ -44,9 +44,20 @@ namespace advmatch
         friend class LiquidateEngine;
         friend class ContractSettleEngine;
 
+        // Borrowed only by a synchronous submission on the owner thread. The
+        // internal liquidation path resolves these once, but shares factory,
+        // risk, reservation, matching and settlement with public submissions.
+        struct OrderSubmissionContext
+        {
+            User* user;
+            const Symbol* symbol;
+            OrderBook* book;
+            ContractParticipant* participant;
+        };
+
         PlaceOrderResult submitOrder(UserId userId, SymbolId symbolId, OrderSide side, OrderType type,
             TimeInForce timeInForce, Price price, Quantity quantity, Timestamp timestamp, TradeBuffer& trades,
-            const ContractOrderOptions* options, bool liquidation);
+            const ContractOrderOptions* options, bool liquidation, const OrderSubmissionContext* context = nullptr);
         UserManager& userManager;
         SymbolManager& symbolManager;
         SpotAccountLedger accountLedger;

@@ -9,6 +9,53 @@
 
 namespace advmatch
 {
+    namespace
+    {
+        LiquidationRetryState retryState(const OrderNode& maker, const OrderNode& taker, Price price, Quantity quantity)
+        {
+            LiquidationRetryState result;
+            auto* value = result.dependencies.data();
+            const auto append = [&](auto... fields)
+            {
+                ((*value++ = static_cast<std::uint64_t>(fields)), ...);
+            };
+
+            for (const OrderNode* node : {&maker, &taker})
+            {
+                const auto& participant = *node->contractParticipant;
+                const auto& position = *participant.position;
+                const auto& cross = *participant.crossMargin;
+                const auto balance = participant.account->captureBalance(node->quoteAssetId);
+                append(position.positionId, position.positionSide, position.marginMode, position.positionSize,
+                    position.entryNotional, position.initialMargin, position.leverage, position.realizedPnL,
+                    position.updatedUnrealizedPnl, position.maintenanceMargin, position.estimatedCloseFee, position.paidFees);
+                append(cross.initialMargin, cross.maintenanceMargin, cross.liquidationFeeReserve, cross.unrealizedPnL,
+                    cross.orderReservation, cross.liquidating, participant.account->getAccountId(), balance.active(), balance.reserved());
+            }
+
+            const auto& market = *taker.contractMarket;
+            const auto& spec = market.spec;
+            append(maker.basicOrder.orderId, maker.basicOrder.getPrice(), maker.basicOrder.getUnfilledQuantity(),
+                maker.reservedBalance, maker.leverage, maker.reduceOnly, maker.liquidationOrder, maker.executionPriceLimit,
+                price, quantity, taker.basicOrder.getUnfilledQuantity(), taker.reservedBalance, taker.leverage, taker.executionPriceLimit);
+            append(market.markPrice, market.insuranceBalance, market.clearingBalance, market.feeBalance,
+                spec.contractMultiplier, spec.defaultLeverage, spec.maxLeverage, spec.maintenanceMarginRate,
+                spec.makerFeeRate, spec.takerFeeRate, spec.liquidationFeeRate, spec.priceBandRate,
+                spec.maxPositionNotional, spec.expiryTimestamp, market.status, market.nextFundingTimestamp);
+            assert(value == result.dependencies.data() + result.dependencies.size());
+            return result;
+        }
+    }
+
+    void ContractSettleEngine::discardLiquidationRetry(ContractParticipant& participant) noexcept
+    {
+        if (participant.liquidationRetry)
+        {
+            this->retryPool.release(participant.liquidationRetry);
+            participant.liquidationRetry = nullptr;
+        }
+    }
+
     struct ContractSettleEngine::SimulationWorkspace
     {
         PositionPool positions;
@@ -42,7 +89,7 @@ namespace advmatch
     ContractState ContractSettleEngine::plan(const ContractMarket& market, const ContractParticipant& participant,
         OrderSide side, Price price, Quantity quantity, Balance fee, Balance reservation,
         Balance oldReservation, bool liquidation, PositionPlan& result, bool batch,
-        std::optional<Balance> executionNotional, Account::BalanceUpdate* balanceUpdate) noexcept
+        std::optional<Balance> executionNotional, Account::BalanceUpdate* balanceUpdate, bool insuranceFirst) noexcept
     {
         const Position& position = *participant.position;
         const bool opening = (side == OrderSide::Bid) == (position.positionSide == PositionSide::Long);
@@ -85,6 +132,19 @@ namespace advmatch
             result.entryNotional = position.entryNotional - entry;
             result.margin = position.initialMargin - ContractMath::proportional(position.initialMargin, quantity, position.positionSize);
             result.realizedPnL = position.positionSide == PositionSide::Long ? *value - entry : entry - *value;
+        }
+
+        // Only execution opts in: a rejected fill has no committed changes.
+        // Reuse the already computed close PnL/margin and captured balance;
+        // unfunded insurance need not calculate the marked remainder/token.
+        if (insuranceFirst && !batch && !opening && liquidation && reservation == 0 && oldReservation == 0)
+        {
+            const Balance cash = position.marginMode == MarginMode::Isolated ? position.initialMargin - result.margin : balance.active();
+            const WideBalance available = static_cast<WideBalance>(cash) + result.realizedPnL - fee;
+            if (available < 0 && -available > market.insuranceBalance)
+            {
+                return ContractState::InsufficientInsurance;
+            }
         }
 
         const auto marked = ContractMath::notional(market.markPrice, result.size, market.spec.contractMultiplier);
@@ -142,22 +202,27 @@ namespace advmatch
         {
             *balanceUpdate = *prepared;
         }
-        const CrossMarginState& cross = *participant.crossMargin;
-        const auto crossInitial = ContractMath::balance(static_cast<WideBalance>(cross.initialMargin) + (isolated ? 0 : result.margin - position.initialMargin));
-        const auto crossMaintenance = ContractMath::balance(static_cast<WideBalance>(cross.maintenanceMargin) + (isolated ? 0 : result.maintenanceMargin - position.maintenanceMargin));
-        const auto crossPnl = ContractMath::balance(static_cast<WideBalance>(cross.unrealizedPnL) + (isolated ? WideBalance(0) : static_cast<WideBalance>(result.unrealizedPnL) - position.updatedUnrealizedPnl));
-        const auto crossFee = ContractMath::balance(static_cast<WideBalance>(cross.liquidationFeeReserve) + (isolated ? 0 : result.estimatedCloseFee - position.estimatedCloseFee));
-        if (!crossInitial || !crossMaintenance || !crossPnl || !crossFee)
+        if (isolated)
         {
-            return ContractState::Overflow;
+            if (opening && static_cast<WideBalance>(result.margin) + result.unrealizedPnL <=
+                static_cast<WideBalance>(result.maintenanceMargin) + result.estimatedCloseFee)
+            {
+                return ContractState::InsufficientBalance;
+            }
         }
-
-        if (opening)
+        else
         {
-            const WideBalance equity = isolated ? static_cast<WideBalance>(result.margin) + result.unrealizedPnL
-                : static_cast<WideBalance>(balance.active()) + *active + *crossPnl;
-            const WideBalance requirement = isolated ? static_cast<WideBalance>(result.maintenanceMargin) + result.estimatedCloseFee : *crossInitial;
-            if (isolated ? equity <= requirement : equity < requirement)
+            const CrossMarginState& cross = *participant.crossMargin;
+            const auto crossInitial = ContractMath::balance(static_cast<WideBalance>(cross.initialMargin) + result.margin - position.initialMargin);
+            const auto crossMaintenance = ContractMath::balance(static_cast<WideBalance>(cross.maintenanceMargin) + result.maintenanceMargin - position.maintenanceMargin);
+            const auto crossPnl = ContractMath::balance(static_cast<WideBalance>(cross.unrealizedPnL) + result.unrealizedPnL - position.updatedUnrealizedPnl);
+            const auto crossFee = ContractMath::balance(static_cast<WideBalance>(cross.liquidationFeeReserve) + result.estimatedCloseFee - position.estimatedCloseFee);
+            if (!crossInitial || !crossMaintenance || !crossPnl || !crossFee)
+            {
+                return ContractState::Overflow;
+            }
+
+            if (opening && static_cast<WideBalance>(balance.active()) + *active + *crossPnl < *crossInitial)
             {
                 return ContractState::InsufficientBalance;
             }
@@ -191,7 +256,11 @@ namespace advmatch
             linkTradingParticipant(participant);
             ++participant.account->managedPositionCount;
             participant.account->activePositions[position.positionId] = &position;
-            participant.account->tradingPositions[position.positionId] = &position;
+            if (participant.openOrderCount == 0)
+            {
+                participant.account->tradingPositions[position.positionId] = &position;
+            }
+
             market.activePositions[position.positionId] = &participant;
         }
         else if (position.positionSize != 0 && plan.size == 0)
@@ -258,8 +327,16 @@ namespace advmatch
         }
 
         participant.firstOrder = &node;
-        participant.market->orderParticipants[participant.position->positionId] = &participant;
-        participant.account->tradingPositions[participant.position->positionId] = participant.position;
+        if (participant.openOrderCount == 0)
+        {
+            participant.market->orderParticipants[participant.position->positionId] = &participant;
+            // An open position is already indexed by apply(). Additional
+            // orders must not hash and overwrite that same pointer again.
+            if (participant.position->positionSize == 0)
+            {
+                participant.account->tradingPositions[participant.position->positionId] = participant.position;
+            }
+        }
         ++participant.openOrderCount;
         ++participant.account->managedOrderCount;
     }
@@ -469,7 +546,6 @@ namespace advmatch
 
     MatchAction ContractSettleEngine::prepare(OrderNode& maker, OrderNode& taker, Price price, Quantity& quantity)
     {
-        ContractMarket& market = *taker.contractMarket;
         if (maker.account == taker.account)
         {
             return MatchAction::CancelTaker;
@@ -497,6 +573,71 @@ namespace advmatch
             }
         }
 
+        if (this->liquidationRetryCache && taker.liquidationOrder)
+        {
+            return this->prepareLiquidation(maker, taker, price, quantity);
+        }
+
+        return this->prepareFill(maker, taker, price, quantity);
+    }
+
+    MatchAction ContractSettleEngine::prepareLiquidation(OrderNode& maker, OrderNode& taker, Price price, Quantity quantity)
+    {
+        ContractParticipant& participant = *taker.contractParticipant;
+        ContractState failure = ContractState::Success;
+        const auto action = this->prepareFill(maker, taker, price, quantity, &failure);
+        if (action == MatchAction::CancelTaker &&
+            (failure == ContractState::InsufficientInsurance || failure == ContractState::InsufficientBalance))
+        {
+            const auto retry = retryState(maker, taker, price, quantity);
+            if (!participant.liquidationRetry)
+            {
+                participant.liquidationRetry = this->retryPool.emplace(retry);
+            }
+            else
+            {
+                *participant.liquidationRetry = retry;
+            }
+        }
+        else
+        {
+            this->discardLiquidationRetry(participant);
+        }
+
+        return action;
+    }
+
+    bool ContractSettleEngine::matchesLiquidationRetry(const OrderNode& maker, const OrderNode& taker, Price price)
+    {
+        const auto* cached = taker.contractParticipant->liquidationRetry;
+        if (!this->liquidationRetryCache || !cached || !taker.liquidationOrder || maker.account == taker.account ||
+            !ContractRiskEngine::executable(maker, price) || !ContractRiskEngine::executable(taker, price))
+        {
+            return false;
+        }
+
+        Quantity quantity = std::min(maker.basicOrder.getUnfilledQuantity(), taker.basicOrder.getUnfilledQuantity());
+        for (const OrderNode* node : {&maker, &taker})
+        {
+            if (node->reduceOnly)
+            {
+                quantity = std::min(quantity, node->contractParticipant->position->positionSize);
+            }
+        }
+
+        if (quantity == 0 || cached->dependencies != retryState(maker, taker, price, quantity).dependencies)
+        {
+            return false;
+        }
+
+        ++this->retryCacheHits;
+        return true;
+    }
+
+    MatchAction ContractSettleEngine::prepareFill(OrderNode& maker, OrderNode& taker, Price price, Quantity quantity, ContractState* takerFailure)
+    {
+        ContractMarket& market = *taker.contractMarket;
+
         const auto value = ContractMath::notional(price, quantity, market.spec.contractMultiplier);
         if (!value)
         {
@@ -513,8 +654,15 @@ namespace advmatch
                 return ContractState::Overflow;
             }
 
-            return plan(market, *node.contractParticipant, node.basicOrder.orderSide, price, quantity,
-                ContractMath::rate(*value, feeRate, true), *reservation, node.reservedBalance, node.liquidationOrder, result, false, value, &balanceUpdate);
+            const Balance fee = ContractMath::rate(*value, feeRate, true);
+            const auto state = plan(market, *node.contractParticipant, node.basicOrder.orderSide, price, quantity,
+                fee, *reservation, node.reservedBalance, node.liquidationOrder, result, false, value, &balanceUpdate, this->insurancePrefilter);
+            if (this->insurancePrefilter && state == ContractState::InsufficientInsurance)
+            {
+                ++this->insuranceRejections;
+            }
+
+            return state;
         };
 
         if (prepareNode(maker, this->makerPlan, this->makerBalance, market.spec.makerFeeRate) != ContractState::Success)
@@ -523,8 +671,14 @@ namespace advmatch
         }
 
         const MMRRate takerFee = taker.liquidationOrder ? market.spec.liquidationFeeRate : market.spec.takerFeeRate;
-        if (prepareNode(taker, this->takerPlan, this->takerBalance, takerFee) != ContractState::Success)
+        const auto takerState = prepareNode(taker, this->takerPlan, this->takerBalance, takerFee);
+        if (takerState != ContractState::Success)
         {
+            if (takerFailure)
+            {
+                *takerFailure = takerState;
+            }
+
             return MatchAction::CancelTaker;
         }
 

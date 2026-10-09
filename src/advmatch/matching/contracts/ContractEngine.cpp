@@ -6,10 +6,19 @@ namespace advmatch
 {
     ContractEngine::~ContractEngine()
     {
-        for (auto& [id, participant] : this->positionIndex)
+        for (ContractParticipant* participant : this->positionIndex)
         {
             ContractSettleEngine::unlinkTradingParticipant(*participant);
         }
+    }
+
+    void ContractEngine::removeParticipantIndex(PositionId id, ContractParticipant& participant) noexcept
+    {
+        ContractParticipant* moved = this->positionIndex.back();
+        this->positionIndex[participant.indexSlot] = moved;
+        moved->indexSlot = participant.indexSlot;
+        this->positionIndex.pop_back();
+        this->participantIndex.erase(id);
     }
 
     HistoryArchiveResult ContractEngine::archiveHistory(HistorySink& sink, std::size_t scanBudget)
@@ -19,7 +28,8 @@ namespace advmatch
         while (result.scannedPositions < limit && !this->positionIndex.empty())
         {
             this->historyCursor %= this->positionIndex.size();
-            const auto [id, participant] = *(this->positionIndex.begin() + this->historyCursor);
+            ContractParticipant* participant = this->positionIndex[this->historyCursor];
+            const auto id = participant->position->positionId;
             ++result.scannedPositions;
             Position* position = participant->position;
             if (!position->closed || participant->openOrderCount != 0 || participant->orderReferences != 0 || !sink.archivePosition(*position))
@@ -38,7 +48,8 @@ namespace advmatch
 
             ContractMarket* market = participant->market;
             market->pendingLiquidations.remove(participant->liquidationLink);
-            this->positionIndex.erase(id);
+            this->settlement.discardLiquidationRetry(*participant);
+            this->removeParticipantIndex(id, *participant);
             market->removeParticipant(id);
             ++result.archivedPositions;
         }
@@ -74,14 +85,19 @@ namespace advmatch
             return ContractState::InvalidSymbol;
         }
 
-        const ContractState state = commandState(*market, timestamp);
-        if (state == ContractState::Expired && market->status == ContractStatus::Trading)
+        return this->beginCommand(*market, timestamp);
+    }
+
+    ContractState ContractEngine::beginCommand(ContractMarket& market, Timestamp timestamp)
+    {
+        const ContractState state = commandState(market, timestamp);
+        if (state == ContractState::Expired && market.status == ContractStatus::Trading)
         {
-            static_cast<void>(this->expire(symbolId, timestamp));
+            static_cast<void>(this->expire(market.symbol->symbolId, timestamp));
         }
         else if (state == ContractState::Success)
         {
-            market->commandTimestamp = timestamp;
+            market.commandTimestamp = timestamp;
         }
 
         return state;
@@ -98,31 +114,28 @@ namespace advmatch
 
     ContractParticipant* ContractEngine::findParticipant(PositionId positionId) noexcept
     {
-        const auto iterator = this->positionIndex.find(positionId);
-        return iterator == this->positionIndex.end() ? nullptr : iterator->second;
+        return this->participantIndex.get(positionId);
     }
 
     const Position* ContractEngine::queryPosition(PositionId positionId) const noexcept
     {
-        const auto iterator = this->positionIndex.find(positionId);
-        return iterator == this->positionIndex.end() ? nullptr : iterator->second->position;
+        const auto* participant = this->participantIndex.get(positionId);
+        return participant ? participant->position : nullptr;
     }
 
     ContractMarket* ContractEngine::findMarket(SymbolId symbolId) noexcept
     {
-        const auto iterator = this->markets.find(symbolId);
-        return iterator == this->markets.end() ? nullptr : &iterator->second;
+        return symbolId != 0 && symbolId <= this->marketIndex.size() ? this->marketIndex[symbolId - 1] : nullptr;
     }
 
     const ContractMarket* ContractEngine::findMarket(SymbolId symbolId) const noexcept
     {
-        const auto iterator = this->markets.find(symbolId);
-        return iterator == this->markets.end() ? nullptr : &iterator->second;
+        return symbolId != 0 && symbolId <= this->marketIndex.size() ? this->marketIndex[symbolId - 1] : nullptr;
     }
 
     ContractResult ContractEngine::addMarket(const Symbol& symbol, const ContractSpec& spec, Price markPrice, Timestamp timestamp)
     {
-        if (!symbol.isActive() || this->findMarket(symbol.symbolId))
+        if (symbol.symbolId == 0 || !symbol.isActive() || this->findMarket(symbol.symbolId))
         {
             return {ContractState::InvalidSymbol};
         }
@@ -135,6 +148,7 @@ namespace advmatch
             return {ContractState::InvalidConfiguration};
         }
 
+        this->marketIndex.resize(std::max(this->marketIndex.size(), static_cast<std::size_t>(symbol.symbolId)));
         auto [iterator, inserted] = this->markets.try_emplace(symbol.symbolId);
         ContractMarket& market = iterator->second;
         market.symbol = &symbol;
@@ -145,6 +159,7 @@ namespace advmatch
         market.markTimestamp = timestamp;
         market.commandTimestamp = timestamp;
         market.nextFundingTimestamp = spec.firstFundingTimestamp;
+        this->marketIndex[symbol.symbolId - 1] = &market;
         return {};
     }
 
@@ -161,19 +176,25 @@ namespace advmatch
         node.contractParticipant = nullptr;
         participant->position->managed = false;
         static_cast<void>(participant->account->removePosition(id));
-        this->positionIndex.erase(id);
+        this->removeParticipantIndex(id, *participant);
+        this->settlement.discardLiquidationRetry(*participant);
         participant->market->removeParticipant(id);
     }
 
     ContractState ContractEngine::prepareOrder(OrderNode& node, const ContractOrderOptions& options, Timestamp timestamp)
     {
-        ContractMarket* market = this->findMarket(node.basicOrder.symbolId);
+        return this->prepareOrder(node, options, timestamp, nullptr);
+    }
+
+    ContractState ContractEngine::prepareOrder(OrderNode& node, const ContractOrderOptions& options, Timestamp timestamp, ContractParticipant* resolved)
+    {
+        ContractMarket* market = resolved ? resolved->market : this->findMarket(node.basicOrder.symbolId);
         if (!market)
         {
             return ContractState::InvalidSymbol;
         }
 
-        const ContractState command = this->beginCommand(node.basicOrder.symbolId, timestamp);
+        const ContractState command = this->beginCommand(*market, timestamp);
         if (command != ContractState::Success)
         {
             return command;
@@ -194,9 +215,9 @@ namespace advmatch
         ContractParticipant* participant = nullptr;
         if (options.positionId != 0)
         {
-            participant = this->findParticipant(options.positionId);
+            participant = resolved ? resolved : this->findParticipant(options.positionId);
             if (!participant || participant->account != &account || participant->market != market ||
-                participant->position->closed)
+                participant->position->positionId != options.positionId || participant->position->closed)
             {
                 return ContractState::PositionNotFound;
             }
@@ -229,7 +250,8 @@ namespace advmatch
                 leverage, market->spec.contractMultiplier, timestamp);
             position.managed = true;
             position.mmr = market->spec.maintenanceMarginRate;
-            if (!account.recordPosition(position))
+            Position* stored = account.recordPositionAndGet(position);
+            if (!stored)
             {
                 return ContractState::PositionNotFound;
             }
@@ -237,9 +259,11 @@ namespace advmatch
             participant = &market->createParticipant(id);
             participant->market = market;
             participant->account = &account;
-            participant->position = account.findPosition(id);
+            participant->position = stored;
             participant->crossMargin = &account.crossMargin(market->symbol->quoteAssetId);
-            this->positionIndex.emplace(id, participant);
+            participant->indexSlot = this->positionIndex.size();
+            this->positionIndex.push_back(participant);
+            this->participantIndex.insert(id, *participant);
         }
 
         const bool closing = (node.basicOrder.orderSide == OrderSide::Bid) != (participant->position->positionSide == PositionSide::Long);
@@ -589,6 +613,12 @@ namespace advmatch
 
         if (this->processingLiquidations)
         {
+            return {};
+        }
+
+        if (market->pendingLiquidations.empty())
+        {
+            market->lastLiquidationRevision = market->liquidityRevision;
             return {};
         }
 

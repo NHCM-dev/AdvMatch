@@ -7,7 +7,8 @@
 
 namespace advmatch
 {
-    bool SpotAccountLedger::settle(OrderNode& buyer, OrderNode& seller, PositiveBalanceChange baseAmount, PositiveBalanceChange quoteAmount) const
+    bool SpotAccountLedger::settle(OrderNode& buyer, OrderNode& seller, PositiveBalanceChange baseAmount, PositiveBalanceChange quoteAmount,
+        SettlementContext* context) const
     {
         if (buyer.reservedBalance < 0 || seller.reservedBalance < 0 ||
             quoteAmount > static_cast<PositiveBalanceChange>(buyer.reservedBalance) ||
@@ -37,7 +38,8 @@ namespace advmatch
         for (std::size_t index = 0; index < count; ++index)
         {
             auto& change = changes[index];
-            change.prepared = change.account->prepareBalanceChange(change.account->captureBalance(change.assetId), change.active, change.reserved);
+            const auto balance = context ? context->capture(index, *change.account, change.assetId) : change.account->captureBalance(change.assetId);
+            change.prepared = change.account->prepareBalanceChange(balance, change.active, change.reserved);
             if (!change.prepared)
             {
                 return false;

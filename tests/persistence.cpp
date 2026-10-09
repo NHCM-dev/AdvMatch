@@ -690,6 +690,60 @@ namespace
         CHECK(engine.getUserManager().getUser(3)->getSpotAccount().queryActiveBalance(1) == 10);
         engine.close();
     }
+
+    void blockedLiquidationRecovery()
+    {
+        TemporaryDirectory directory("blocked-liquidation");
+        const auto config = directory.config();
+        PositionId victim = 0;
+        CommandSequence sequence = 0;
+        {
+            PersistentTradingEngine engine(config);
+            prepare(engine, SymbolType::Perpetual);
+            ContractSpec spec;
+            spec.firstFundingTimestamp = 1000;
+            spec.makerFeeRate = 0;
+            spec.takerFeeRate = 0;
+            spec.liquidationFeeRate = 0;
+            CHECK(engine.execute(commands::AddContractBook{1, spec, 100, 0}).result);
+            for (AccountId id : {2, 4, 6})
+            {
+                CHECK(engine.execute(commands::UpdateBalance{id, 2, 10'000}).result);
+            }
+
+            ContractOrderOptions options;
+            CHECK(engine.execute(order(2, OrderSide::Ask, 100, 10, 1, options)).result);
+            victim = engine.execute(order(1, OrderSide::Bid, 100, 10, 2, options)).result.positionId;
+            CHECK(engine.execute(commands::UpdateMarkPrice{1, 80, 3}).result.state == static_cast<std::uint8_t>(ContractState::PendingLiquidation));
+            CHECK(engine.execute(order(3, OrderSide::Bid, 80, 10, 4, options)).result);
+            for (Timestamp timestamp = 5; timestamp < 10; ++timestamp)
+            {
+                CHECK(engine.execute(commands::ProcessLiquidations{1, timestamp, true, 100}).result.state == static_cast<std::uint8_t>(ContractState::PendingLiquidation));
+            }
+
+            CHECK(engine.getMatchingEngine().getContractEngine().getSettleEngine().liquidationRetryCacheHits() > 0);
+            engine.checkpoint();
+            sequence = engine.lastSequence();
+            engine.close();
+        }
+
+        {
+            PersistentTradingEngine engine(config);
+            CHECK(engine.lastSequence() == sequence);
+            const auto& contracts = engine.getMatchingEngine().getContractEngine();
+            CHECK(contracts.queryPosition(victim)->positionSize == 10);
+            CHECK(contracts.getSettleEngine().liquidationRetryCacheHits() > 0);
+            CHECK(engine.execute(commands::FundInsurance{1, 6, 100}).result);
+            CHECK(engine.execute(commands::ProcessLiquidations{1, 10, true, 100}).result);
+            CHECK(contracts.queryPosition(victim)->closed);
+            CHECK(contracts.findMarket(1)->insuranceBalance == 0);
+            engine.close();
+        }
+
+        PersistentTradingEngine recovered(config);
+        CHECK(recovered.getMatchingEngine().getContractEngine().queryPosition(victim)->closed);
+        recovered.close();
+    }
 }
 
 int main(int argc, char** argv)
@@ -713,5 +767,6 @@ int main(int argc, char** argv)
     ownerAndIdleFlush();
     checkpointBoundaries();
     oversizedCommit();
+    blockedLiquidationRecovery();
     std::puts("Persistence tests passed");
 }

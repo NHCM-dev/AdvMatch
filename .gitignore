@@ -1,12 +1,47 @@
+# CMake build directories and generated metadata
 /build/
 /cmake-build-*/
 /out/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+compile_commands.json
+build.ninja
+.ninja_deps
+.ninja_log
+/CMakeUserPresets.json
+
+# Local exchange state and IDE configuration
 /data/
 /.idea/
-/CMakeUserPresets.json
 /.clangd
+
+# Native build outputs
+*.exe
 *.dll
 *.so
+*.so.*
 *.dylib
-/examples/csharp/bin/
-/examples/csharp/obj/
+*.o
+*.obj
+*.a
+*.lib
+*.pdb
+*.ilk
+*.exp
+*.dSYM/
+
+# Java / Gradle outputs; keep the wrapper needed to build from a clone
+.gradle/
+/java/**/build/
+*.class
+*.jar
+!/java/gradle/wrapper/gradle-wrapper.jar
+hs_err_pid*.log
+replay_pid*.log
+
+# Python tool caches
+__pycache__/
+*.py[cod]
+.pytest_cache/

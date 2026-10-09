@@ -1,4 +1,5 @@
 #include "advmatch/consuming/SingleThreadConsumer.h"
+#include "advmatch/consuming/ConfigurableWaitStrategy.h"
 #include "advmatch/matching/MatchingEngine.h"
 #include "advmatch/matching/contracts/ContractEngine.h"
 
@@ -43,6 +44,7 @@ namespace
         std::uint32_t publishBatch = 0;
         std::uint64_t latencySample = 1'024;
         int ringSize = 32;
+        bool busySpin = false;
         MarginMode marginMode = MarginMode::Isolated;
         LeverageMultiplier leverage = 10;
         MMRRate makerFeeRate = 100;
@@ -101,7 +103,7 @@ namespace
         }
     };
 
-    class BenchmarkConsumer final : public consuming::SingleThreadConsumer<Command, Response>
+    class BenchmarkConsumer final : public consuming::SingleThreadConsumer<Command, Response, consuming::ConfigurableWaitStrategy>
     {
         // The sink outlives the matching engine, including teardown.
         EventCounter events;
@@ -151,6 +153,12 @@ namespace
             this->matching.getContractEngine().reserve(options.symbols, static_cast<std::size_t>(options.orders * 2));
             this->matching.getContractEngine().setEventSink(&this->events);
 
+            users.getAccountManager().reservePositions(static_cast<std::size_t>(options.orders * 2));
+            for (UserId user = 1; user <= options.users; ++user)
+            {
+                users.getUser(user)->getContractAccount().reservePositions(static_cast<std::size_t>(options.orders * 2 / options.users + 2));
+            }
+
             ContractSpec spec;
             spec.firstFundingTimestamp = fundingTimestamp;
             spec.defaultLeverage = options.leverage;
@@ -162,6 +170,10 @@ namespace
                 {
                     throw std::runtime_error("perpetual book registration failed");
                 }
+
+                this->matching.getContractEngine().reserveMarket(symbolId,
+                    static_cast<std::size_t>(options.orders * 2 / options.symbols + 2),
+                    static_cast<std::size_t>(options.orders / options.symbols + 1));
             }
         }
 
@@ -229,6 +241,12 @@ namespace
         for (int index = 1; index < argumentCount; ++index)
         {
             const std::string_view name(arguments[index]);
+            if (name == "--busy-spin")
+            {
+                options.busySpin = true;
+                continue;
+            }
+
             if (name == "--help")
             {
                 std::cout << "Usage: advmatch_perpetual_benchmark [--orders N] [--warmup N] [--users N] [--symbols N]\n"
@@ -557,6 +575,7 @@ namespace
 
         consuming::ResponseSlot<Response> lifecycleSlot;
         BenchmarkConsumer consumer(users, symbols, options);
+        consumer.waitStrategyConfig().busySpin = options.busySpin;
         consumer.start(options.ringSize);
         const auto preloadStart = Clock::now();
         postOrders(consumer, options, preload, true);
@@ -672,7 +691,7 @@ namespace
                 << "scenario=perpetual_preloaded_asks_then_limit_bids\n"
                 << "logical_threads=" << std::thread::hardware_concurrency() << " users=" << options.users << " symbols=" << options.symbols << '\n'
                 << "orders=" << options.orders << " preload_orders=" << options.orders << " positions=" << options.orders * 2 << '\n'
-                << "producers=" << options.producers << " ring_size=" << options.ringSize << " batch_size=" << options.batchSize << " publish_batch=" << options.publishBatch << '\n'
+                << "producers=" << options.producers << " ring_size=" << options.ringSize << " batch_size=" << options.batchSize << " publish_batch=" << options.publishBatch << " wait_strategy=" << (options.busySpin ? "busy_spin" : "blocking") << '\n'
                 << "margin_mode=" << (options.marginMode == MarginMode::Cross ? "cross" : "isolated") << " leverage=" << options.leverage
                 << " maker_fee_rate=" << options.makerFeeRate << " taker_fee_rate=" << options.takerFeeRate << '\n'
                 << "setup_seconds=" << secondsBetween(setupStart, preloadStart) << " preload_seconds=" << secondsBetween(preloadStart, preloadEnd) << '\n'

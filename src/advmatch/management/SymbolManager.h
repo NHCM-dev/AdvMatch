@@ -8,6 +8,7 @@
 #include "advmatch/ledging/User.h"
 #include "advmatch/trading/Symbol.h"
 #include "advmatch/util/Containers.h"
+#include <vector>
 
 namespace advmatch
 {
@@ -33,6 +34,9 @@ namespace advmatch
         };
 
         NodeHashMap<SymbolId, Symbol> symbols;
+        // Structural index growth moves pointers, never the owned Symbol nodes.
+        // Deactivated IDs keep their slots and are never reused.
+        std::vector<Symbol*> symbolIndex;
         DenseMap<std::string, SymbolId> symbolsByName;
         DenseSet<SymbolKey, SymbolKeyHash> symbolPairs;
         SymbolId nextSymbolId = 1;
@@ -44,6 +48,7 @@ namespace advmatch
         void reserve(std::size_t symbolCount)
         {
             this->symbols.reserve(symbolCount);
+            this->symbolIndex.reserve(symbolCount);
             this->symbolsByName.reserve(symbolCount);
             this->symbolPairs.reserve(symbolCount);
         }

@@ -92,19 +92,18 @@ namespace advmatch
 
             ContractMarket& targetMarket = *target->market;
             const bool buy = candidate.positionSide == PositionSide::Short;
+            OrderBook* book = matching.findBook(candidate.symbolId);
             // An empty opposing side cannot produce a fill. Keep the risk
             // state queued without allocating a doomed IOC OrderNode/history
             // record for every position on every liquidity-starved pass.
-            if (!(buy ? matching.bestAsk(candidate.symbolId) : matching.bestBid(candidate.symbolId)))
+            if (!book || !(buy ? book->bestAsk() : book->bestBid()))
             {
                 result.state = ContractState::PendingLiquidation;
                 continue;
             }
 
-            const WideBalance boundedPrice = static_cast<WideBalance>(targetMarket.markPrice) *
-                (buy ? RATE_SCALE + targetMarket.spec.priceBandRate : RATE_SCALE - targetMarket.spec.priceBandRate) / RATE_SCALE;
-            const auto limit = ContractMath::balance(boundedPrice);
-            if (!limit || *limit <= 0)
+            const Price limit = targetMarket.liquidationPriceLimit(buy);
+            if (limit == 0 || limit > static_cast<Price>(std::numeric_limits<Balance>::max()))
             {
                 result.state = ContractState::PendingLiquidation;
                 continue;
@@ -114,9 +113,13 @@ namespace advmatch
             options.positionId = candidate.positionId;
             options.marginMode = candidate.marginMode;
             options.reduceOnly = true;
-            options.priceLimit = static_cast<Price>(*limit);
+            options.priceLimit = limit;
+            // Managers retain their nodes, and archive cannot run during this
+            // synchronous call. No borrowed context survives the submission.
+            MatchingEngine::OrderSubmissionContext context{
+                matching.userManager.getUser(candidate.userId), targetMarket.symbol, book, target};
             const auto order = matching.submitOrder(candidate.userId, candidate.symbolId, buy ? OrderSide::Bid : OrderSide::Ask,
-                OrderType::Market, TimeInForce::IOC, 0, candidate.positionSize, timestamp, trades, &options, true);
+                OrderType::Market, TimeInForce::IOC, 0, candidate.positionSize, timestamp, trades, &options, true, &context);
             static_cast<void>(order);
             ++result.affectedPositions;
             enqueue(targetMarket, *target);

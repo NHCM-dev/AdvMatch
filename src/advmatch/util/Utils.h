@@ -101,12 +101,17 @@ namespace advmatch::util
     [[nodiscard]]
     constexpr bool willMultiplyOverflow(std::uint64_t a, std::uint64_t b) noexcept
     {
+#if defined(__GNUC__) || defined(__clang__)
+        std::uint64_t product;
+        return __builtin_mul_overflow(a, b, &product);
+#else
         if (a == 0 || b == 0)
         {
             return false;
         }
 
         return a > std::numeric_limits<std::uint64_t>::max() / b;
+#endif
     }
 
 

@@ -2,6 +2,7 @@
 #include "../codec/CommandCodec.h"
 #include "FilePersistenceStore.h"
 #include "advmatch/matching/contracts/ContractEngine.h"
+#include "advmatch/api/command/validation/TradingCommandValidator.h"
 
 #include <chrono>
 #include <algorithm>
@@ -372,10 +373,15 @@ namespace advmatch
     CommandReceipt PersistentTradingEngine::execute(const TradingCommand& command, std::uint64_t requestId)
     {
         this->impl->checkAccess();
-        auto intent = encodeCommand(command, requestId);
-        persistenceCheck(intent.size() <= this->impl->config.maxRecordBytes, "command exceeds configured size", PersistenceFailure::InvalidConfiguration);
-        // Decode before journaling to reject invalid enum encodings/schema.
-        static_cast<void>(decodeCommand(intent));
+        std::vector<std::byte> intent;
+        // maxRecordBytes is at least 128; every fixed command is <= 111 bytes.
+        // Keep exact size checks for strings/archive lists, WAL and idempotency.
+        if (this->impl->store || requestId != 0 || !api::command::TradingCommandValidator::validateWithoutEncoding(command))
+        {
+            intent = encodeCommand(command, requestId);
+            persistenceCheck(intent.size() <= this->impl->config.maxRecordBytes, "command exceeds configured size", PersistenceFailure::InvalidConfiguration);
+            static_cast<void>(decodeCommand(intent));
+        }
         if (requestId != 0)
         {
             const auto found = this->impl->requests.find(requestId);

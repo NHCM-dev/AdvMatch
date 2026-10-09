@@ -2,7 +2,7 @@
 
 ## 使用入口
 
-包含 `advmatch/Exchange.h`、`advmatch/api/command/Commands.h`，链接 `AdvMatch::core`。这版是 C++ API；JNI 与 C# 绑定保持现有接口。
+包含 `advmatch/Exchange.h`、`advmatch/api/command/Commands.h`，链接 `AdvMatch::core`。这是 C++ API；Java 通过 JNI 调用同一套交易所命令，见 `docs/bindings.md`。
 
 `Exchange` 拥有完整交易会话：资产、用户、账户、交易对、现货/期货/永续撮合、风控、资金预留与结算、仓位、杠杆、强平、资金费、交割、持久化和读取。功能范围与现有交易引擎相同，Option 类型的元数据不表示已经实现期权定价/交易引擎。
 

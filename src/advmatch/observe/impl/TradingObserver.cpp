@@ -297,9 +297,8 @@ namespace advmatch::observe
 
     PositionView TradingObserver::copyPosition(const Position& value, AccountId accountId) const noexcept
     {
-        const auto& index = this->matching.getContractEngine().positionIndex;
-        const auto found = index.find(value.positionId);
-        const auto* participant = found != index.end() && found->second->position == &value ? found->second : nullptr;
+        const auto* found = this->matching.getContractEngine().participantIndex.get(value.positionId);
+        const auto* participant = found && found->position == &value ? found : nullptr;
         return {value.positionId, value.userId, accountId, value.symbolId, value.positionSide, value.marginMode,
             value.averageEntryPrice, value.predictLiquidatePrice, value.predictBankruptPrice, value.positionSize, value.entryNotional,
             value.realizedPnL, value.updatedUnrealizedPnl, value.initialMargin, value.mmr, value.maintenanceMargin,
@@ -322,9 +321,8 @@ namespace advmatch::observe
             return value != nullptr ? std::optional<PositionView>(this->copyPosition(*value, accountId)) : std::nullopt;
         }
 
-        const auto& index = this->matching.getContractEngine().positionIndex;
-        const auto found = index.find(positionId);
-        return found != index.end() ? std::optional<PositionView>(this->copyPosition(*found->second->position, found->second->account->getAccountId())) : std::nullopt;
+        const auto* found = this->matching.getContractEngine().participantIndex.get(positionId);
+        return found ? std::optional<PositionView>(this->copyPosition(*found->position, found->account->getAccountId())) : std::nullopt;
     }
 
     std::optional<BookView> TradingObserver::book(SymbolId symbolId) const noexcept

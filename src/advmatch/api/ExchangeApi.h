@@ -18,6 +18,16 @@ namespace advmatch::api
         virtual ~ExchangeApi() = default;
         virtual async::CompletableFuture<void> close() = 0;
 
+        // Transport adapters own their response storage and cancellation state.
+        // Tasks still use the same admission, owner thread and shutdown drain.
+        void submitTask(std::unique_ptr<detail::CommandTask> task) noexcept
+        {
+            if (task)
+            {
+                this->dispatch(std::move(task));
+            }
+        }
+
         template <typename Response>
         async::CompletableFuture<Response> submit(std::shared_ptr<const command::Command<Response>> command)
         {
@@ -44,17 +54,19 @@ namespace advmatch::api
         async::CompletableFuture<typename Concrete::ResponseType> submit(Concrete command)
         {
             using Response = typename Concrete::ResponseType;
+            async::CompletionSource<Response> source(this->completionExecutor());
             try
             {
-                std::shared_ptr<const command::Command<Response>> owned = std::make_shared<Concrete>(std::move(command));
-                return this->submit<Response>(std::move(owned));
+                // A value command lives inside its queue task: no extra
+                // shared allocation or command reference counting is needed.
+                this->dispatch(std::make_unique<detail::TypedCommandTask<Response, Concrete>>(std::move(command), source));
             }
             catch (...)
             {
-                async::CompletionSource<Response> source(this->completionExecutor());
                 source.fail(std::current_exception());
-                return source.future();
             }
+
+            return source.future();
         }
 
         template <typename Concrete>

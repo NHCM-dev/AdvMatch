@@ -15,6 +15,7 @@ namespace advmatch
         static Balance requiredReservationBalance(const OrderNode& node);
 
         void settleTrade(const Trade& trade, OrderNode& maker, OrderNode& taker) override;
+        void settleTrade(const Trade& trade, OrderNode& maker, OrderNode& taker, SettlementContext* context);
 
     public:
         explicit SpotSettleEngine(SpotAccountLedger& accountLedger)

@@ -16,6 +16,7 @@ namespace advmatch
         }
 
         const UserId userId = this->nextUserId++;
+        this->userIndex.resize(static_cast<std::size_t>(userId), nullptr);
         const std::optional<UserAccounts> accounts = this->accountManager.createAccounts(userId);
         if (!accounts)
         {
@@ -24,11 +25,12 @@ namespace advmatch
 
         try
         {
-            this->users.emplace(
+            const auto created = this->users.emplace(
                 std::piecewise_construct,
                 std::forward_as_tuple(userId),
                 std::forward_as_tuple(userId, this->accountManager, *accounts->spotAccount,
                                       *accounts->contractAccount));
+            this->userIndex[userId - 1] = &created.first->second;
         }
         catch (...)
         {
@@ -61,28 +63,19 @@ namespace advmatch
 
     bool UserManager::containsUser(UserId userId) const noexcept
     {
-        const auto iterator = this->users.find(userId);
-        return iterator != this->users.end() && iterator->second.isActive();
+        return this->getUser(userId) != nullptr;
     }
 
     User* UserManager::getUser(UserId userId) noexcept
     {
-        const auto iterator = this->users.find(userId);
-        if (iterator == this->users.end() || !iterator->second.isActive())
-        {
-            return nullptr;
-        }
-        return &iterator->second;
+        User* user = userId != 0 && userId <= this->userIndex.size() ? this->userIndex[userId - 1] : nullptr;
+        return user && user->isActive() ? user : nullptr;
     }
 
     const User* UserManager::getUser(UserId userId) const noexcept
     {
-        const auto iterator = this->users.find(userId);
-        if (iterator == this->users.end() || !iterator->second.isActive())
-        {
-            return nullptr;
-        }
-        return &iterator->second;
+        const User* user = userId != 0 && userId <= this->userIndex.size() ? this->userIndex[userId - 1] : nullptr;
+        return user && user->isActive() ? user : nullptr;
     }
 
     std::size_t UserManager::getUserCount() const noexcept

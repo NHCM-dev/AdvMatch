@@ -19,7 +19,7 @@ namespace advmatch
     // remain valid for the complete engine lifetime.
     struct OrderNode
     {
-        OrderNode(BasicOrder value, User& user, Account& account, const Symbol& symbol, AssetId baseAssetId,
+        OrderNode(const BasicOrder& value, User& user, Account& account, const Symbol& symbol, AssetId baseAssetId,
                   AssetId quoteAssetId)
             : basicOrder(value), user(&user), account(&account), symbol(&symbol), baseAssetId(baseAssetId),
               quoteAssetId(quoteAssetId),
@@ -32,24 +32,26 @@ namespace advmatch
         OrderNode& operator=(const OrderNode&) = delete;
 
         BasicOrder basicOrder;
+        // Book links are accessed together during every fill/remove. Product
+        // flags share the asset-ID block to avoid padding between pointers.
+        PriceLevel* priceLevel = nullptr;
+        OrderNode* prev = nullptr;
+        OrderNode* next = nullptr;
         User* const user;
         Account* const account;
         const Symbol* const symbol;
         const AssetId baseAssetId;
         const AssetId quoteAssetId;
         AssetId reservationAssetId;
+        LeverageMultiplier leverage = 1;
+        bool reduceOnly = false;
+        bool liquidationOrder = false;
         ContractMarket* contractMarket = nullptr;
         ContractParticipant* contractParticipant = nullptr;
         OrderNode* contractPrev = nullptr;
         OrderNode* contractNext = nullptr;
-        LeverageMultiplier leverage = 1;
-        bool reduceOnly = false;
-        bool liquidationOrder = false;
         Price executionPriceLimit = 0;
         Balance reservedBalance = 0;
-        PriceLevel* priceLevel = nullptr;
-        OrderNode* prev = nullptr;
-        OrderNode* next = nullptr;
     };
 
     struct PriceLevel

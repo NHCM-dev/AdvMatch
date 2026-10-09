@@ -1,4 +1,5 @@
 #include "advmatch/consuming/SingleThreadConsumer.h"
+#include "advmatch/consuming/ConfigurableWaitStrategy.h"
 #include "advmatch/matching/MatchingEngine.h"
 
 #include <barrier>
@@ -29,6 +30,8 @@ namespace
         std::uint32_t batchSize = 256;
         std::uint32_t publishBatchSize = 0;
         int ringSize = 32;
+        bool busySpin = false;
+        bool profileClock = false;
     };
 
     struct PlaceCommand
@@ -50,7 +53,7 @@ namespace
         std::size_t tradeCount;
     };
 
-    class BenchmarkConsumer final : public advmatch::consuming::SingleThreadConsumer<PlaceCommand, PlaceResponse>
+    class BenchmarkConsumer final : public advmatch::consuming::SingleThreadConsumer<PlaceCommand, PlaceResponse, advmatch::consuming::ConfigurableWaitStrategy>
     {
         advmatch::MatchingEngine engine;
         advmatch::TradeBuffer trades;
@@ -118,8 +121,20 @@ namespace
             if (name == "--help")
             {
                 std::cout << "Usage: advmatch_tps_benchmark [--orders N] [--producers N] [--batch-size N]";
-                std::cout << " [--publish-batch N] [--ring-size N]\n";
+                std::cout << " [--publish-batch N] [--ring-size N] [--busy-spin] [--profile-clock]\n";
                 std::exit(0);
+            }
+
+            if (name == "--busy-spin")
+            {
+                options.busySpin = true;
+                continue;
+            }
+
+            if (name == "--profile-clock")
+            {
+                options.profileClock = true;
+                continue;
             }
 
             if (++index == argumentCount)
@@ -172,6 +187,21 @@ namespace
         return options;
     }
 
+    void profileClock()
+    {
+        constexpr std::uint64_t samples = 1'000'000;
+        std::uint64_t checksum = 0;
+        const auto start = Clock::now();
+        for (std::uint64_t index = 0; index < samples; ++index)
+        {
+            checksum ^= advmatch::util::getCurrentTime();
+        }
+
+        const auto elapsed = std::chrono::duration<double, std::nano>(Clock::now() - start).count();
+        std::cout << "clock_samples=" << samples << " clock_read_ns=" << elapsed / samples << " clock_checksum=" << checksum << '\n';
+        std::cout << "basic_order_bytes=" << sizeof(advmatch::BasicOrder) << " order_node_bytes=" << sizeof(advmatch::OrderNode) << '\n';
+    }
+
     double secondsBetween(Clock::time_point first, Clock::time_point last)
     {
         return std::chrono::duration<double>(last - first).count();
@@ -185,6 +215,11 @@ int main(int argumentCount, char** arguments)
         using namespace advmatch;
 
         const Options options = parseOptions(argumentCount, arguments);
+        if (options.profileClock)
+        {
+            profileClock();
+        }
+
         const std::uint32_t automaticPublishBatch = std::max(1U, std::min({64U, options.batchSize,
             static_cast<std::uint32_t>(options.ringSize) / options.producers}));
         const std::uint32_t publishBatchSize = options.publishBatchSize == 0 ? automaticPublishBatch : options.publishBatchSize;
@@ -220,6 +255,7 @@ int main(int argumentCount, char** arguments)
             throw std::runtime_error("order book registration failed");
         }
 
+        consumer.waitStrategyConfig().busySpin = options.busySpin;
         consumer.start(options.ringSize);
 
         const auto preloadStart = Clock::now();
@@ -335,10 +371,11 @@ int main(int argumentCount, char** arguments)
         std::cout << "scenario=preloaded_asks_then_limit_bids\n";
         std::cout << "logical_threads=" << logicalThreads << '\n';
         std::cout << "orders=" << options.orders << " producers=" << options.producers << " batch_size=" << options.batchSize;
-        std::cout << " publish_batch=" << publishBatchSize << " ring_size=" << options.ringSize << '\n';
+        std::cout << " publish_batch=" << publishBatchSize << " ring_size=" << options.ringSize << " wait_strategy=" << (options.busySpin ? "busy_spin" : "blocking") << '\n';
         std::cout << "preload_seconds=" << secondsBetween(preloadStart, preloadEnd) << '\n';
         std::cout << "matched=" << filled << " trades=" << trades << " elapsed_seconds=" << elapsed << '\n';
         std::cout << "tps=" << static_cast<double>(filled) / elapsed << '\n';
+        std::cout << "validation=passed\n";
         return 0;
     }
     catch (const std::exception& error)

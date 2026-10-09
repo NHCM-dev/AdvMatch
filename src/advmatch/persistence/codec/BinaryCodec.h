@@ -5,6 +5,7 @@
 
 #include <array>
 #include <bit>
+#include <cstring>
 #include <limits>
 #include <type_traits>
 #include <utility>
@@ -24,15 +25,29 @@ namespace advmatch
         std::vector<std::byte> data;
 
     public:
+        explicit BinaryWriter(std::size_t capacity = 128)
+        {
+            this->data.reserve(capacity);
+        }
+
         template <typename Value>
         void number(Value value)
         {
             static_assert(std::is_integral_v<Value> && !std::is_same_v<Value, bool>);
             using Unsigned = std::make_unsigned_t<Value>;
             const auto bits = std::bit_cast<Unsigned>(value);
-            for (std::size_t index = 0; index < sizeof(Value); ++index)
+            const auto offset = this->data.size();
+            this->data.resize(offset + sizeof(Value));
+            if constexpr (std::endian::native == std::endian::little)
             {
-                this->data.push_back(static_cast<std::byte>((bits >> (index * 8)) & 255));
+                std::memcpy(this->data.data() + offset, &bits, sizeof(Value));
+            }
+            else
+            {
+                for (std::size_t index = 0; index < sizeof(Value); ++index)
+                {
+                    this->data[offset + index] = static_cast<std::byte>((bits >> (index * 8)) & 255);
+                }
             }
         }
 
@@ -50,6 +65,19 @@ namespace advmatch
         void bytes(std::span<const std::byte> value)
         {
             this->data.insert(this->data.end(), value.begin(), value.end());
+        }
+
+        template <typename Value>
+        void patchNumber(std::size_t offset, Value value)
+        {
+            static_assert(std::is_integral_v<Value> && !std::is_same_v<Value, bool>);
+            persistenceCheck(offset <= this->data.size() && sizeof(Value) <= this->data.size() - offset, "invalid frame offset");
+            using Unsigned = std::make_unsigned_t<Value>;
+            const auto bits = std::bit_cast<Unsigned>(value);
+            for (std::size_t index = 0; index < sizeof(Value); ++index)
+            {
+                this->data[offset + index] = static_cast<std::byte>((bits >> (index * 8)) & 255);
+            }
         }
 
         void string(const std::string& value)
@@ -88,9 +116,17 @@ namespace advmatch
             using Unsigned = std::make_unsigned_t<Value>;
             persistenceCheck(sizeof(Value) <= this->remaining(), "truncated integer");
             Unsigned value = 0;
-            for (std::size_t index = 0; index < sizeof(Value); ++index)
+            if constexpr (std::endian::native == std::endian::little)
             {
-                value |= static_cast<Unsigned>(std::to_integer<unsigned>(this->data[this->offset++])) << (index * 8);
+                std::memcpy(&value, this->data.data() + this->offset, sizeof(Value));
+                this->offset += sizeof(Value);
+            }
+            else
+            {
+                for (std::size_t index = 0; index < sizeof(Value); ++index)
+                {
+                    value |= static_cast<Unsigned>(std::to_integer<unsigned>(this->data[this->offset++])) << (index * 8);
+                }
             }
 
             return std::bit_cast<Value>(value);

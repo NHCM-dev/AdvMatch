@@ -15,6 +15,18 @@ namespace advmatch
         return snapshot;
     }
 
+    Account::BalanceSnapshot Account::recaptureBalance(const BalanceSnapshot& snapshot) const noexcept
+    {
+        if (snapshot.owner != this || snapshot.generation != this->balanceGeneration)
+        {
+            return this->captureBalance(snapshot.assetId);
+        }
+
+        BalanceSnapshot refreshed = snapshot;
+        refreshed.before = refreshed.location ? *refreshed.location : AssetBalance{};
+        return refreshed;
+    }
+
     std::optional<Account::BalanceUpdate> Account::prepareBalanceChange(const BalanceSnapshot& snapshot,
         BalanceChange activeChange, BalanceChange reservedChange) const noexcept
     {

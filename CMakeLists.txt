@@ -41,6 +41,8 @@ include(GNUInstallDirs)
 option(ADVMATCH_USE_SYSTEM_DEPENDENCIES "Use compatible dependencies installed on the host" OFF)
 option(ADVMATCH_BUILD_BENCHMARKS "Build the standalone performance benchmarks" ON)
 option(ADVMATCH_BUILD_EXAMPLES "Build developer usage examples" ON)
+option(ADVMATCH_ENABLE_IPO "Optimize across AdvMatch translation units in Release" OFF)
+option(ADVMATCH_NATIVE_ARCH "Optimize for this host CPU (non-portable binaries)" OFF)
 option(ADVMATCH_STATIC_MINGW_RUNTIME "Statically link the MinGW runtime into distributable binaries" ON)
 set(FETCHCONTENT_UPDATES_DISCONNECTED ON)
 
@@ -132,7 +134,26 @@ if(NOT TARGET absl::flat_hash_map OR NOT TARGET absl::node_hash_map)
     FetchContent_MakeAvailable(absl)
 endif()
 
+# Keep dependency builds and Debug untouched. AdvMatch targets below inherit
+# Release IPO; the portable preset never requires a particular CPU model.
+if(ADVMATCH_ENABLE_IPO)
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT ADVMATCH_IPO_SUPPORTED OUTPUT ADVMATCH_IPO_ERROR LANGUAGES CXX)
+    if(NOT ADVMATCH_IPO_SUPPORTED)
+        message(FATAL_ERROR "IPO is unavailable: ${ADVMATCH_IPO_ERROR}")
+    endif()
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
+endif()
+
+if(ADVMATCH_NATIVE_ARCH AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options($<$<CONFIG:Release>:-march=native>)
+endif()
+
 add_library(advmatch_core STATIC
+    src/advmatch/consuming/ConfigurableWaitStrategy.h
+    src/advmatch/api/command/validation/TradingCommandValidator.h
+    src/advmatch/util/BalanceMath.h
+    src/advmatch/trading/OrderAccess.h
     src/advmatch/Exchange.cpp
     src/advmatch/Exchange.h
     src/advmatch/api/async/impl/ThreadPoolExecutor.cpp
@@ -297,9 +318,11 @@ target_link_libraries(advmatch_core
     PUBLIC AdvMatch::disruptor AdvMatch::boost_headers unordered_dense::unordered_dense absl::flat_hash_map absl::node_hash_map
     PRIVATE fmt::fmt spdlog::spdlog)
 
-# Stable C symbols and plain C data types provide the boundary for JNI/PInvoke.
+# Stable C symbols and plain C data types provide the boundary for JNI.
 add_library(advmatch SHARED
         src/advmatch/api/c_api.cpp
+    src/advmatch/api/binding/BindingTypes.h
+    src/advmatch/api/binding/WireModels.h
     include/advmatch/advmatch.h
 )
 target_compile_features(advmatch PRIVATE cxx_std_20)
@@ -316,7 +339,7 @@ endif()
 if(ADVMATCH_BUILD_JNI)
     find_package(JNI REQUIRED)
     add_library(advmatch_jni SHARED src/advmatch/api/jni_bridge.cpp)
-    target_link_libraries(advmatch_jni PRIVATE advmatch JNI::JNI)
+    target_link_libraries(advmatch_jni PRIVATE advmatch AdvMatch::core JNI::JNI)
     advmatch_configure_runtime(advmatch_jni)
     set_target_properties(advmatch_jni PROPERTIES OUTPUT_NAME advmatch_jni)
     if(WIN32)
@@ -338,6 +361,12 @@ if(ADVMATCH_BUILD_EXAMPLES)
 endif()
 
 if(BUILD_TESTING)
+    add_executable(advmatch_binding_tests tests/bindings.cpp)
+    target_link_libraries(advmatch_binding_tests PRIVATE AdvMatch::core advmatch)
+    advmatch_configure_runtime(advmatch_binding_tests)
+    add_test(NAME advmatch_binding_tests COMMAND advmatch_binding_tests)
+    set_tests_properties(advmatch_binding_tests PROPERTIES TIMEOUT 30)
+
     add_executable(advmatch_api_tests tests/api.cpp)
     target_link_libraries(advmatch_api_tests PRIVATE AdvMatch::core)
     advmatch_configure_runtime(advmatch_api_tests)
@@ -438,13 +467,22 @@ if(ADVMATCH_BUILD_BENCHMARKS)
             --users 120 --positions-per-user 3 --symbols 5 --waves 6 --direction up --book tree)
         add_test(NAME advmatch_liquidation_starvation_smoke COMMAND advmatch_liquidation_benchmark
             --users 80 --positions-per-user 4 --symbols 4 --waves 4 --depth-percent 0 --insurance-percent 0 --recover 0)
-        set_tests_properties(advmatch_liquidation_smoke advmatch_liquidation_up_smoke advmatch_liquidation_starvation_smoke PROPERTIES TIMEOUT 30)
+        add_test(NAME advmatch_liquidation_mixed_smoke COMMAND advmatch_liquidation_benchmark
+            --users 200 --positions-per-user 4 --symbols 7 --waves 6 --trades-per-wave 100)
+        add_test(NAME advmatch_liquidation_prefilter_tests COMMAND ${CMAKE_COMMAND}
+            -DBENCHMARK=$<TARGET_FILE:advmatch_liquidation_benchmark> -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/liquidation_prefilter.cmake)
+        set_tests_properties(advmatch_liquidation_prefilter_tests PROPERTIES TIMEOUT 120)
+        set_tests_properties(advmatch_liquidation_smoke advmatch_liquidation_up_smoke advmatch_liquidation_starvation_smoke advmatch_liquidation_mixed_smoke PROPERTIES TIMEOUT 30)
         add_test(NAME advmatch_perpetual_smoke COMMAND advmatch_perpetual_benchmark
             --orders 1000 --warmup 32 --users 20 --symbols 3 --producers 2 --latency-sample 1)
         add_test(NAME advmatch_perpetual_cross_smoke COMMAND advmatch_perpetual_benchmark
             --orders 1001 --warmup 0 --users 20 --symbols 7 --producers 3 --ring-size 128
             --publish-batch 8 --margin-mode cross --leverage 20 --latency-sample 1)
         add_test(NAME advmatch_tps_smoke COMMAND advmatch_tps_benchmark --orders 1000 --producers 2)
+        add_test(NAME advmatch_tps_spin_smoke COMMAND advmatch_tps_benchmark
+            --orders 1000 --producers 2 --batch-size 32 --ring-size 1 --busy-spin)
+        add_test(NAME advmatch_perpetual_spin_smoke COMMAND advmatch_perpetual_benchmark
+            --orders 100 --warmup 10 --users 16 --symbols 2 --producers 2 --batch-size 16 --ring-size 2 --busy-spin)
         add_test(NAME advmatch_scale_smoke COMMAND advmatch_scale_benchmark)
     endif()
 endif()
@@ -470,7 +508,7 @@ install(FILES include/advmatch/advmatch.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR
 if(ADVMATCH_BUILD_EXAMPLES)
     install(TARGETS advmatch_exchange_example advmatch_observe_example advmatch_persistence_example RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
-install(FILES docs/exchange-api.md docs/persistence.md docs/observe.md DESTINATION docs)
+install(FILES docs/exchange-api.md docs/bindings.md docs/java-benchmarks.md docs/performance.md docs/persistence.md docs/observe.md DESTINATION docs)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
     install(FILES README.md DESTINATION .)
 endif()

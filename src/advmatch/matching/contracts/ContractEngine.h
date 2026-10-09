@@ -8,6 +8,7 @@
 #include "LiquidateEngine.h"
 #include "advmatch/matching/riskengines/impl/ContractRiskEngine.h"
 #include "advmatch/matching/settleengines/impl/ContractSettleEngine.h"
+#include "advmatch/util/PagedPointerIndex.h"
 
 namespace advmatch
 {
@@ -20,6 +21,8 @@ namespace advmatch
         friend class observe::TradingObserver;
         friend class MatchingEngine;
         ContractState beginCommand(SymbolId symbolId, Timestamp timestamp);
+        ContractState beginCommand(ContractMarket& market, Timestamp timestamp);
+        ContractState prepareOrder(OrderNode& node, const ContractOrderOptions& options, Timestamp timestamp, ContractParticipant* resolved);
         static ContractState commandState(const ContractMarket& market, Timestamp timestamp) noexcept;
         MatchingEngine& matching;
         ContractEventSink* eventSink = nullptr;
@@ -42,9 +45,17 @@ namespace advmatch
         DenseMap<CrossMarginState*, CrossUpdate> crossUpdates;
         BigAllocs<ContractParticipant> participantPool;
         NodeHashMap<SymbolId, ContractMarket> markets;
+        // SymbolManager allocates dense monotonic IDs. Owning markets stay in
+        // NodeHashMap; this index borrows stable addresses and avoids hashing
+        // on every order/risk/liquidation lookup.
+        std::vector<ContractMarket*> marketIndex;
         PositionId nextPositionId = 1;
         std::size_t historyCursor = 0;
-        DenseMap<PositionId, ContractParticipant*> positionIndex;
+        std::vector<ContractParticipant*> positionIndex;
+        // Direct point queries plus compact traversal. Swap/remove updates the
+        // moved participant's slot in O(1); no second hash index is maintained.
+        PagedPointerIndex<ContractParticipant> participantIndex;
+        void removeParticipantIndex(PositionId id, ContractParticipant& participant) noexcept;
         ContractAccountLedger ledger;
         ContractRiskEngine risk;
         ContractSettleEngine settlement;
@@ -72,8 +83,24 @@ namespace advmatch
         void reserve(std::size_t marketCount, std::size_t positionCount)
         {
             this->markets.reserve(marketCount);
+            this->marketIndex.reserve(marketCount);
             this->positionIndex.reserve(positionCount);
+            this->participantIndex.reserve(positionCount);
             this->participantPool.reserve(positionCount);
+        }
+
+        bool reserveMarket(SymbolId symbolId, std::size_t positions, std::size_t pendingOrders)
+        {
+            ContractMarket* market = this->findMarket(symbolId);
+            if (!market)
+            {
+                return false;
+            }
+
+            market->participants.reserve(positions);
+            market->activePositions.reserve(positions);
+            market->orderParticipants.reserve(pendingOrders);
+            return true;
         }
 
         void setEventSink(ContractEventSink* sink) noexcept;
@@ -110,6 +137,11 @@ namespace advmatch
         }
 
         ContractSettleEngine& getSettleEngine() noexcept
+        {
+            return this->settlement;
+        }
+
+        const ContractSettleEngine& getSettleEngine() const noexcept
         {
             return this->settlement;
         }

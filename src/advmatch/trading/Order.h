@@ -52,13 +52,6 @@ namespace advmatch
         Quantity requestedQuantity;
         OrderFillingStatus fillingStatus;
 
-        const Timestamp createdTimestamp;
-        Timestamp updatedTimestamp;
-
-        Timestamp firstFilledTimestamp;
-        Timestamp lastFilledTimestamp;
-        Timestamp completedTimestamp;
-
         BasicOrder(OrderId orderId, UserId userId, SymbolId symbolId,
                    OrderSide orderSide, OrderType orderType, TimeInForce timeInForce,
                    Price price, Quantity quantity, Timestamp timestamp);
@@ -72,6 +65,18 @@ namespace advmatch
         const OrderSide orderSide;
         const OrderType orderType;
         const TimeInForce timeInForce;
+
+    private:
+        // Price, quantities, IDs and flags occupy the hot prefix. Keep the
+        // query/history timestamps together after it; snapshots still own
+        // their complete data and do not borrow storage from an OrderNode.
+        const Timestamp createdTimestamp;
+        Timestamp updatedTimestamp;
+        Timestamp firstFilledTimestamp;
+        Timestamp lastFilledTimestamp;
+        Timestamp completedTimestamp;
+
+    public:
 
         [[nodiscard]]
         ModifyOrderResult changePrice(Price newPrice, Timestamp timestamp);
@@ -112,5 +117,7 @@ namespace advmatch
         Timestamp getCompletedTimestamp() const noexcept;
     };
 } // advmatch
+
+#include "OrderAccess.h"
 
 #endif //ADVMATCH_ORDER_H

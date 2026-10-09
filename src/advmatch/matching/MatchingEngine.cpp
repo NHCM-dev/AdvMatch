@@ -195,7 +195,7 @@ namespace advmatch
 
     PlaceOrderResult MatchingEngine::submitOrder(UserId userId, SymbolId symbolId, OrderSide side, OrderType type,
         TimeInForce timeInForce, Price price, Quantity quantity, Timestamp timestamp, TradeBuffer& trades,
-        const ContractOrderOptions* options, bool liquidation)
+        const ContractOrderOptions* options, bool liquidation, const OrderSubmissionContext* context)
     {
         trades.clear();
 
@@ -204,19 +204,19 @@ namespace advmatch
             return PlaceOrderResult(0, {OrderStatus::Rejected, 0, quantity}, reason);
         };
 
-        User* user = this->userManager.getUser(userId);
-        if (!user)
+        User* user = context ? context->user : this->userManager.getUser(userId);
+        if (!user || !user->isActive())
         {
             return reject(PlaceOrderState::UserNotFound);
         }
 
-        const Symbol* symbol = this->symbolManager.getSymbol(symbolId);
-        if (!symbol)
+        const Symbol* symbol = context ? context->symbol : this->symbolManager.getSymbol(symbolId);
+        if (!symbol || !symbol->isActive())
         {
             return reject(PlaceOrderState::InvalidSymbol);
         }
 
-        OrderBook* book = findBook(symbolId);
+        OrderBook* book = context ? context->book : findBook(symbolId);
         if (!book)
         {
             return reject(PlaceOrderState::InvalidSymbol);
@@ -262,7 +262,7 @@ namespace advmatch
         if (contract)
         {
             node->liquidationOrder = liquidation;
-            const ContractState state = this->contracts->prepareOrder(*node, *options, timestamp);
+            const ContractState state = this->contracts->prepareOrder(*node, *options, timestamp, context ? context->participant : nullptr);
             if (state != ContractState::Success)
             {
                 this->orderPool.release(node);
@@ -284,6 +284,23 @@ namespace advmatch
         }
 
         this->orders[id - 1] = node;
+        if (contract && liquidation && node->contractParticipant->liquidationRetry)
+        {
+            const OrderSide opposingSide = side == OrderSide::Bid ? OrderSide::Ask : OrderSide::Bid;
+            const PriceLevel* level = book->observedBestLevel(opposingSide);
+            if (level && this->contracts->getSettleEngine().matchesLiquidationRetry(*level->head, *node, level->price))
+            {
+                // Factory, timestamp and risk checks already passed. This is
+                // the same failed internal market IOC, with zero reservation:
+                // retain its cancelled history/participant reference but avoid
+                // attach/detach and pointless zero-value ledger operations.
+                static_cast<void>(node->basicOrder.cancel(timestamp));
+                PlaceOrderResult cancelled(id, node->basicOrder.getFillingStatus());
+                cancelled.positionId = node->contractParticipant->position->positionId;
+                return cancelled;
+            }
+        }
+
         if (!services.ledger->reserve(*node, riskDecision.requiredReservationBalance))
         {
             this->orders[id - 1] = nullptr;

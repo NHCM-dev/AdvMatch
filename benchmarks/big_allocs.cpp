@@ -1,4 +1,4 @@
-#include "advmatch/util/BigAllocs.h"
+#include "advmatch/api/binding/AllocatorBenchmark.h"
 
 #include <array>
 #include <chrono>
@@ -12,72 +12,9 @@
 
 namespace
 {
-    struct BenchmarkObject
-    {
-        explicit BenchmarkObject(std::uint64_t id)
-            : id(id)
-        {
-            this->values[0] = id * 17;
-        }
-
-        std::uint64_t id;
-        std::array<std::uint64_t, 7> values{};
-    };
-
-    struct Result
-    {
-        double seconds;
-        std::uint64_t checksum;
-    };
-
-    Result runPool(std::size_t objectCount)
-    {
-        advmatch::BigAllocs<BenchmarkObject> pool;
-        pool.reserve(objectCount);
-
-        std::vector<BenchmarkObject*> objects;
-        objects.reserve(objectCount);
-
-        const auto started = std::chrono::steady_clock::now();
-        for (std::size_t index = 0; index < objectCount; ++index)
-        {
-            objects.push_back(pool.emplace(index));
-        }
-
-        std::uint64_t checksum = 0;
-        for (std::size_t index = objectCount; index > 0; --index)
-        {
-            BenchmarkObject* object = objects[index - 1];
-            checksum += object->id + object->values[0];
-            pool.release(object);
-        }
-
-        const auto stopped = std::chrono::steady_clock::now();
-        return {std::chrono::duration<double>(stopped - started).count(), checksum};
-    }
-
-    Result runNewDelete(std::size_t objectCount)
-    {
-        std::vector<BenchmarkObject*> objects;
-        objects.reserve(objectCount);
-
-        const auto started = std::chrono::steady_clock::now();
-        for (std::size_t index = 0; index < objectCount; ++index)
-        {
-            objects.push_back(new BenchmarkObject(index));
-        }
-
-        std::uint64_t checksum = 0;
-        for (std::size_t index = objectCount; index > 0; --index)
-        {
-            BenchmarkObject* object = objects[index - 1];
-            checksum += object->id + object->values[0];
-            delete object;
-        }
-
-        const auto stopped = std::chrono::steady_clock::now();
-        return {std::chrono::duration<double>(stopped - started).count(), checksum};
-    }
+    using advmatch::binding::benchmark::runPool;
+    using advmatch::binding::benchmark::runNewDelete;
+    using Result = advmatch::binding::benchmark::AllocationResult;
 
     double operationsPerSecond(std::size_t objectCount, double seconds)
     {

@@ -254,6 +254,49 @@ namespace
         CHECK(fixture.cash() == 30'000);
     }
 
+    void liquidationRetryDependencies()
+    {
+        Fixture fixture;
+        const auto [longId, shortId] = fixture.open();
+        auto& engine = fixture.engine();
+        CHECK(engine.updateMarkPrice(1, 80, 3).state == ContractState::PendingLiquidation);
+        const auto maker = fixture.order(fixture.third, OrderSide::Bid, 80, 10, 4);
+        CHECK(maker);
+        CHECK(engine.queryPosition(longId)->positionSize == 10);
+        CHECK(engine.processLiquidations(1, 5).state == ContractState::PendingLiquidation);
+        auto& settlement = engine.getSettleEngine();
+        CHECK(settlement.liquidationRetryCacheHits() > 0);
+        auto hits = settlement.liquidationRetryCacheHits();
+
+        // Promotion changes balance addresses. Value changes must invalidate
+        // the financial key even when the top maker/price stays unchanged.
+        for (AssetId asset = 3; asset < 20; ++asset)
+        {
+            CHECK(fixture.account(fixture.third).updateBalance(asset, 1));
+        }
+
+        CHECK(fixture.account(fixture.third).updateBalance(2, 1));
+        CHECK(engine.processLiquidations(1, 6).state == ContractState::PendingLiquidation);
+        CHECK(settlement.liquidationRetryCacheHits() == hits);
+        CHECK(engine.processLiquidations(1, 7).state == ContractState::PendingLiquidation);
+        CHECK(settlement.liquidationRetryCacheHits() == ++hits);
+
+        // A now-invalid maker must be cancelled before considering the taker.
+        auto* market = engine.findMarket(1);
+        market->spec.maxPositionNotional = 1;
+        CHECK(engine.processLiquidations(1, 8).state == ContractState::PendingLiquidation);
+        CHECK(fixture.matching.queryOrder(maker.orderId)->getStatus() == OrderStatus::Cancelled);
+        CHECK(!fixture.matching.bestBid(1));
+        CHECK(settlement.liquidationRetryCacheHits() == hits);
+        market->spec.maxPositionNotional = fixture.spec.maxPositionNotional;
+        CHECK(fixture.order(fixture.third, OrderSide::Bid, 80, 10, 9));
+        CHECK(engine.fundInsurance(1, fixture.account(fixture.third), 100));
+        CHECK(engine.processLiquidations(1, 10));
+        CHECK(engine.queryPosition(longId)->closed);
+        CHECK(engine.queryPosition(shortId)->positionSize == 10);
+        CHECK(!engine.findParticipant(longId)->liquidationRetry);
+    }
+
     void deliveryDefaultAtomicity()
     {
         Fixture fixture(SymbolType::Future);
@@ -505,6 +548,7 @@ int main()
     funding();
     crossMargin();
     liquidationAndInsurance();
+    liquidationRetryDependencies();
     expiryAndDelivery();
     deliveryDefaultAtomicity();
     mathBoundaries();

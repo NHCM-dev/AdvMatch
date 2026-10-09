@@ -7,6 +7,7 @@
 #include "advmatch/ledging/User.h"
 #include "AccountManager.h"
 #include "../util/Containers.h"
+#include <vector>
 
 namespace advmatch
 {
@@ -15,6 +16,9 @@ namespace advmatch
         friend class observe::TradingObserver;
         AccountManager accountManager;
         NodeHashMap<UserId, User> users;
+        // IDs are issued locally and never reused. Pointer slots provide direct
+        // lookup; ownership and iteration remain in the stable node container.
+        std::vector<User*> userIndex;
         UserId nextUserId = 1;
         std::size_t activeUserCount = 0;
 
@@ -23,6 +27,7 @@ namespace advmatch
         {
             this->accountManager.reserve(userCount);
             this->users.reserve(userCount);
+            this->userIndex.reserve(userCount);
         }
 
         [[nodiscard]]

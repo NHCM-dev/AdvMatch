@@ -2,6 +2,7 @@
 #define ADVMATCH_SINGLE_THREAD_CONSUMER_H
 
 #include <disruptor/BlockingWaitStrategy.h>
+#include <disruptor/BusySpinWaitStrategy.h>
 #include <disruptor/RingBuffer.h>
 
 #include <algorithm>
@@ -25,7 +26,7 @@ namespace advmatch::consuming
     // Derive from this class and implement consume(). All calls to consume()
     // run on one worker thread, in ring sequence order. Call stop() from the
     // derived destructor before derived state is destroyed.
-    template <typename Command, typename Response>
+    template <typename Command, typename Response, typename WaitStrategy = disruptor::BlockingWaitStrategy>
     class SingleThreadConsumer
     {
         enum class Lifecycle : std::uint8_t
@@ -59,10 +60,10 @@ namespace advmatch::consuming
             }
         };
 
-        using Ring = disruptor::MultiProducerRingBuffer<Event, disruptor::BlockingWaitStrategy>;
+        using Ring = disruptor::MultiProducerRingBuffer<Event, WaitStrategy>;
         using Barrier = decltype(std::declval<Ring&>().newBarrier());
 
-        disruptor::BlockingWaitStrategy waitStrategy;
+        WaitStrategy waitStrategy;
         std::shared_ptr<Ring> ring;
         Barrier barrier;
         disruptor::Sequence consumed;
@@ -200,6 +201,12 @@ namespace advmatch::consuming
 
     public:
         SingleThreadConsumer() = default;
+
+        // Configure only before start(). The worker and producers share it.
+        WaitStrategy& waitStrategyConfig() noexcept
+        {
+            return this->waitStrategy;
+        }
 
         virtual ~SingleThreadConsumer() noexcept
         {

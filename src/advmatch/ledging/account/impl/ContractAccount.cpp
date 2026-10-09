@@ -49,14 +49,14 @@ namespace advmatch
 
     bool StandardContractAccount::recordPosition(Position position)
     {
+        return this->recordPositionAndGet(std::move(position)) != nullptr;
+    }
+
+    Position* StandardContractAccount::recordPositionAndGet(Position position)
+    {
         if (position.userId != this->getUserId())
         {
-            return false;
-        }
-
-        if (this->positions.contains(position.positionId))
-        {
-            return false;
+            return nullptr;
         }
 
         if (!this->positionPool)
@@ -65,18 +65,23 @@ namespace advmatch
             this->positionPool = this->ownedPositionPool.get();
         }
 
-        Position* stored = this->positionPool->emplace(std::move(position));
+        const auto [iterator, inserted] = this->positions.try_emplace(position.positionId, nullptr);
+        if (!inserted)
+        {
+            return nullptr;
+        }
+
         try
         {
-            this->positions.emplace(stored->positionId, stored);
+            Position* stored = this->positionPool->emplace(std::move(position));
+            iterator->second = stored;
+            return stored;
         }
         catch (...)
         {
-            this->positionPool->release(stored);
+            this->positions.erase(iterator);
             throw;
         }
-
-        return true;
     }
 
     bool StandardContractAccount::removePosition(PositionId positionId)

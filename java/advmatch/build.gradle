@@ -1,0 +1,95 @@
+plugins {
+    id 'java-library'
+}
+
+group = 'nhcm'
+version = '0.0.1'
+
+java {
+    toolchain { languageVersion = JavaLanguageVersion.of(21) }
+    withSourcesJar()
+}
+
+sourceSets {
+    main.java.srcDirs = ['src/main']
+    test.java.srcDirs = ['src/test']
+}
+
+def osName = System.getProperty('os.name').toLowerCase(Locale.ROOT)
+def os = osName.contains('win') ? 'windows' : osName.contains('mac') ? 'macos' : 'linux'
+def archName = System.getProperty('os.arch').toLowerCase(Locale.ROOT)
+def arch = archName == 'x86_64' ? 'amd64' : archName == 'aarch64' ? 'arm64' : archName
+def libraries = [System.mapLibraryName('advmatch'), System.mapLibraryName('advmatch_jni')]
+
+tasks.named('processResources') {
+    dependsOn rootProject.tasks.named('buildNative')
+    from(rootProject.nativeDir) {
+        include libraries
+        into "native/${os}-${arch}"
+    }
+    doFirst {
+        libraries.each {
+            if (!new File(rootProject.nativeDir, it).isFile()) {
+                throw new GradleException("Missing ${it} in ${rootProject.nativeDir}")
+            }
+        }
+    }
+}
+
+tasks.register('integrationTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'nhcm.advmatch.BindingIntegrationTest'
+    // No path override: also exercises the JAR/resource extraction loader.
+}
+
+def testJar = tasks.register('testJar', Jar) {
+    group = 'build'
+    description = 'Package integration tests, benchmarks and embedded native libraries in a runnable JAR'
+    archiveClassifier = 'tests'
+    from sourceSets.main.output
+    from sourceSets.test.output
+    manifest {
+        attributes 'Main-Class': 'nhcm.advmatch.BindingIntegrationTest'
+    }
+}
+
+tasks.named('assemble') { dependsOn testJar }
+
+tasks.register('runExample', JavaExec) {
+    dependsOn classes
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'nhcm.advmatch.example.SpotExample'
+}
+
+tasks.named('check') { dependsOn 'integrationTest' }
+
+// Standalone integration main keeps builds independent of Maven test runners.
+tasks.named('test') {
+    dependsOn 'integrationTest'
+    enabled = false
+}
+
+[
+    benchmarkTps: 'TpsBenchmark',
+    benchmarkScale: 'ScaleBenchmark',
+    benchmarkPerpetual: 'PerpetualBenchmark',
+    benchmarkLiquidation: 'LiquidationBenchmark',
+    benchmarkObserve: 'ObserveBenchmark',
+    benchmarkBigAllocs: 'BigAllocsBenchmark',
+    benchmarkSmoke: 'BenchmarkSmoke'
+].each { taskName, className ->
+    tasks.register(taskName, JavaExec) {
+        group = 'benchmarks'
+        description = "Run ${className} through the Java SDK"
+        dependsOn classes
+        classpath = sourceSets.main.runtimeClasspath
+        mainClass = "nhcm.advmatch.benchmark.${className}"
+        if (taskName != 'benchmarkSmoke') {
+            args providers.gradleProperty('benchmarkArgs').getOrElse('').tokenize()
+        }
+        jvmArgs providers.gradleProperty('benchmarkJvmArgs').getOrElse('').tokenize()
+    }
+}
+
+tasks.named('check') { dependsOn 'benchmarkSmoke' }

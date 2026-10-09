@@ -1,0 +1,8 @@
+# Keep entry scripts usable on their target platforms after checkout.
+*.sh text eol=lf
+/java/gradlew text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# The Gradle wrapper is a required binary dependency, not a generated SDK JAR.
+*.jar binary

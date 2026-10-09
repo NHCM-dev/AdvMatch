@@ -39,6 +39,11 @@ namespace advmatch
     public:
         void reserve(std::size_t userCount);
 
+        void reservePositions(std::size_t count)
+        {
+            this->positionPool.reserve(count);
+        }
+
         [[nodiscard]]
         std::optional<UserAccounts> createAccounts(UserId userId);
 

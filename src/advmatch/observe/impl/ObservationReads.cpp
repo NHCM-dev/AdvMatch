@@ -392,7 +392,7 @@ namespace advmatch::observe
                 {
                     detail::scanSlots(contracts.positionIndex.size(), query, page, [&](std::size_t index)
                     {
-                        const auto* participant = contracts.positionIndex.values()[index].second;
+                        const auto* participant = contracts.positionIndex[index];
                         const auto value = this->copyPosition(*participant->position, participant->account->getAccountId());
                         if (detail::matchesPosition(value, query))
                         {
@@ -540,14 +540,14 @@ namespace advmatch::observe
                 const auto* link = market->pendingLiquidations.head;
                 if (query.cursor.started && query.cursor.anchor != 0)
                 {
-                    const auto found = contracts.positionIndex.find(query.cursor.anchor);
-                    if (found == contracts.positionIndex.end() || found->second->market != market || !found->second->liquidationLink.linked)
+                    const auto* found = contracts.participantIndex.get(query.cursor.anchor);
+                    if (!found || found->market != market || !found->liquidationLink.linked)
                     {
                         page.state = ReadState::CursorExpired;
                         return;
                     }
 
-                    link = found->second->liquidationLink.next;
+                    link = found->liquidationLink.next;
                 }
 
                 while (link != nullptr && page.count < query.limit && page.examined < query.scanBudget)

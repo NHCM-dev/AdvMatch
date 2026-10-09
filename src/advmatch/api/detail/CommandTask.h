@@ -14,14 +14,26 @@ namespace advmatch::api::detail
         virtual void reject(std::exception_ptr error) noexcept = 0;
     };
 
-    template <typename Response>
+    template <typename Response, typename Storage = std::shared_ptr<const command::Command<Response>>>
     class TypedCommandTask final : public CommandTask
     {
-        std::shared_ptr<const command::Command<Response>> command;
+        Storage command;
         async::CompletionSource<Response> source;
 
+        decltype(auto) execute(command::CommandContext& context)
+        {
+            if constexpr (requires { this->command.execute(context); })
+            {
+                return this->command.execute(context);
+            }
+            else
+            {
+                return this->command->execute(context);
+            }
+        }
+
     public:
-        TypedCommandTask(std::shared_ptr<const command::Command<Response>> command, async::CompletionSource<Response> source)
+        TypedCommandTask(Storage command, async::CompletionSource<Response> source)
             : command(std::move(command)), source(std::move(source))
         {
         }
@@ -38,12 +50,12 @@ namespace advmatch::api::detail
                 async::detail::NonBlockingScope scope;
                 if constexpr (std::is_void_v<Response>)
                 {
-                    this->command->execute(context);
+                    this->execute(context);
                     this->source.complete();
                 }
                 else
                 {
-                    this->source.complete(this->command->execute(context));
+                    this->source.complete(this->execute(context));
                 }
             }
             catch (...)

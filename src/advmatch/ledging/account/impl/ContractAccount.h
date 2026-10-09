@@ -75,6 +75,14 @@ namespace advmatch
             return this->managedPositionCount != 0 || this->managedOrderCount != 0;
         }
 
+        // Capacity preparation on the owner thread; stable Position and cross
+        // state addresses survive index growth. Existing subclasses may opt in.
+        virtual void reservePositions(std::size_t count)
+        {
+            this->activePositions.reserve(count);
+            this->tradingPositions.reserve(count);
+        }
+
         CrossMarginState& crossMargin(AssetId assetId);
         const CrossMarginState* findCrossMargin(AssetId assetId) const noexcept;
 
@@ -92,6 +100,14 @@ namespace advmatch
 
         [[nodiscard]]
         virtual bool recordPosition(Position position) = 0;
+
+        // Existing custom accounts remain source compatible. Implementations
+        // can return the owned stable node without a second index lookup.
+        virtual Position* recordPositionAndGet(Position position)
+        {
+            const auto id = position.positionId;
+            return this->recordPosition(std::move(position)) ? this->findPosition(id) : nullptr;
+        }
 
         [[nodiscard]]
         virtual bool removePosition(PositionId positionId) = 0;
@@ -124,6 +140,12 @@ namespace advmatch
 
         ~StandardContractAccount() override;
 
+        void reservePositions(std::size_t count) override
+        {
+            ContractAccount::reservePositions(count);
+            this->positions.reserve(count);
+        }
+
         [[nodiscard]]
         Position* findPosition(PositionId positionId) noexcept override;
 
@@ -132,6 +154,8 @@ namespace advmatch
 
         [[nodiscard]]
         bool recordPosition(Position position) override;
+
+        Position* recordPositionAndGet(Position position) override;
 
         [[nodiscard]]
         bool removePosition(PositionId positionId) override;

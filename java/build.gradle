@@ -1,0 +1,20 @@
+plugins {
+    id 'base'
+}
+
+ext.repoRoot = file('..')
+ext.nativeDir = providers.gradleProperty('nativeDir').map { file(it) }.getOrElse(new File(repoRoot, 'build/release'))
+
+tasks.register('configureNative', Exec) {
+    onlyIf { !providers.gradleProperty('skipNativeBuild').isPresent() }
+    workingDir repoRoot
+    environment 'JAVA_HOME', System.getProperty('java.home')
+    commandLine 'cmake', '--preset', 'release', '-B', nativeDir.absolutePath, '-DADVMATCH_BUILD_JNI=ON'
+}
+
+tasks.register('buildNative', Exec) {
+    dependsOn 'configureNative'
+    onlyIf { !providers.gradleProperty('skipNativeBuild').isPresent() }
+    workingDir repoRoot
+    commandLine 'cmake', '--build', nativeDir.absolutePath, '--target', 'advmatch_jni', '--parallel'
+}

@@ -11,7 +11,7 @@
 
 namespace advmatch::consuming
 {
-    template <typename Command, typename Response>
+    template <typename Command, typename Response, typename WaitStrategy>
     class SingleThreadConsumer;
 
     template <typename Response>
@@ -32,7 +32,7 @@ namespace advmatch::consuming
         static_assert(std::is_nothrow_move_constructible_v<Response>,
                       "fast responses must be nothrow move constructible");
 
-        template <typename CommandType, typename ResponseType>
+        template <typename CommandType, typename ResponseType, typename WaitStrategy>
         friend class SingleThreadConsumer;
 
         friend class RequestTicket<Response>;
@@ -103,7 +103,7 @@ namespace advmatch::consuming
     template <>
     class alignas(64) ResponseSlot<void>
     {
-        template <typename CommandType, typename ResponseType>
+        template <typename CommandType, typename ResponseType, typename WaitStrategy>
         friend class SingleThreadConsumer;
 
         friend class RequestTicket<void>;
@@ -171,7 +171,7 @@ namespace advmatch::consuming
     template <typename Response>
     class RequestTicket
     {
-        template <typename CommandType, typename ResponseType>
+        template <typename CommandType, typename ResponseType, typename WaitStrategy>
         friend class SingleThreadConsumer;
 
         ResponseSlot<Response>* slot = nullptr;
@@ -237,7 +237,7 @@ namespace advmatch::consuming
     template <>
     class RequestTicket<void>
     {
-        template <typename CommandType, typename ResponseType>
+        template <typename CommandType, typename ResponseType, typename WaitStrategy>
         friend class SingleThreadConsumer;
 
         ResponseSlot<void>* slot = nullptr;

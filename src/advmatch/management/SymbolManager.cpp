@@ -27,6 +27,7 @@ namespace advmatch
         }
 
         const SymbolId symbolId = this->nextSymbolId;
+        this->symbolIndex.resize(static_cast<std::size_t>(symbolId), nullptr);
 
         auto result = this->symbols.emplace(
             symbolId,
@@ -52,38 +53,26 @@ namespace advmatch
 
         ++this->nextSymbolId;
         ++this->activeSymbolCount;
+        this->symbolIndex[symbolId - 1] = &result.first->second;
 
         return &result.first->second;
     }
 
     bool SymbolManager::containsSymbol(SymbolId symbolId) const noexcept
     {
-        const auto iterator = this->symbols.find(symbolId);
-        return iterator != this->symbols.end() && iterator->second.active;
+        return this->getSymbol(symbolId) != nullptr;
     }
 
     const Symbol* SymbolManager::getSymbol(SymbolId symbolId) const noexcept
     {
-        const auto iterator = this->symbols.find(symbolId);
-
-        if (iterator == this->symbols.end() || !iterator->second.active)
-        {
-            return nullptr;
-        }
-
-        return &iterator->second;
+        const Symbol* symbol = symbolId != 0 && symbolId <= this->symbolIndex.size() ? this->symbolIndex[symbolId - 1] : nullptr;
+        return symbol && symbol->isActive() ? symbol : nullptr;
     }
 
     Symbol* SymbolManager::getSymbol(SymbolId symbolId) noexcept
     {
-        const auto iterator = this->symbols.find(symbolId);
-
-        if (iterator == this->symbols.end() || !iterator->second.active)
-        {
-            return nullptr;
-        }
-
-        return &iterator->second;
+        Symbol* symbol = symbolId != 0 && symbolId <= this->symbolIndex.size() ? this->symbolIndex[symbolId - 1] : nullptr;
+        return symbol && symbol->isActive() ? symbol : nullptr;
     }
 
     bool SymbolManager::removeSymbol(SymbolId symbolId)

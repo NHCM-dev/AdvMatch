@@ -88,6 +88,9 @@ namespace advmatch
         };
 
         BalanceSnapshot captureBalance(AssetId assetId) const noexcept;
+        // Refresh values through the opaque location only after structural
+        // validation. Insert/erase/promotion forces a fresh asset lookup.
+        BalanceSnapshot recaptureBalance(const BalanceSnapshot& snapshot) const noexcept;
         std::optional<BalanceUpdate> prepareBalanceChange(const BalanceSnapshot& snapshot,
             BalanceChange activeChange, BalanceChange reservedChange) const noexcept;
         BalanceResult commitBalanceChange(const BalanceUpdate& update);

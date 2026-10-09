@@ -2,6 +2,7 @@
 #define ADVMATCH_CONTRACT_MATH_H
 
 #include "advmatch/trading/futures/Contract.h"
+#include "BalanceMath.h"
 
 #include <limits>
 #include <optional>
@@ -35,17 +36,37 @@ namespace advmatch
                 return std::nullopt;
             }
 
-            const auto maximum = static_cast<std::uint64_t>(std::numeric_limits<Balance>::max());
-            if (quantity > maximum / price || multiplier > maximum / (price * quantity))
+            const auto amount = BalanceMath::multiply(price, quantity);
+            return amount && multiplier != 1 ? BalanceMath::multiply(static_cast<std::uint64_t>(*amount), multiplier) : amount;
+        }
+
+        // Most contract quantities fit in 64 bits. Avoid a software 128-bit
+        // division there; preserve exact wide arithmetic for large positions.
+        static WideBalance dividePositive(WideBalance numerator, WideBalance denominator) noexcept
+        {
+            const auto maximum = std::numeric_limits<std::uint64_t>::max();
+            if (numerator >= 0 && numerator <= maximum && denominator > 0 && denominator <= maximum)
             {
-                return std::nullopt;
+                return static_cast<std::uint64_t>(numerator) / static_cast<std::uint64_t>(denominator);
             }
 
-            return static_cast<Balance>(price * quantity * multiplier);
+            return numerator / denominator;
         }
 
         static Balance rate(Balance amount, MMRRate rate, bool roundUp = false) noexcept
         {
+            if (amount >= 0)
+            {
+                const auto product = BalanceMath::multiply(static_cast<std::uint64_t>(amount), rate);
+                if (product)
+                {
+                    // A nonnegative checked product plus the bounded rounding
+                    // increment fits uint64. Larger/signed cases stay wide.
+                    const auto numerator = static_cast<std::uint64_t>(*product) + (roundUp && amount > 0 ? RATE_SCALE - 1 : 0);
+                    return static_cast<Balance>(numerator / RATE_SCALE);
+                }
+            }
+
             const WideBalance numerator = static_cast<WideBalance>(amount) * rate;
             return static_cast<Balance>((numerator + (roundUp && amount > 0 ? RATE_SCALE - 1 : 0)) / RATE_SCALE);
         }
@@ -57,7 +78,7 @@ namespace advmatch
 
         static Balance proportional(Balance amount, Quantity part, Quantity total) noexcept
         {
-            return part == total ? amount : static_cast<Balance>(static_cast<WideBalance>(amount) * part / total);
+            return part == total ? amount : static_cast<Balance>(dividePositive(static_cast<WideBalance>(amount) * part, total));
         }
 
         static void updatePriceReferences(Position& position, const ContractSpec& spec) noexcept
@@ -80,8 +101,8 @@ namespace advmatch
                 return;
             }
 
-            const auto liquidation = balance((numerator * RATE_SCALE + (longSide ? denominator - 1 : 0)) / denominator);
-            const auto bankruptcy = balance(numerator / quantity);
+            const auto liquidation = balance(dividePositive(numerator * RATE_SCALE + (longSide ? denominator - 1 : 0), denominator));
+            const auto bankruptcy = balance(dividePositive(numerator, quantity));
             if (liquidation && bankruptcy)
             {
                 position.predictLiquidatePrice = static_cast<Price>(*liquidation);

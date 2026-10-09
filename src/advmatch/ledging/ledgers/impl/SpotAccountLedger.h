@@ -2,6 +2,7 @@
 #define ADVMATCH_SPOT_ACCOUNT_LEDGER_H
 
 #include "../AccountLedger.h"
+#include "../SettlementContext.h"
 
 namespace advmatch
 {
@@ -15,7 +16,8 @@ namespace advmatch
         const Account& accountFor(const User& user) const noexcept override;
 
     public:
-        bool settle(OrderNode& buyer, OrderNode& seller, PositiveBalanceChange baseAmount, PositiveBalanceChange quoteAmount) const;
+        bool settle(OrderNode& buyer, OrderNode& seller, PositiveBalanceChange baseAmount, PositiveBalanceChange quoteAmount,
+            SettlementContext* context = nullptr) const;
 
         [[nodiscard]]
         AccountType getAccountType() const noexcept override;

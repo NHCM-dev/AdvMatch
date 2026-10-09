@@ -1,6 +1,9 @@
 #include "advmatch/consuming/SingleThreadConsumer.h"
 #include "advmatch/matching/MatchingEngine.h"
 #include "advmatch/matching/contracts/ContractEngine.h"
+#include "advmatch/util/ContractMath.h"
+#include "advmatch/consuming/ConfigurableWaitStrategy.h"
+#include "advmatch/api/command/validation/TradingCommandValidator.h"
 
 #include <array>
 #include <cstdio>
@@ -260,6 +263,52 @@ namespace
         }
     }
 
+    void settlementResolutions()
+    {
+        UserManager users;
+        const auto id = users.createUser();
+        auto& account = users.getUser(id)->getSpotAccount();
+        SettlementContext context;
+        CHECK(context.capture(0, account, 1).active() == 0);
+        CHECK(account.updateBalance(1, 100));
+        CHECK(context.capture(0, account, 1).active() == 100);
+        CHECK(account.reserveBalance(1, 25));
+        CHECK(context.capture(0, account, 1).active() == 75);
+        CHECK(context.capture(0, account, 1).reserved() == 25);
+        CHECK(account.releaseReservedBalance(1, 25));
+        CHECK(account.updateBalance(1, -100));
+        CHECK(context.capture(0, account, 1).active() == 0);
+        for (AssetId asset = 1; asset <= 40; ++asset)
+        {
+            CHECK(account.updateBalance(asset, asset));
+            CHECK(context.capture(0, account, 1).active() == 1);
+        }
+
+        CHECK(account.updateBalance(1, -1));
+        CHECK(context.capture(0, account, 1).active() == 0);
+        CHECK(context.capture(0, account, 2).active() == 2);
+        const auto other = users.createUser();
+        CHECK(context.capture(0, users.getUser(other)->getSpotAccount(), 2).active() == 0);
+
+        SymbolManager symbols;
+        MatchingEngine matching(users, symbols);
+        CHECK(symbols.createSymbol("SWEEP", SymbolType::Spot, 1, 2));
+        CHECK(matching.addSpotBook(1));
+        auto& seller = users.getUser(other)->getSpotAccount();
+        CHECK(seller.updateBalance(1, 20));
+        CHECK(account.updateBalance(2, 1'000));
+        TradeBuffer trades;
+        for (int index = 0; index < 10; ++index)
+        {
+            CHECK(matching.placeOrder(other, 1, OrderSide::Ask, OrderType::Limit, TimeInForce::GTC, 10, 1, 1, trades));
+        }
+
+        CHECK(matching.placeOrder(id, 1, OrderSide::Bid, OrderType::Limit, TimeInForce::IOC, 10, 10, 1, trades));
+        CHECK(trades.size() == 10);
+        CHECK(account.queryActiveBalance(1) == 10 && account.queryActiveBalance(2) == 902);
+        CHECK(seller.queryActiveBalance(1) == 10 && seller.queryActiveBalance(2) == 100);
+    }
+
     class Queue final : public consuming::SingleThreadConsumer<int, int>
     {
         int consume(int&& value) override
@@ -295,6 +344,145 @@ namespace
             this->stopBeforeDerivedDestruction();
         }
     };
+
+    void checkedFastArithmetic()
+    {
+        constexpr std::array<std::uint64_t, 7> unsignedValues{0, 1, 2, 100, std::uint64_t(1) << 32,
+            std::numeric_limits<std::uint64_t>::max() - 1, std::numeric_limits<std::uint64_t>::max()};
+        for (std::uint64_t left : unsignedValues)
+        {
+            for (std::uint64_t right : unsignedValues)
+            {
+                // Use division as an independent exact reference: the product
+                // of two full uint64 values need not fit signed WideBalance.
+                const bool overflow = right != 0 && left > std::numeric_limits<std::uint64_t>::max() / right;
+                CHECK(util::willMultiplyOverflow(left, right) == overflow);
+            }
+        }
+
+        const auto maximum = static_cast<Price>(std::numeric_limits<Balance>::max());
+        CHECK(BalanceMath::multiply(maximum, 1) == static_cast<Balance>(maximum));
+        CHECK(!BalanceMath::multiply(maximum, 2));
+        CHECK(!BalanceMath::multiply(std::numeric_limits<Price>::max(), std::numeric_limits<Quantity>::max()));
+        CHECK(BalanceMath::multiply(0, std::numeric_limits<Quantity>::max()) == 0);
+        const WideBalance large = static_cast<WideBalance>(maximum) * maximum;
+        CHECK(ContractMath::dividePositive(large, maximum) == maximum);
+        CHECK(ContractMath::dividePositive(-100, 3) == -33);
+        CHECK(ContractMath::proportional(-101, 2, 3) == -67);
+        CHECK(ContractMath::notional(100, 2, 3) == 600);
+        CHECK(ContractMath::rate(1, 1, true) == 1);
+        CHECK(ContractMath::rate(1, 1) == 0);
+        CHECK(ContractMath::rate(-1, 1, true) == 0);
+        CHECK(ContractMath::rate(-1'000'001, 1) == -1);
+        CHECK(ContractMath::rate(static_cast<Balance>(maximum), RATE_SCALE, true) == static_cast<Balance>(maximum));
+        ContractMarket bandMarket;
+        bandMarket.markPrice = 101;
+        bandMarket.spec.priceBandRate = 123'457;
+        for (Price mark : {Price(101), Price(203), maximum})
+        {
+            bandMarket.markPrice = mark;
+            const WideBalance lower = static_cast<WideBalance>(mark) * (RATE_SCALE - bandMarket.spec.priceBandRate);
+            const WideBalance upper = static_cast<WideBalance>(mark) * (RATE_SCALE + bandMarket.spec.priceBandRate);
+            CHECK(bandMarket.liquidationPriceLimit(false) == lower / RATE_SCALE);
+            CHECK(bandMarket.liquidationPriceLimit(true) == upper / RATE_SCALE);
+            CHECK(bandMarket.priceBand().first == (lower + RATE_SCALE - 1) / RATE_SCALE);
+        }
+
+        bandMarket.spec.priceBandRate = 10'001;
+        CHECK(bandMarket.liquidationPriceLimit(false) == static_cast<WideBalance>(maximum) * (RATE_SCALE - 10'001) / RATE_SCALE);
+        commands::PlaceOrder invalid{1, 1, OrderSide::Bid, OrderType::Limit, static_cast<TimeInForce>(255), 100, 1, 1};
+        bool caught = false;
+        try
+        {
+            api::command::TradingCommandValidator::validateWithoutEncoding(invalid);
+        }
+        catch (const PersistenceError&)
+        {
+            caught = true;
+        }
+
+        CHECK(caught);
+    }
+
+    void pagedIndexes()
+    {
+        PagedPointerIndex<int, 2> index;
+        int first = 1;
+        int last = 2;
+        index.reserve(100);
+        CHECK(!index.insert(0, first));
+        CHECK(!index.get(0) && !index.get(std::numeric_limits<std::uint64_t>::max()));
+        index.insert(1, first);
+        index.insert(4, last);
+        index.insert(5, first);
+        index.insert(100, last);
+        CHECK(index.get(1) == &first && index.get(4) == &last && index.get(5) == &first && index.get(100) == &last);
+        index.erase(1);
+        CHECK(!index.get(1) && index.get(4) == &last);
+        index.erase(4);
+        index.erase(4);
+        CHECK(!index.get(4) && index.get(5) == &first);
+        index.insert(1, last);
+        CHECK(index.get(1) == &last);
+    }
+
+    void directManagerIndexes()
+    {
+        UserManager users;
+        SymbolManager symbols;
+        const auto id = users.createUser();
+        User* firstUser = users.getUser(id);
+        Symbol* firstSymbol = symbols.createSymbol("FIRST", SymbolType::Spot, 1, 2);
+        CHECK(firstUser && firstSymbol);
+        for (AssetId index = 3; index < 1'003; ++index)
+        {
+            CHECK(users.createUser() != 0);
+            CHECK(symbols.createSymbol("PAIR-" + std::to_string(index), SymbolType::Spot, index, 2));
+        }
+
+        const UserManager& constUsers = users;
+        const SymbolManager& constSymbols = symbols;
+        CHECK(constUsers.getUser(id) == firstUser && constSymbols.getSymbol(1) == firstSymbol);
+        CHECK(!users.getUser(0) && !users.getUser(std::numeric_limits<UserId>::max()));
+        CHECK(!symbols.getSymbol(0) && !symbols.getSymbol(std::numeric_limits<SymbolId>::max()));
+        CHECK(users.removeUser(id) && symbols.removeSymbol(1));
+        CHECK(!constUsers.getUser(id) && !constSymbols.getSymbol(1));
+        CHECK(!users.containsUser(id) && !symbols.containsSymbol(1));
+        CHECK(!firstUser->isActive() && !firstSymbol->isActive());
+        CHECK(users.createUser() > id);
+        CHECK(symbols.createSymbol("FIRST", SymbolType::Spot, 1, 2)->symbolId > 1);
+    }
+
+    class SpinQueue final : public consuming::SingleThreadConsumer<int, int, consuming::ConfigurableWaitStrategy>
+    {
+        int consume(int&& value) override
+        {
+            return value;
+        }
+
+    public:
+        ~SpinQueue() override
+        {
+            this->stopBeforeDerivedDestruction();
+        }
+    };
+
+    void configurableWait()
+    {
+        for (bool spinning : {false, true})
+        {
+            SpinQueue queue;
+            queue.waitStrategyConfig().busySpin = spinning;
+            queue.start(1);
+            consuming::ResponseSlot<int> slot;
+            for (int index = 0; index < 100; ++index)
+            {
+                CHECK(queue.post(index, slot).get() == index);
+            }
+
+            queue.stop();
+        }
+    }
 
     void responseWakeupsAndProgress()
     {
@@ -358,8 +546,13 @@ namespace
 
 int main()
 {
+    checkedFastArithmetic();
+    pagedIndexes();
+    directManagerIndexes();
+    configurableWait();
     poolGrowthAndHistory();
     balanceTokensAndSpotPromotion();
+    settlementResolutions();
     reusableFokAndFunding();
     responseWakeupsAndProgress();
     std::puts("Optimization regressions passed");

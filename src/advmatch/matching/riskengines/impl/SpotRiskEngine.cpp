@@ -2,6 +2,7 @@
 
 #include "advmatch/ledging/User.h"
 #include "advmatch/trading/Symbol.h"
+#include "advmatch/util/BalanceMath.h"
 
 #include <limits>
 
@@ -28,12 +29,7 @@ namespace advmatch
                        : std::optional<Balance>(estimatedMarketBuyBalance);
         }
 
-        if (price != 0 && remaining > static_cast<Quantity>(std::numeric_limits<Balance>::max()) / price)
-        {
-            return std::nullopt;
-        }
-
-        return static_cast<Balance>(price * remaining);
+        return BalanceMath::multiply(price, remaining);
     }
 
     bool SpotRiskEngine::hasAvailableReservation(const OrderNode& node, Balance requiredBalance) noexcept
