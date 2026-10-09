@@ -89,10 +89,11 @@ namespace advmatch
                 {
                     referenced = referenced || symbol.baseAssetId == command.assetId || symbol.quoteAssetId == command.assetId;
                 });
-                this->state.users.getAccountManager().forEachAccount([&](AccountId, const Account& account)
+                this->state.users.getAccountManager().forEachRetainedAccount([&](AccountId, const Account& account)
                 {
                     referenced = referenced || account.queryActiveBalance(command.assetId).value_or(0) != 0 || account.queryReservedBalance(command.assetId).value_or(0) != 0;
                 });
+                referenced = referenced || this->state.matching.getSpotSettleEngine().feeBalance(command.assetId) != 0;
                 return managementResult(!referenced && this->state.assets.removeAsset(command.assetId));
             }
 
@@ -138,7 +139,13 @@ namespace advmatch
                     return businessResult(CommandResultType::Balance, BalanceResult(BalanceOpResult::NoSuchAsset));
                 }
 
-                return businessResult(CommandResultType::Balance, account != nullptr ? account->updateBalance(command.assetId, command.change) : BalanceResult(BalanceOpResult::InvalidAccount));
+                const auto value = account != nullptr ? account->updateBalance(command.assetId, command.change) : BalanceResult(BalanceOpResult::InvalidAccount);
+                if (value)
+                {
+                    this->state.matching.getAuditEngine().recordExternalFlow(command.assetId, command.change);
+                }
+
+                return businessResult(CommandResultType::Balance, value);
             }
 
             CommandResult operator()(const commands::Transfer& command)
@@ -301,6 +308,18 @@ namespace advmatch
             CommandResult operator()(const commands::CancelConditionalOrder& command)
             {
                 return this->conditionalResult(this->state.matching.getConditionalOrderEngine().cancel(command.userId, command.conditionalOrderId, command.timestamp));
+            }
+
+            CommandResult operator()(const commands::ConfigureTradingRules& command)
+            {
+                return businessResult(CommandResultType::TradingRule, this->state.matching.getTradingRuleEngine().configure(command.symbolId, command.rules));
+            }
+
+            CommandResult operator()(const commands::WithdrawSpotFees& command)
+            {
+                auto* account = this->state.users.getAccountManager().getAccount(command.accountId);
+                const auto value = account && this->state.assets.containsAsset(command.assetId) ? this->state.matching.withdrawSpotFees(*account, command.assetId, command.amount) : TradingRuleResult{TradingRuleState::InvalidAccount};
+                return businessResult(CommandResultType::TradingRule, value);
             }
         };
     }

@@ -35,7 +35,10 @@ public enum ReadKind
     ManagedPositions(29),
     MarketPositions(30),
     ConditionalOrder(31),
-    ConditionalOrders(32);
+    ConditionalOrders(32),
+    Audit(33),
+    UserRisk(34),
+    SpotFeeBalance(35);
 
     private final int code;
 

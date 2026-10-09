@@ -19,6 +19,8 @@
 #include "advmatch/management/SymbolManager.h"
 #include "advmatch/trading/factory/impl/BasicOrderFactory.h"
 #include "conditional/ConditionalOrderEngine.h"
+#include "rules/TradingRuleEngine.h"
+#include "advmatch/audit/AuditEngine.h"
 
 namespace advmatch
 {
@@ -39,6 +41,8 @@ namespace advmatch
             SettleEngine* settlement = nullptr;
         };
 
+        std::unique_ptr<TradingRuleEngine> tradingRules;
+        std::unique_ptr<audit::AuditEngine> auditEngine;
         std::unique_ptr<ContractEngine> contracts;
         std::unique_ptr<ConditionalOrderEngine> conditionalOrders;
         std::vector<BookServices> bookServices;
@@ -46,6 +50,9 @@ namespace advmatch
         friend class LiquidateEngine;
         friend class ContractSettleEngine;
         friend class ConditionalOrderEngine;
+        friend class TradingRuleEngine;
+        friend class SpotSettleEngine;
+        friend class audit::AuditEngine;
 
         // Borrowed only by a synchronous submission on the owner thread. The
         // internal liquidation path resolves these once, but shares factory,
@@ -86,6 +93,36 @@ namespace advmatch
         OrderBook* findBook(SymbolId symbolId) noexcept;
 
     public:
+        audit::AuditEngine& getAuditEngine() noexcept
+        {
+            return *this->auditEngine;
+        }
+
+        const audit::AuditEngine& getAuditEngine() const noexcept
+        {
+            return *this->auditEngine;
+        }
+
+        TradingRuleResult withdrawSpotFees(Account& account, AssetId assetId, PositiveBalanceChange amount)
+        {
+            return this->settleEngine.withdrawFees(account, assetId, amount);
+        }
+
+        TradingRuleEngine& getTradingRuleEngine() noexcept
+        {
+            return *this->tradingRules;
+        }
+
+        const TradingRuleEngine& getTradingRuleEngine() const noexcept
+        {
+            return *this->tradingRules;
+        }
+
+        const SpotSettleEngine& getSpotSettleEngine() const noexcept
+        {
+            return this->settleEngine;
+        }
+
         ConditionalOrderEngine& getConditionalOrderEngine() noexcept
         {
             return *this->conditionalOrders;

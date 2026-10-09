@@ -33,6 +33,7 @@ namespace advmatch
         std::size_t maxRecordBytes = 1024 * 1024;
         std::uint64_t maxSnapshotBytes = std::uint64_t{4} * 1024 * 1024 * 1024;
         std::size_t retainedRequests = 10'000;
+        bool verifyRecovery = true;
     };
 
 }

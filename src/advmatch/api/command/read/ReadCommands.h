@@ -92,6 +92,9 @@ namespace advmatch::api::command
     using ReadContractEvents = ReadOperation<observe::ReadKind::ContractEvents, observe::ContractEventView>;
     using ReadConditionalOrder = ReadOperation<observe::ReadKind::ConditionalOrder, observe::ConditionalOrderView>;
     using ReadConditionalOrders = ReadOperation<observe::ReadKind::ConditionalOrders, observe::ConditionalOrderView>;
+    using ReadAudit = ReadOperation<observe::ReadKind::Audit, observe::AuditReport>;
+    using ReadUserRisk = ReadOperation<observe::ReadKind::UserRisk, observe::UserRiskView>;
+    using ReadSpotFeeBalance = ReadOperation<observe::ReadKind::SpotFeeBalance, observe::FeeBalanceView>;
 
     class ReadBatch final : public Command<observe::ObservationBatch>
     {

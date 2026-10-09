@@ -32,11 +32,11 @@ namespace advmatch
         {
             return PlaceOrderState::InvalidOrderType;
         }
-        if (timeInForce != TimeInForce::GTC && timeInForce != TimeInForce::IOC && timeInForce != TimeInForce::FOK)
+        if (timeInForce != TimeInForce::GTC && timeInForce != TimeInForce::IOC && timeInForce != TimeInForce::FOK && timeInForce != TimeInForce::PostOnly)
         {
             return PlaceOrderState::InvalidTimeInForce;
         }
-        if (orderType == OrderType::Market && timeInForce == TimeInForce::GTC)
+        if (orderType == OrderType::Market && (timeInForce == TimeInForce::GTC || timeInForce == TimeInForce::PostOnly))
         {
             return PlaceOrderState::InvalidTimeInForce;
         }

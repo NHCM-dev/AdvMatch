@@ -8,6 +8,8 @@
 #include "advmatch/trading/futures/ReferencePrice.h"
 #include "advmatch/trading/futures/Position.h"
 #include "advmatch/trading/conditional/ConditionalOrder.h"
+#include "advmatch/trading/rules/TradingRules.h"
+#include "advmatch/audit/model/AuditReport.h"
 
 #include <span>
 #include <variant>
@@ -16,6 +18,9 @@
 namespace advmatch::observe
 {
     using advmatch::ConditionalOrderView;
+    using advmatch::UserRiskView;
+    using advmatch::FeeBalanceView;
+    using audit::AuditReport;
     enum class ReadState : std::uint8_t
     {
         Success,
@@ -61,7 +66,10 @@ namespace advmatch::observe
         ManagedPositions,
         MarketPositions,
         ConditionalOrder,
-        ConditionalOrders
+        ConditionalOrders,
+        Audit,
+        UserRisk,
+        SpotFeeBalance
     };
 
     enum class PositionFilter : std::uint8_t
@@ -208,6 +216,7 @@ namespace advmatch::observe
         AssetId quoteAssetId;
         bool active;
         std::string name;
+        TradingRules tradingRules;
     };
 
     struct OrderView
@@ -238,6 +247,10 @@ namespace advmatch::observe
         bool resting;
         Price executionPriceLimit;
         std::optional<MarginMode> marginMode;
+        MMRRate makerFeeRate;
+        MMRRate takerFeeRate;
+        AssetId feeAssetId;
+        Balance paidFees;
     };
 
     struct PositionView
@@ -354,6 +367,10 @@ namespace advmatch::observe
         AccountId makerAccountId = 0;
         AccountId takerAccountId = 0;
         Trade trade{};
+        AssetId makerFeeAssetId = 0;
+        Balance makerFee = 0;
+        AssetId takerFeeAssetId = 0;
+        Balance takerFee = 0;
     };
 
     struct ContractEventView
@@ -377,7 +394,7 @@ namespace advmatch::observe
     using ObservationData = std::variant<std::monostate, OverviewView, std::vector<AssetView>,
         std::vector<UserView>, std::vector<AccountView>, std::vector<BalanceView>, std::vector<CrossMarginView>,
         std::vector<SymbolView>, std::vector<OrderView>, std::vector<PositionView>, std::vector<BookView>,
-        std::vector<DepthView>, std::vector<MarketView>, std::vector<TradeView>, std::vector<ContractEventView>, std::vector<ConditionalOrderView>>;
+        std::vector<DepthView>, std::vector<MarketView>, std::vector<TradeView>, std::vector<ContractEventView>, std::vector<ConditionalOrderView>, std::vector<AuditReport>, std::vector<UserRiskView>, std::vector<FeeBalanceView>>;
 
     struct ObservationResult
     {

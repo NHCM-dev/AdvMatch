@@ -30,6 +30,22 @@ namespace advmatch::binding
     inline ConditionalOrderRequest readConditionalOrderRequest(BinaryReader& reader);
     inline void write(BinaryWriter& writer, const ConditionalOrderView& value);
     inline ConditionalOrderView readConditionalOrderView(BinaryReader& reader);
+    inline void write(BinaryWriter& writer, const FeeSchedule& value);
+    inline FeeSchedule readFeeSchedule(BinaryReader& reader);
+    inline void write(BinaryWriter& writer, const RiskLimits& value);
+    inline RiskLimits readRiskLimits(BinaryReader& reader);
+    inline void write(BinaryWriter& writer, const TradingRules& value);
+    inline TradingRules readTradingRules(BinaryReader& reader);
+    inline void write(BinaryWriter& writer, const UserRiskView& value);
+    inline UserRiskView readUserRiskView(BinaryReader& reader);
+    inline void write(BinaryWriter& writer, const FeeBalanceView& value);
+    inline FeeBalanceView readFeeBalanceView(BinaryReader& reader);
+    inline void write(BinaryWriter& writer, const audit::AssetAudit& value);
+    inline audit::AssetAudit readAssetAudit(BinaryReader& reader);
+    inline void write(BinaryWriter& writer, const audit::AuditIssue& value);
+    inline audit::AuditIssue readAuditIssue(BinaryReader& reader);
+    inline void write(BinaryWriter& writer, const audit::AuditReport& value);
+    inline audit::AuditReport readAuditReport(BinaryReader& reader);
     inline void write(BinaryWriter& writer, const Quote& value);
     inline Quote readQuote(BinaryReader& reader);
     inline void write(BinaryWriter& writer, const Trade& value);
@@ -371,7 +387,7 @@ namespace advmatch::binding
         value.symbolId = reader.number<SymbolId>();
         value.side = reader.enumeration(static_cast<OrderSide>(1));
         value.type = reader.enumeration(static_cast<OrderType>(1));
-        value.timeInForce = reader.enumeration(static_cast<TimeInForce>(2));
+        value.timeInForce = reader.enumeration(static_cast<TimeInForce>(3));
         value.price = reader.number<Price>();
         value.quantity = reader.number<Quantity>();
         value.timestamp = reader.number<Timestamp>();
@@ -414,7 +430,199 @@ namespace advmatch::binding
         value.triggeredPrice = reader.number<Price>();
         if (reader.boolean())
         {
-            value.rejectReason = reader.enumeration(static_cast<PlaceOrderState>(23));
+            value.rejectReason = reader.enumeration(static_cast<PlaceOrderState>(28));
+        }
+        return value;
+    }
+
+    inline void write(BinaryWriter& writer, const FeeSchedule& value)
+    {
+        writer.number(value.makerRate);
+        writer.number(value.takerRate);
+    }
+
+    inline FeeSchedule readFeeSchedule(BinaryReader& reader)
+    {
+        FeeSchedule value{};
+        value.makerRate = reader.number<MMRRate>();
+        value.takerRate = reader.number<MMRRate>();
+        return value;
+    }
+
+    inline void write(BinaryWriter& writer, const RiskLimits& value)
+    {
+        writer.number(value.maxOrderQuantity);
+        writer.number(value.maxOrderNotional);
+        writer.number(value.maxPositionNotional);
+        writer.number(value.maxAccountNotional);
+        writer.number(value.maxActiveOrders);
+        writer.number(value.maxLeverage);
+    }
+
+    inline RiskLimits readRiskLimits(BinaryReader& reader)
+    {
+        RiskLimits value{};
+        value.maxOrderQuantity = reader.number<Quantity>();
+        value.maxOrderNotional = reader.number<Balance>();
+        value.maxPositionNotional = reader.number<Balance>();
+        value.maxAccountNotional = reader.number<Balance>();
+        value.maxActiveOrders = reader.number<std::uint32_t>();
+        value.maxLeverage = reader.number<LeverageMultiplier>();
+        return value;
+    }
+
+    inline void write(BinaryWriter& writer, const TradingRules& value)
+    {
+        writer.number(value.priceTick);
+        writer.number(value.quantityStep);
+        writer.number(value.minQuantity);
+        writer.number(value.minOrderNotional);
+        write(writer, value.fees);
+        write(writer, value.risk);
+        writer.enumeration(value.selfTradePrevention);
+    }
+
+    inline TradingRules readTradingRules(BinaryReader& reader)
+    {
+        TradingRules value{};
+        value.priceTick = reader.number<Price>();
+        value.quantityStep = reader.number<Quantity>();
+        value.minQuantity = reader.number<Quantity>();
+        value.minOrderNotional = reader.number<Balance>();
+        value.fees = readFeeSchedule(reader);
+        value.risk = readRiskLimits(reader);
+        value.selfTradePrevention = reader.enumeration(static_cast<SelfTradePrevention>(3));
+        return value;
+    }
+
+    inline void write(BinaryWriter& writer, const UserRiskView& value)
+    {
+        writer.number(value.symbolId);
+        writer.number(value.userId);
+        writer.number(value.activeOrders);
+        writer.number(value.pendingNotional);
+        writer.number(value.positionNotional);
+    }
+
+    inline UserRiskView readUserRiskView(BinaryReader& reader)
+    {
+        UserRiskView value{};
+        value.symbolId = reader.number<SymbolId>();
+        value.userId = reader.number<UserId>();
+        value.activeOrders = reader.number<std::uint64_t>();
+        value.pendingNotional = reader.number<Balance>();
+        value.positionNotional = reader.number<Balance>();
+        return value;
+    }
+
+    inline void write(BinaryWriter& writer, const FeeBalanceView& value)
+    {
+        writer.number(value.assetId);
+        writer.number(value.balance);
+    }
+
+    inline FeeBalanceView readFeeBalanceView(BinaryReader& reader)
+    {
+        FeeBalanceView value{};
+        value.assetId = reader.number<AssetId>();
+        value.balance = reader.number<Balance>();
+        return value;
+    }
+
+    inline void write(BinaryWriter& writer, const audit::AssetAudit& value)
+    {
+        writer.number(value.assetId);
+        writer.string(value.externalFlow);
+        writer.string(value.active);
+        writer.string(value.reserved);
+        writer.string(value.spotFees);
+        writer.string(value.contractFees);
+        writer.string(value.insurance);
+        writer.string(value.clearing);
+        writer.string(value.fundingRounding);
+        writer.string(value.actual);
+        writer.string(value.difference);
+        writer.boolean(value.conserved);
+    }
+
+    inline audit::AssetAudit readAssetAudit(BinaryReader& reader)
+    {
+        audit::AssetAudit value{};
+        value.assetId = reader.number<AssetId>();
+        value.externalFlow = reader.string();
+        value.active = reader.string();
+        value.reserved = reader.string();
+        value.spotFees = reader.string();
+        value.contractFees = reader.string();
+        value.insurance = reader.string();
+        value.clearing = reader.string();
+        value.fundingRounding = reader.string();
+        value.actual = reader.string();
+        value.difference = reader.string();
+        value.conserved = reader.boolean();
+        return value;
+    }
+
+    inline void write(BinaryWriter& writer, const audit::AuditIssue& value)
+    {
+        writer.enumeration(value.type);
+        writer.number(value.entityId);
+        writer.number(value.assetId);
+        writer.string(value.message);
+    }
+
+    inline audit::AuditIssue readAuditIssue(BinaryReader& reader)
+    {
+        audit::AuditIssue value{};
+        value.type = reader.enumeration(static_cast<audit::AuditIssueType>(4));
+        value.entityId = reader.number<std::uint64_t>();
+        value.assetId = reader.number<AssetId>();
+        value.message = reader.string();
+        return value;
+    }
+
+    inline void write(BinaryWriter& writer, const audit::AuditReport& value)
+    {
+        writer.boolean(value.conserved);
+        writer.boolean(value.consistent);
+        writer.number(value.stateHash);
+        writer.number(value.checkedAccounts);
+        writer.number(value.checkedOrders);
+        writer.number(value.checkedPositions);
+        writer.number(value.issueCount);
+        writer.number<std::uint64_t>(value.assets.size());
+        for (const auto& item : value.assets)
+        {
+            write(writer, item);
+        }
+        writer.number<std::uint64_t>(value.issues.size());
+        for (const auto& item : value.issues)
+        {
+            write(writer, item);
+        }
+    }
+
+    inline audit::AuditReport readAuditReport(BinaryReader& reader)
+    {
+        audit::AuditReport value{};
+        value.conserved = reader.boolean();
+        value.consistent = reader.boolean();
+        value.stateHash = reader.number<std::uint64_t>();
+        value.checkedAccounts = reader.number<std::uint64_t>();
+        value.checkedOrders = reader.number<std::uint64_t>();
+        value.checkedPositions = reader.number<std::uint64_t>();
+        value.issueCount = reader.number<std::uint64_t>();
+        const auto assetsCount = reader.count();
+        value.assets.reserve(assetsCount);
+        for (std::size_t index = 0; index < assetsCount; ++index)
+        {
+            value.assets.push_back(readAssetAudit(reader));
+        }
+        const auto issuesCount = reader.count();
+        value.issues.reserve(issuesCount);
+        for (std::size_t index = 0; index < issuesCount; ++index)
+        {
+            value.issues.push_back(readAuditIssue(reader));
         }
         return value;
     }
@@ -473,7 +681,7 @@ namespace advmatch::binding
     inline CommandResult readCommandResult(BinaryReader& reader)
     {
         CommandResult value{};
-        value.type = reader.enumeration(static_cast<CommandResultType>(7));
+        value.type = reader.enumeration(static_cast<CommandResultType>(8));
         value.state = reader.number<std::uint8_t>();
         value.accepted = reader.boolean();
         value.entityId = reader.number<std::uint64_t>();
@@ -522,6 +730,7 @@ namespace advmatch::binding
         writer.number<std::uint64_t>(value.maxRecordBytes);
         writer.number(value.maxSnapshotBytes);
         writer.number<std::uint64_t>(value.retainedRequests);
+        writer.boolean(value.verifyRecovery);
     }
 
     inline PersistenceConfig readPersistenceConfig(BinaryReader& reader)
@@ -539,6 +748,7 @@ namespace advmatch::binding
         value.maxRecordBytes = readSize(reader);
         value.maxSnapshotBytes = reader.number<std::uint64_t>();
         value.retainedRequests = readSize(reader);
+        value.verifyRecovery = reader.boolean();
         return value;
     }
 
@@ -607,7 +817,7 @@ namespace advmatch::binding
     inline observe::ReadIdentity readReadIdentity(BinaryReader& reader)
     {
         observe::ReadIdentity value{};
-        value.kind = reader.enumeration(static_cast<observe::ReadKind>(32));
+        value.kind = reader.enumeration(static_cast<observe::ReadKind>(35));
         value.userId = reader.number<UserId>();
         value.accountId = reader.number<AccountId>();
         value.assetId = reader.number<AssetId>();
@@ -668,7 +878,7 @@ namespace advmatch::binding
     inline observe::ObservationQuery readObservationQuery(BinaryReader& reader)
     {
         observe::ObservationQuery value{};
-        value.kind = reader.enumeration(static_cast<observe::ReadKind>(32));
+        value.kind = reader.enumeration(static_cast<observe::ReadKind>(35));
         value.userId = reader.number<UserId>();
         value.accountId = reader.number<AccountId>();
         value.assetId = reader.number<AssetId>();
@@ -850,6 +1060,7 @@ namespace advmatch::binding
         writer.number(value.quoteAssetId);
         writer.boolean(value.active);
         writer.string(value.name);
+        write(writer, value.tradingRules);
     }
 
     inline observe::SymbolView readSymbolView(BinaryReader& reader)
@@ -861,6 +1072,7 @@ namespace advmatch::binding
         value.quoteAssetId = reader.number<AssetId>();
         value.active = reader.boolean();
         value.name = reader.string();
+        value.tradingRules = readTradingRules(reader);
         return value;
     }
 
@@ -896,6 +1108,10 @@ namespace advmatch::binding
         {
             writer.enumeration(*value.marginMode);
         }
+        writer.number(value.makerFeeRate);
+        writer.number(value.takerFeeRate);
+        writer.number(value.feeAssetId);
+        writer.number(value.paidFees);
     }
 
     inline observe::OrderView readOrderView(BinaryReader& reader)
@@ -909,7 +1125,7 @@ namespace advmatch::binding
         value.quoteAssetId = reader.number<AssetId>();
         value.side = reader.enumeration(static_cast<OrderSide>(1));
         value.type = reader.enumeration(static_cast<OrderType>(1));
-        value.timeInForce = reader.enumeration(static_cast<TimeInForce>(2));
+        value.timeInForce = reader.enumeration(static_cast<TimeInForce>(3));
         value.price = reader.number<Price>();
         value.quantity = reader.number<Quantity>();
         value.filling = readOrderFillingStatus(reader);
@@ -930,6 +1146,10 @@ namespace advmatch::binding
         {
             value.marginMode = reader.enumeration(static_cast<MarginMode>(1));
         }
+        value.makerFeeRate = reader.number<MMRRate>();
+        value.takerFeeRate = reader.number<MMRRate>();
+        value.feeAssetId = reader.number<AssetId>();
+        value.paidFees = reader.number<Balance>();
         return value;
     }
 
@@ -1190,6 +1410,10 @@ namespace advmatch::binding
         writer.number(value.makerAccountId);
         writer.number(value.takerAccountId);
         write(writer, value.trade);
+        writer.number(value.makerFeeAssetId);
+        writer.number(value.makerFee);
+        writer.number(value.takerFeeAssetId);
+        writer.number(value.takerFee);
     }
 
     inline observe::TradeView readTradeView(BinaryReader& reader)
@@ -1204,6 +1428,10 @@ namespace advmatch::binding
         value.makerAccountId = reader.number<AccountId>();
         value.takerAccountId = reader.number<AccountId>();
         value.trade = readTrade(reader);
+        value.makerFeeAssetId = reader.number<AssetId>();
+        value.makerFee = reader.number<Balance>();
+        value.takerFeeAssetId = reader.number<AssetId>();
+        value.takerFee = reader.number<Balance>();
         return value;
     }
 

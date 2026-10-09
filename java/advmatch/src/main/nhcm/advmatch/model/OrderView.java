@@ -3,11 +3,11 @@ package nhcm.advmatch.model;
 
 import java.util.List;
 
-public record OrderView(long orderId, long userId, long accountId, long symbolId, long baseAssetId, long quoteAssetId, OrderSide side, OrderType type, TimeInForce timeInForce, long price, long quantity, OrderFillingStatus filling, long createdTimestamp, long updatedTimestamp, long firstFilledTimestamp, long lastFilledTimestamp, long completedTimestamp, long reservationAssetId, long reservedBalance, long positionId, int leverage, boolean reduceOnly, boolean liquidationOrder, boolean resting, long executionPriceLimit, MarginMode marginMode)
+public record OrderView(long orderId, long userId, long accountId, long symbolId, long baseAssetId, long quoteAssetId, OrderSide side, OrderType type, TimeInForce timeInForce, long price, long quantity, OrderFillingStatus filling, long createdTimestamp, long updatedTimestamp, long firstFilledTimestamp, long lastFilledTimestamp, long completedTimestamp, long reservationAssetId, long reservedBalance, long positionId, int leverage, boolean reduceOnly, boolean liquidationOrder, boolean resting, long executionPriceLimit, MarginMode marginMode, long makerFeeRate, long takerFeeRate, long feeAssetId, long paidFees)
 {
     public OrderView()
     {
-        this(0, 0, 0, 0, 0, 0, OrderSide.Bid, OrderType.Limit, TimeInForce.GTC, 0, 0, new OrderFillingStatus(), 0, 0, 0, 0, 0, 0, 0, 0, 0, false, false, false, 0, null);
+        this(0, 0, 0, 0, 0, 0, OrderSide.Bid, OrderType.Limit, TimeInForce.GTC, 0, 0, new OrderFillingStatus(), 0, 0, 0, 0, 0, 0, 0, 0, 0, false, false, false, 0, null, 0, 0, 0, 0);
     }
 
 }

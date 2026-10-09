@@ -26,6 +26,17 @@ namespace advmatch::sdk
     using advmatch::ConditionalOrderState;
     using advmatch::ConditionalOrderRequest;
     using advmatch::ConditionalOrderView;
+    using advmatch::SelfTradePrevention;
+    using advmatch::TradingRuleState;
+    using advmatch::FeeSchedule;
+    using advmatch::RiskLimits;
+    using advmatch::TradingRules;
+    using advmatch::UserRiskView;
+    using advmatch::FeeBalanceView;
+    using advmatch::audit::AuditIssueType;
+    using advmatch::audit::AssetAudit;
+    using advmatch::audit::AuditIssue;
+    using advmatch::audit::AuditReport;
     using advmatch::PositionId;
     using advmatch::Price;
     using advmatch::Quantity;

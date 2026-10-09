@@ -303,6 +303,11 @@ namespace advmatch
             return {ContractState::InvalidLeverage};
         }
 
+        if (market.symbol->tradingRules.risk.maxLeverage != 0 && leverage > market.symbol->tradingRules.risk.maxLeverage)
+        {
+            return {ContractState::RiskLimitExceeded};
+        }
+
         const ContractState command = commandState(market, timestamp);
         if (command != ContractState::Success)
         {

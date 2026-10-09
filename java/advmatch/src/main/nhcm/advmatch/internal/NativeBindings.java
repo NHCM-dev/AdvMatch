@@ -5,9 +5,9 @@ public final class NativeBindings
     static
     {
         NativeLoader.load();
-        if (abiVersion() != 3)
+        if (abiVersion() != 4)
         {
-            throw new UnsatisfiedLinkError("AdvMatch requires native ABI 3");
+            throw new UnsatisfiedLinkError("AdvMatch requires native ABI 4");
         }
     }
 

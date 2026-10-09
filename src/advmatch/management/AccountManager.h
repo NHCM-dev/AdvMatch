@@ -87,6 +87,18 @@ namespace advmatch
             }
         }
 
+        template <typename Visitor>
+        void forEachRetainedAccount(Visitor&& visitor) const
+        {
+            for (const Account* account : this->accounts)
+            {
+                if (account != nullptr)
+                {
+                    visitor(account->getAccountId(), *account);
+                }
+            }
+        }
+
     };
 }
 

@@ -3,11 +3,11 @@ package nhcm.advmatch.model;
 
 import java.util.List;
 
-public record SymbolView(long symbolId, SymbolType type, long baseAssetId, long quoteAssetId, boolean active, String name)
+public record SymbolView(long symbolId, SymbolType type, long baseAssetId, long quoteAssetId, boolean active, String name, TradingRules tradingRules)
 {
     public SymbolView()
     {
-        this(0, SymbolType.Spot, 0, 0, false, "");
+        this(0, SymbolType.Spot, 0, 0, false, "", new TradingRules());
     }
 
 }

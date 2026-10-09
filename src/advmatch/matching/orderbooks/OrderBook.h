@@ -28,6 +28,10 @@ namespace advmatch
     {
     public:
         virtual ~MatchPolicy() = default;
+        virtual bool settlesTrades() const noexcept
+        {
+            return false;
+        }
         virtual bool canFillAll(OrderNode& taker, const OrderBook& book) = 0;
         virtual MatchAction prepare(OrderNode& maker, OrderNode& taker, Price price, Quantity& quantity) = 0;
         virtual void commit(const Trade& trade, OrderNode& maker, OrderNode& taker, Timestamp timestamp) = 0;
@@ -67,8 +71,15 @@ namespace advmatch
             trades.append(trade, maker, taker);
         }
 
+        static void markSettled(TradeBuffer& trades) noexcept
+        {
+            trades.settledSynchronously = true;
+        }
+
     public:
         virtual ~OrderBook() = default;
+
+        virtual void setMatchPolicy(MatchPolicy* policy) noexcept = 0;
 
         // Reserve the expected live price levels before trading. Algorithms
         // have bounded index work; allocator and OS latency remain unbounded.

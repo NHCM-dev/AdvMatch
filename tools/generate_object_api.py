@@ -309,6 +309,13 @@ for jd, jc in [
 contracts.append(method("CompletableFuture<CommandReceipt> bindSpot(Symbol symbol, Symbol spot)", "spot.requireOwner(this.exchange);\nreturn this.configureReference(symbol, new ReferencePriceConfig().withSources(java.util.List.of(new PriceSource().withSourceId(spot.id()))));"))
 output_class("ContractManager", "manager", "Manager", contracts)
 
+output_class("AuditManager", "manager", "Manager", [method("CompletableFuture<AuditReport> report()", "return this.report(64);"), method("CompletableFuture<AuditReport> report(long maxIssues)", "return this.exchange.submit(new ReadAudit(new ObservationQuery().withLimit(maxIssues))).thenApply(ApiResults::one);")])
+output_class("TradingRuleManager", "manager", "Manager", [
+    method("CompletableFuture<CommandReceipt> configure(Symbol symbol, TradingRules rules)", "symbol.requireOwner(this.exchange);\nreturn this.exchange.submit(new ConfigureTradingRules(symbol.id(), rules)).thenApply(ApiResults::accepted);"),
+    method("CompletableFuture<UserRiskView> userRisk(Symbol symbol, User user)", "symbol.requireOwner(this.exchange);\nuser.requireOwner(this.exchange);\nreturn this.exchange.submit(new ReadUserRisk(new ObservationQuery().withSymbolId(symbol.id()).withUserId(user.id()))).thenApply(ApiResults::one);"),
+    method("CompletableFuture<FeeBalanceView> spotFees(Asset asset)", "asset.requireOwner(this.exchange);\nreturn this.exchange.submit(new ReadSpotFeeBalance(new ObservationQuery().withAssetId(asset.id()))).thenApply(ApiResults::one);"),
+    method("CompletableFuture<CommandReceipt> withdrawSpotFees(Account destination, Asset asset, long amount)", "destination.requireOwner(this.exchange);\nasset.requireOwner(this.exchange);\nreturn this.exchange.submit(new WithdrawSpotFees(destination.id(), asset.id(), amount)).thenApply(ApiResults::accepted);")])
+
 emit(JAVA / "MatchingExchange.java", """
 package nhcm.advmatch;
 

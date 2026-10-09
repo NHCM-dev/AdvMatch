@@ -18,7 +18,7 @@
 extern "C" {
 #endif
 
-/* ABI 3 extends contract market views and adds reference-price commands.
+/* ABI 4 extends fee/risk views, audit reads and persistence configuration.
  * Binding packets use schema 1; persisted operation codes are append-only.
  * Every export catches C++ exceptions. Error messages are UTF-8 and thread-local.
  * Handles are validated IDs, never addresses. Status: 0=success, 1=pending,

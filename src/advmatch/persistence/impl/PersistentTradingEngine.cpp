@@ -301,6 +301,12 @@ namespace advmatch
 
             this->store->sync();
             this->durable = this->sequence;
+            if (this->config.verifyRecovery)
+            {
+                const auto report = this->state.matching.getAuditEngine().report(this->state.assets);
+                persistenceCheck(report.conserved && report.consistent, "recovered state failed conservation or consistency audit");
+            }
+
             this->events.clear();
             this->trades.clear();
         }

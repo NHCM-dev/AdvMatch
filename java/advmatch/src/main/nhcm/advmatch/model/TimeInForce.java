@@ -5,7 +5,8 @@ public enum TimeInForce
 {
     GTC(0),
     IOC(1),
-    FOK(2);
+    FOK(2),
+    PostOnly(3);
 
     private final int code;
 

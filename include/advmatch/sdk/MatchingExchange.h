@@ -8,6 +8,8 @@
 #include "manager/AccountManager.h"
 #include "manager/OrderManager.h"
 #include "manager/ConditionalOrderManager.h"
+#include "manager/TradingRuleManager.h"
+#include "manager/AuditManager.h"
 #include "manager/PositionManager.h"
 #include "manager/OrderBookManager.h"
 #include "manager/MatchingEngine.h"
@@ -20,6 +22,16 @@ namespace advmatch::sdk
     class MatchingExchange final : public Exchange
     {
     public:
+        TradingRuleManager rules() const
+        {
+            return TradingRuleManager(this->session);
+        }
+
+        AuditManager audit() const
+        {
+            return AuditManager(this->session);
+        }
+
         using Exchange::Exchange;
 
         AssetManager assets() const

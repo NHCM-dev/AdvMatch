@@ -8,6 +8,11 @@ namespace advmatch
     class SettleEngine
     {
     protected:
+        static bool settledSynchronously(const TradeBuffer& trades) noexcept
+        {
+            return trades.settledSynchronously;
+        }
+
         [[nodiscard]]
         static OrderNode& maker(const TradeBuffer& trades, std::size_t index) noexcept
         {

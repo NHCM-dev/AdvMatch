@@ -32,6 +32,8 @@ public class Exchange implements AutoCloseable
     private final AccountManager accounts = new AccountManager(this);
     private final OrderManager orders = new OrderManager(this);
     private final ConditionalOrderManager conditionalOrders = new ConditionalOrderManager(this);
+    private final TradingRuleManager rules = new TradingRuleManager(this);
+    private final AuditManager audit = new AuditManager(this);
     private final PositionManager positions = new PositionManager(this);
     private final OrderBookManager books = new OrderBookManager(this);
     private final ContractManager contracts = new ContractManager(this);
@@ -65,6 +67,16 @@ public class Exchange implements AutoCloseable
     public final ConditionalOrderManager conditionalOrders()
     {
         return this.conditionalOrders;
+    }
+
+    public final TradingRuleManager rules()
+    {
+        return this.rules;
+    }
+
+    public final AuditManager audit()
+    {
+        return this.audit;
     }
 
     public final PositionManager positions()

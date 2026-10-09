@@ -29,6 +29,7 @@ namespace advmatch
         // current command. clearNodeReferences() removes them before the
         // buffer is returned to its caller; public access exposes Trade values.
         SmallVector<MatchedOrders, InlineTradeCapacity> matchedOrders;
+        bool settledSynchronously = false;
 
         void append(Trade trade, OrderNode& maker, OrderNode& taker)
         {
@@ -77,6 +78,7 @@ namespace advmatch
         {
             this->trades.clear();
             this->matchedOrders.clear();
+            this->settledSynchronously = false;
         }
 
         [[nodiscard]]

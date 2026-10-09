@@ -39,7 +39,7 @@ namespace advmatch::ConditionalOrderCodec
         value.symbolId = reader.number<SymbolId>();
         value.side = reader.enumeration(OrderSide::Bid);
         value.type = reader.enumeration(OrderType::Limit);
-        value.timeInForce = reader.enumeration(TimeInForce::FOK);
+        value.timeInForce = reader.enumeration(TimeInForce::PostOnly);
         value.price = reader.number<Price>();
         value.quantity = reader.number<Quantity>();
         value.timestamp = reader.number<Timestamp>();

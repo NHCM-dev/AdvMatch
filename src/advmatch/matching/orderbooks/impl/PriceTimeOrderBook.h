@@ -14,6 +14,7 @@ namespace advmatch
     {
         SymbolId bookSymbolId;
         MatchPolicy* matchPolicy = nullptr;
+        bool synchronousSettlement = false;
         BidLevels bids;
         AskLevels asks;
 
@@ -41,8 +42,14 @@ namespace advmatch
         }
 
     public:
+        void setMatchPolicy(MatchPolicy* policy) noexcept override
+        {
+            this->matchPolicy = policy;
+            this->synchronousSettlement = policy && policy->settlesTrades();
+        }
+
         explicit PriceTimeOrderBook(SymbolId symbolId, MatchPolicy* matchPolicy = nullptr)
-            : bookSymbolId(symbolId), matchPolicy(matchPolicy)
+            : bookSymbolId(symbolId), matchPolicy(matchPolicy), synchronousSettlement(matchPolicy && matchPolicy->settlesTrades())
         {
         }
 

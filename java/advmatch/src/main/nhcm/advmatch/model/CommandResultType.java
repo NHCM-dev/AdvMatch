@@ -10,7 +10,8 @@ public enum CommandResultType
     Cancel(4),
     Contract(5),
     Archive(6),
-    Conditional(7);
+    Conditional(7),
+    TradingRule(8);
 
     private final int code;
 

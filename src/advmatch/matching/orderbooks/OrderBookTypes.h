@@ -31,7 +31,12 @@ namespace advmatch
         ContractExpired,
         FundingRequired,
         Liquidating,
-        Unknown
+        Unknown,
+        InvalidPriceTick,
+        InvalidQuantityStep,
+        MinimumNotional,
+        RiskLimitExceeded,
+        PostOnlyWouldTrade
     };
 
     struct PlaceOrderResult : Result<OrderFillingStatus>
@@ -80,7 +85,12 @@ namespace advmatch
         TradingDisabled,
         ReduceOnlyViolation,
         UserNotFound,
-        Unknown
+        Unknown,
+        InvalidPriceTick,
+        InvalidQuantityStep,
+        MinimumNotional,
+        RiskLimitExceeded,
+        PostOnlyWouldTrade
     };
 
     struct ModifyOrderResult : Result<ModifyOrderState>
@@ -141,7 +151,8 @@ namespace advmatch
     {
         Execute,
         CancelMaker,
-        CancelTaker
+        CancelTaker,
+        CancelBoth
     };
 
     enum class OrderBookImplementation : std::uint8_t

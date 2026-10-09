@@ -31,6 +31,11 @@ namespace advmatch
         MatchAction prepareLiquidation(OrderNode& maker, OrderNode& taker, Price price, Quantity quantity);
 
     public:
+        bool settlesTrades() const noexcept override
+        {
+            return true;
+        }
+
         explicit ContractSettleEngine(ContractAccountLedger& accountLedger, MatchingEngine& matching);
         ~ContractSettleEngine() override;
 

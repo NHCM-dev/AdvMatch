@@ -23,7 +23,7 @@ public:
 
 int main()
 {
-    if (advmatch_abi_version() != 3 || advmatch::buildDescription() != "AdvMatch " ADVMATCH_EXPECTED_VERSION)
+    if (advmatch_abi_version() != 4 || advmatch::buildDescription() != "AdvMatch " ADVMATCH_EXPECTED_VERSION)
     {
         return 1;
     }

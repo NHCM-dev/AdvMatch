@@ -1,6 +1,7 @@
 #include "CommandCodec.h"
 #include "ReferencePriceCodec.h"
 #include "ConditionalOrderCodec.h"
+#include "TradingRulesCodec.h"
 
 namespace advmatch
 {
@@ -28,6 +29,19 @@ namespace advmatch
             }
 
         public:
+            void operator()(const commands::ConfigureTradingRules& value)
+            {
+                this->writer.number(value.symbolId);
+                TradingRulesCodec::write(this->writer, value.rules);
+            }
+
+            void operator()(const commands::WithdrawSpotFees& value)
+            {
+                this->writer.number(value.accountId);
+                this->writer.number(value.assetId);
+                this->writer.number(value.amount);
+            }
+
             explicit Encoder(BinaryWriter& writer)
                 : writer(writer)
             {
@@ -329,7 +343,7 @@ namespace advmatch
                     return commands::AddContractBook{reader.number<SymbolId>(), readSpec(reader), reader.number<Price>(), reader.number<Timestamp>(), reader.enumeration(OrderBookImplementation::IndexedTree)};
                 case 10:
                 {
-                    commands::PlaceOrder value{reader.number<UserId>(), reader.number<SymbolId>(), reader.enumeration(OrderSide::Bid), reader.enumeration(OrderType::Limit), reader.enumeration(TimeInForce::FOK), reader.number<Price>(), reader.number<Quantity>(), reader.number<Timestamp>()};
+                    commands::PlaceOrder value{reader.number<UserId>(), reader.number<SymbolId>(), reader.enumeration(OrderSide::Bid), reader.enumeration(OrderType::Limit), reader.enumeration(TimeInForce::PostOnly), reader.number<Price>(), reader.number<Quantity>(), reader.number<Timestamp>()};
                     if (reader.boolean())
                     {
                         value.contractOptions = ContractOrderOptions{reader.number<LeverageMultiplier>(), reader.number<PositionId>(), reader.enumeration(MarginMode::Cross), reader.boolean(), reader.number<Price>()};
@@ -396,6 +410,10 @@ namespace advmatch
                     return commands::ModifyConditionalOrder{reader.number<UserId>(), reader.number<ConditionalOrderId>(), reader.number<Price>(), reader.number<Price>(), reader.number<Quantity>(), reader.number<Timestamp>()};
                 case 32:
                     return commands::CancelConditionalOrder{reader.number<UserId>(), reader.number<ConditionalOrderId>(), reader.number<Timestamp>()};
+                case 33:
+                    return commands::ConfigureTradingRules{reader.number<SymbolId>(), TradingRulesCodec::read(reader)};
+                case 34:
+                    return commands::WithdrawSpotFees{reader.number<AccountId>(), reader.number<AssetId>(), reader.number<PositiveBalanceChange>()};
                 default: throw PersistenceError(PersistenceFailure::UnsupportedVersion, "unknown trading operation");
             }
         }
@@ -444,7 +462,7 @@ namespace advmatch
     {
         BinaryReader reader(bytes);
         CommandResult result;
-        result.type = reader.enumeration(CommandResultType::Conditional);
+        result.type = reader.enumeration(CommandResultType::TradingRule);
         result.state = reader.number<std::uint8_t>();
         result.accepted = reader.boolean();
         result.entityId = reader.number<std::uint64_t>();

@@ -691,6 +691,30 @@ namespace
         engine.close();
     }
 
+    void conservationDiagnostics()
+    {
+        PersistenceConfig config;
+        config.enabled = false;
+        PersistentTradingEngine engine(config);
+        prepare(engine);
+        CHECK(engine.execute(commands::UpdateBalance{1, 2, 1000}).result);
+        auto& matching = engine.getMatchingEngine();
+        auto& audit = matching.getAuditEngine();
+        CHECK(audit.report(engine.getAssetManager()).consistent);
+        // Deliberate out-of-band corruption: public commands never bypass the
+        // external-flow accounting or create unowned reservations.
+        auto& account = const_cast<SpotAccount&>(engine.getUserManager().getUser(1)->getSpotAccount());
+        CHECK(account.updateBalance(2, 1));
+        auto report = audit.report(engine.getAssetManager(), 0);
+        CHECK(!report.conserved && !report.consistent && report.issueCount == 1 && report.issues.empty());
+        CHECK(account.updateBalance(2, -1));
+        CHECK(account.applyBalanceChange(2, -5, 5));
+        report = audit.report(engine.getAssetManager());
+        CHECK(report.conserved && !report.consistent && report.issues.front().type == audit::AuditIssueType::Reservation);
+        CHECK(account.applyBalanceChange(2, 5, -5));
+        CHECK(audit.report(engine.getAssetManager()).consistent);
+    }
+
     void blockedLiquidationRecovery()
     {
         TemporaryDirectory directory("blocked-liquidation");
@@ -768,5 +792,6 @@ int main(int argc, char** argv)
     checkpointBoundaries();
     oversizedCommit();
     blockedLiquidationRecovery();
+    conservationDiagnostics();
     std::puts("Persistence tests passed");
 }

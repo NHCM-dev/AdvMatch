@@ -3,71 +3,76 @@ package nhcm.advmatch.model;
 
 import java.util.List;
 
-public record PersistenceConfig(boolean enabled, String directory, FlushPolicy flushPolicy, long flushEveryCommands, long flushIntervalMilliseconds, long checkpointEveryCommands, long retainedCheckpoints, boolean pruneJournalAfterCheckpoint, TailRecovery tailRecovery, long maxRecordBytes, long maxSnapshotBytes, long retainedRequests)
+public record PersistenceConfig(boolean enabled, String directory, FlushPolicy flushPolicy, long flushEveryCommands, long flushIntervalMilliseconds, long checkpointEveryCommands, long retainedCheckpoints, boolean pruneJournalAfterCheckpoint, TailRecovery tailRecovery, long maxRecordBytes, long maxSnapshotBytes, long retainedRequests, boolean verifyRecovery)
 {
     public PersistenceConfig()
     {
-        this(true, "data/advmatch", FlushPolicy.EveryCommand, 256L, 10L, 0L, 2L, true, TailRecovery.TruncateIncomplete, 1048576L, 4294967296L, 10000L);
+        this(true, "data/advmatch", FlushPolicy.EveryCommand, 256L, 10L, 0L, 2L, true, TailRecovery.TruncateIncomplete, 1048576L, 4294967296L, 10000L, true);
     }
 
     public PersistenceConfig withEnabled(boolean value)
     {
-        return new PersistenceConfig(value, this.directory, this.flushPolicy, this.flushEveryCommands, this.flushIntervalMilliseconds, this.checkpointEveryCommands, this.retainedCheckpoints, this.pruneJournalAfterCheckpoint, this.tailRecovery, this.maxRecordBytes, this.maxSnapshotBytes, this.retainedRequests);
+        return new PersistenceConfig(value, this.directory, this.flushPolicy, this.flushEveryCommands, this.flushIntervalMilliseconds, this.checkpointEveryCommands, this.retainedCheckpoints, this.pruneJournalAfterCheckpoint, this.tailRecovery, this.maxRecordBytes, this.maxSnapshotBytes, this.retainedRequests, this.verifyRecovery);
     }
 
     public PersistenceConfig withDirectory(String value)
     {
-        return new PersistenceConfig(this.enabled, value, this.flushPolicy, this.flushEveryCommands, this.flushIntervalMilliseconds, this.checkpointEveryCommands, this.retainedCheckpoints, this.pruneJournalAfterCheckpoint, this.tailRecovery, this.maxRecordBytes, this.maxSnapshotBytes, this.retainedRequests);
+        return new PersistenceConfig(this.enabled, value, this.flushPolicy, this.flushEveryCommands, this.flushIntervalMilliseconds, this.checkpointEveryCommands, this.retainedCheckpoints, this.pruneJournalAfterCheckpoint, this.tailRecovery, this.maxRecordBytes, this.maxSnapshotBytes, this.retainedRequests, this.verifyRecovery);
     }
 
     public PersistenceConfig withFlushPolicy(FlushPolicy value)
     {
-        return new PersistenceConfig(this.enabled, this.directory, value, this.flushEveryCommands, this.flushIntervalMilliseconds, this.checkpointEveryCommands, this.retainedCheckpoints, this.pruneJournalAfterCheckpoint, this.tailRecovery, this.maxRecordBytes, this.maxSnapshotBytes, this.retainedRequests);
+        return new PersistenceConfig(this.enabled, this.directory, value, this.flushEveryCommands, this.flushIntervalMilliseconds, this.checkpointEveryCommands, this.retainedCheckpoints, this.pruneJournalAfterCheckpoint, this.tailRecovery, this.maxRecordBytes, this.maxSnapshotBytes, this.retainedRequests, this.verifyRecovery);
     }
 
     public PersistenceConfig withFlushEveryCommands(long value)
     {
-        return new PersistenceConfig(this.enabled, this.directory, this.flushPolicy, value, this.flushIntervalMilliseconds, this.checkpointEveryCommands, this.retainedCheckpoints, this.pruneJournalAfterCheckpoint, this.tailRecovery, this.maxRecordBytes, this.maxSnapshotBytes, this.retainedRequests);
+        return new PersistenceConfig(this.enabled, this.directory, this.flushPolicy, value, this.flushIntervalMilliseconds, this.checkpointEveryCommands, this.retainedCheckpoints, this.pruneJournalAfterCheckpoint, this.tailRecovery, this.maxRecordBytes, this.maxSnapshotBytes, this.retainedRequests, this.verifyRecovery);
     }
 
     public PersistenceConfig withFlushIntervalMilliseconds(long value)
     {
-        return new PersistenceConfig(this.enabled, this.directory, this.flushPolicy, this.flushEveryCommands, value, this.checkpointEveryCommands, this.retainedCheckpoints, this.pruneJournalAfterCheckpoint, this.tailRecovery, this.maxRecordBytes, this.maxSnapshotBytes, this.retainedRequests);
+        return new PersistenceConfig(this.enabled, this.directory, this.flushPolicy, this.flushEveryCommands, value, this.checkpointEveryCommands, this.retainedCheckpoints, this.pruneJournalAfterCheckpoint, this.tailRecovery, this.maxRecordBytes, this.maxSnapshotBytes, this.retainedRequests, this.verifyRecovery);
     }
 
     public PersistenceConfig withCheckpointEveryCommands(long value)
     {
-        return new PersistenceConfig(this.enabled, this.directory, this.flushPolicy, this.flushEveryCommands, this.flushIntervalMilliseconds, value, this.retainedCheckpoints, this.pruneJournalAfterCheckpoint, this.tailRecovery, this.maxRecordBytes, this.maxSnapshotBytes, this.retainedRequests);
+        return new PersistenceConfig(this.enabled, this.directory, this.flushPolicy, this.flushEveryCommands, this.flushIntervalMilliseconds, value, this.retainedCheckpoints, this.pruneJournalAfterCheckpoint, this.tailRecovery, this.maxRecordBytes, this.maxSnapshotBytes, this.retainedRequests, this.verifyRecovery);
     }
 
     public PersistenceConfig withRetainedCheckpoints(long value)
     {
-        return new PersistenceConfig(this.enabled, this.directory, this.flushPolicy, this.flushEveryCommands, this.flushIntervalMilliseconds, this.checkpointEveryCommands, value, this.pruneJournalAfterCheckpoint, this.tailRecovery, this.maxRecordBytes, this.maxSnapshotBytes, this.retainedRequests);
+        return new PersistenceConfig(this.enabled, this.directory, this.flushPolicy, this.flushEveryCommands, this.flushIntervalMilliseconds, this.checkpointEveryCommands, value, this.pruneJournalAfterCheckpoint, this.tailRecovery, this.maxRecordBytes, this.maxSnapshotBytes, this.retainedRequests, this.verifyRecovery);
     }
 
     public PersistenceConfig withPruneJournalAfterCheckpoint(boolean value)
     {
-        return new PersistenceConfig(this.enabled, this.directory, this.flushPolicy, this.flushEveryCommands, this.flushIntervalMilliseconds, this.checkpointEveryCommands, this.retainedCheckpoints, value, this.tailRecovery, this.maxRecordBytes, this.maxSnapshotBytes, this.retainedRequests);
+        return new PersistenceConfig(this.enabled, this.directory, this.flushPolicy, this.flushEveryCommands, this.flushIntervalMilliseconds, this.checkpointEveryCommands, this.retainedCheckpoints, value, this.tailRecovery, this.maxRecordBytes, this.maxSnapshotBytes, this.retainedRequests, this.verifyRecovery);
     }
 
     public PersistenceConfig withTailRecovery(TailRecovery value)
     {
-        return new PersistenceConfig(this.enabled, this.directory, this.flushPolicy, this.flushEveryCommands, this.flushIntervalMilliseconds, this.checkpointEveryCommands, this.retainedCheckpoints, this.pruneJournalAfterCheckpoint, value, this.maxRecordBytes, this.maxSnapshotBytes, this.retainedRequests);
+        return new PersistenceConfig(this.enabled, this.directory, this.flushPolicy, this.flushEveryCommands, this.flushIntervalMilliseconds, this.checkpointEveryCommands, this.retainedCheckpoints, this.pruneJournalAfterCheckpoint, value, this.maxRecordBytes, this.maxSnapshotBytes, this.retainedRequests, this.verifyRecovery);
     }
 
     public PersistenceConfig withMaxRecordBytes(long value)
     {
-        return new PersistenceConfig(this.enabled, this.directory, this.flushPolicy, this.flushEveryCommands, this.flushIntervalMilliseconds, this.checkpointEveryCommands, this.retainedCheckpoints, this.pruneJournalAfterCheckpoint, this.tailRecovery, value, this.maxSnapshotBytes, this.retainedRequests);
+        return new PersistenceConfig(this.enabled, this.directory, this.flushPolicy, this.flushEveryCommands, this.flushIntervalMilliseconds, this.checkpointEveryCommands, this.retainedCheckpoints, this.pruneJournalAfterCheckpoint, this.tailRecovery, value, this.maxSnapshotBytes, this.retainedRequests, this.verifyRecovery);
     }
 
     public PersistenceConfig withMaxSnapshotBytes(long value)
     {
-        return new PersistenceConfig(this.enabled, this.directory, this.flushPolicy, this.flushEveryCommands, this.flushIntervalMilliseconds, this.checkpointEveryCommands, this.retainedCheckpoints, this.pruneJournalAfterCheckpoint, this.tailRecovery, this.maxRecordBytes, value, this.retainedRequests);
+        return new PersistenceConfig(this.enabled, this.directory, this.flushPolicy, this.flushEveryCommands, this.flushIntervalMilliseconds, this.checkpointEveryCommands, this.retainedCheckpoints, this.pruneJournalAfterCheckpoint, this.tailRecovery, this.maxRecordBytes, value, this.retainedRequests, this.verifyRecovery);
     }
 
     public PersistenceConfig withRetainedRequests(long value)
     {
-        return new PersistenceConfig(this.enabled, this.directory, this.flushPolicy, this.flushEveryCommands, this.flushIntervalMilliseconds, this.checkpointEveryCommands, this.retainedCheckpoints, this.pruneJournalAfterCheckpoint, this.tailRecovery, this.maxRecordBytes, this.maxSnapshotBytes, value);
+        return new PersistenceConfig(this.enabled, this.directory, this.flushPolicy, this.flushEveryCommands, this.flushIntervalMilliseconds, this.checkpointEveryCommands, this.retainedCheckpoints, this.pruneJournalAfterCheckpoint, this.tailRecovery, this.maxRecordBytes, this.maxSnapshotBytes, value, this.verifyRecovery);
+    }
+
+    public PersistenceConfig withVerifyRecovery(boolean value)
+    {
+        return new PersistenceConfig(this.enabled, this.directory, this.flushPolicy, this.flushEveryCommands, this.flushIntervalMilliseconds, this.checkpointEveryCommands, this.retainedCheckpoints, this.pruneJournalAfterCheckpoint, this.tailRecovery, this.maxRecordBytes, this.maxSnapshotBytes, this.retainedRequests, value);
     }
 
 }

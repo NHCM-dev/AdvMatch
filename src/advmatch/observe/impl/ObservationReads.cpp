@@ -90,6 +90,15 @@ namespace advmatch::observe
 
         switch (query.kind)
         {
+            case ReadKind::Audit:
+                detail::point(result, std::optional(this->matching.getAuditEngine().report(this->assets, query.limit)));
+                return;
+            case ReadKind::UserRisk:
+                detail::point(result, this->matching.getTradingRuleEngine().query(query.symbolId, query.userId));
+                return;
+            case ReadKind::SpotFeeBalance:
+                detail::point(result, this->assets.containsAsset(query.assetId) ? std::optional(FeeBalanceView{query.assetId, this->matching.getSpotSettleEngine().feeBalance(query.assetId)}) : std::nullopt);
+                return;
             case ReadKind::ConditionalOrder:
             case ReadKind::ConditionalOrders:
             {
@@ -232,7 +241,7 @@ namespace advmatch::observe
                         return false;
                     }
 
-                    output.push_back({id, value.symbolType, value.baseAssetId, value.quoteAssetId, value.isActive(), value.name});
+                    output.push_back({id, value.symbolType, value.baseAssetId, value.quoteAssetId, value.isActive(), value.name, value.tradingRules});
                     return true;
                 });
                 return;

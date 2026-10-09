@@ -7,7 +7,8 @@
 
 namespace advmatch
 {
-    // Stack-scoped to one settlement batch on the owner thread. Accounts must
+    // Reusable on the owner thread; each capture refreshes balance state.
+    // Accounts must
     // outlive the context. Only opaque tokens are cached, never balance pointers.
     // Fixed slots avoid hashing/allocation: buyer quote, seller base, buyer base,
     // seller quote. A different participant/asset replaces that slot.

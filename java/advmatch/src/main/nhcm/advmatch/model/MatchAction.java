@@ -5,7 +5,8 @@ public enum MatchAction
 {
     Execute(0),
     CancelMaker(1),
-    CancelTaker(2);
+    CancelTaker(2),
+    CancelBoth(3);
 
     private final int code;
 

@@ -19,7 +19,12 @@ public enum ModifyOrderState
     TradingDisabled(13),
     ReduceOnlyViolation(14),
     UserNotFound(15),
-    Unknown(16);
+    Unknown(16),
+    InvalidPriceTick(17),
+    InvalidQuantityStep(18),
+    MinimumNotional(19),
+    RiskLimitExceeded(20),
+    PostOnlyWouldTrade(21);
 
     private final int code;
 

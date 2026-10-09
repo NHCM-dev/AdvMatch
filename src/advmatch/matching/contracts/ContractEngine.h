@@ -21,6 +21,7 @@ namespace advmatch
     {
         friend class observe::TradingObserver;
         friend class MatchingEngine;
+        friend class audit::AuditEngine;
         ContractState beginCommand(SymbolId symbolId, Timestamp timestamp);
         ContractState beginCommand(ContractMarket& market, Timestamp timestamp);
         ContractState prepareOrder(OrderNode& node, const ContractOrderOptions& options, Timestamp timestamp, ContractParticipant* resolved);

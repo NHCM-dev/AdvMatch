@@ -186,14 +186,17 @@ namespace advmatch
             if (this->matchPolicy)
             {
                 const MatchAction action = this->matchPolicy->prepare(maker, taker, level->price, quantity);
-                if (action == MatchAction::CancelMaker)
+                if (action == MatchAction::CancelMaker || action == MatchAction::CancelBoth)
                 {
                     static_cast<void>(this->cancel(maker, timestamp));
                     this->matchPolicy->cancelled(maker);
-                    continue;
+                    if (action == MatchAction::CancelMaker)
+                    {
+                        continue;
+                    }
                 }
 
-                if (action == MatchAction::CancelTaker)
+                if (action == MatchAction::CancelTaker || action == MatchAction::CancelBoth)
                 {
                     static_cast<void>(taker.basicOrder.cancel(timestamp));
                     this->matchPolicy->cancelled(taker);
@@ -214,6 +217,10 @@ namespace advmatch
             if (this->matchPolicy)
             {
                 this->matchPolicy->commit(trades[trades.size() - 1], maker, taker, timestamp);
+                if (this->synchronousSettlement)
+                {
+                    markSettled(trades);
+                }
             }
         }
     }
@@ -243,12 +250,12 @@ namespace advmatch
         }
 
         if (order.timeInForce != TimeInForce::GTC && order.timeInForce != TimeInForce::IOC && order.timeInForce !=
-            TimeInForce::FOK)
+            TimeInForce::FOK && order.timeInForce != TimeInForce::PostOnly)
         {
             return reject(PlaceOrderState::InvalidTimeInForce);
         }
 
-        if (order.orderType == OrderType::Market && order.timeInForce == TimeInForce::GTC)
+        if (order.orderType == OrderType::Market && (order.timeInForce == TimeInForce::GTC || order.timeInForce == TimeInForce::PostOnly))
         {
             return reject(PlaceOrderState::InvalidTimeInForce);
         }
@@ -258,7 +265,13 @@ namespace advmatch
             return reject(PlaceOrderState::InsufficientLiquidity);
         }
 
-        if (order.orderType == OrderType::Limit && order.timeInForce == TimeInForce::GTC)
+        const auto opposing = order.orderSide == OrderSide::Bid ? this->bestAsk() : this->bestBid();
+        if (order.timeInForce == TimeInForce::PostOnly && opposing && crosses(order, opposing->price))
+        {
+            return reject(PlaceOrderState::PostOnlyWouldTrade);
+        }
+
+        if (order.orderType == OrderType::Limit && (order.timeInForce == TimeInForce::GTC || order.timeInForce == TimeInForce::PostOnly))
         {
             const PriceLevel* existing = order.orderSide == OrderSide::Bid
                                              ? this->bids.find(order.getPrice())
@@ -273,7 +286,7 @@ namespace advmatch
 
         if (order.getUnfilledQuantity() != 0 && !isOrderStatusTerminal(order.getStatus()))
         {
-            if (order.orderType == OrderType::Limit && order.timeInForce == TimeInForce::GTC)
+            if (order.orderType == OrderType::Limit && (order.timeInForce == TimeInForce::GTC || order.timeInForce == TimeInForce::PostOnly))
             {
                 append(node);
             }
@@ -309,6 +322,12 @@ namespace advmatch
         if (price == order.getPrice())
         {
             return {ModifyOrderState::Success};
+        }
+
+        const auto opposing = order.orderSide == OrderSide::Bid ? this->bestAsk() : this->bestBid();
+        if (order.timeInForce == TimeInForce::PostOnly && opposing && (order.orderSide == OrderSide::Bid ? price >= opposing->price : price <= opposing->price))
+        {
+            return {ModifyOrderState::PostOnlyWouldTrade};
         }
 
         const PriceLevel* target = order.orderSide == OrderSide::Bid ? this->bids.find(price) : this->asks.find(price);

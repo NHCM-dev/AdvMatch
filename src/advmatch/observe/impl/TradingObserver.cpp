@@ -1,6 +1,7 @@
 #include "TradingObserver.h"
 #include "advmatch/matching/contracts/ContractEngine.h"
 #include "advmatch/persistence/PersistentTradingEngine.h"
+#include "advmatch/util/ContractMath.h"
 
 #include <algorithm>
 #include <atomic>
@@ -274,7 +275,7 @@ namespace advmatch::observe
         }
 
         const auto& value = found->second;
-        return SymbolView{symbolId, value.symbolType, value.baseAssetId, value.quoteAssetId, value.isActive(), value.name};
+        return SymbolView{symbolId, value.symbolType, value.baseAssetId, value.quoteAssetId, value.isActive(), value.name, value.tradingRules};
     }
 
     OrderView TradingObserver::copyOrder(const OrderNode& node) const noexcept
@@ -286,7 +287,7 @@ namespace advmatch::observe
             order.getCreatedTimestamp(), order.getUpdatedTimestamp(), order.getFirstFilledTimestamp(), order.getLastFilledTimestamp(),
             order.getCompletedTimestamp(), node.reservationAssetId, node.reservedBalance, position != nullptr ? position->positionId : 0,
             node.leverage, node.reduceOnly, node.liquidationOrder, node.priceLevel != nullptr, node.executionPriceLimit,
-            position != nullptr ? std::optional<MarginMode>(position->marginMode) : std::nullopt};
+            position != nullptr ? std::optional<MarginMode>(position->marginMode) : std::nullopt, node.makerFeeRate, node.takerFeeRate, position != nullptr || order.orderSide == OrderSide::Ask ? node.quoteAssetId : node.baseAssetId, node.paidFees};
     }
 
     std::optional<OrderView> TradingObserver::order(OrderId orderId) const noexcept
@@ -368,7 +369,7 @@ namespace advmatch::observe
         {
             page.state = ReadState::SourceFaulted;
         }
-        else if (query.kind > ReadKind::ConditionalOrders || query.positionFilter > PositionFilter::Trading || query.limit == 0 || query.limit > this->config.maxRows || query.scanBudget == 0 || query.scanBudget > this->config.maxScan)
+        else if (query.kind > ReadKind::SpotFeeBalance || query.positionFilter > PositionFilter::Trading || query.limit == 0 || query.limit > this->config.maxRows || query.scanBudget == 0 || query.scanBudget > this->config.maxScan)
         {
             page.state = ReadState::InvalidQuery;
         }
@@ -501,6 +502,21 @@ namespace advmatch::observe
                     taker != nullptr ? taker->basicOrder.symbolId : 0, taker != nullptr ? taker->basicOrder.getLastFilledTimestamp() : 0,
                     maker != nullptr ? maker->basicOrder.userId : 0, taker != nullptr ? taker->basicOrder.userId : 0,
                     maker != nullptr ? maker->account->getAccountId() : 0, taker != nullptr ? taker->account->getAccountId() : 0, trade};
+                auto& value = this->trades[(this->nextTradeId - 1) % this->trades.size()];
+                const auto fee = [&](const OrderNode* node, MMRRate rate)
+                {
+                    if (!node)
+                    {
+                        return std::pair<AssetId, Balance>{0, 0};
+                    }
+
+                    const bool contract = node->contractMarket != nullptr;
+                    const AssetId assetId = contract || node->basicOrder.orderSide == OrderSide::Ask ? node->quoteAssetId : node->baseAssetId;
+                    const Balance amount = contract ? *ContractMath::notional(trade.price, trade.quantity, node->contractMarket->spec.contractMultiplier) : static_cast<Balance>(node->basicOrder.orderSide == OrderSide::Bid ? trade.quantity : trade.price * trade.quantity);
+                    return std::pair<AssetId, Balance>{assetId, ContractMath::rate(amount, rate, contract)};
+                };
+                std::tie(value.makerFeeAssetId, value.makerFee) = fee(maker, maker ? maker->makerFeeRate : 0);
+                std::tie(value.takerFeeAssetId, value.takerFee) = fee(taker, taker ? taker->takerFeeRate : 0);
                 ++this->nextTradeId;
             }
         }

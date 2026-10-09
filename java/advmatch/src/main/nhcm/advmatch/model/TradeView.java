@@ -3,11 +3,11 @@ package nhcm.advmatch.model;
 
 import java.util.List;
 
-public record TradeView(long recordId, long sequence, long symbolId, long timestamp, long makerUserId, long takerUserId, long makerAccountId, long takerAccountId, Trade trade)
+public record TradeView(long recordId, long sequence, long symbolId, long timestamp, long makerUserId, long takerUserId, long makerAccountId, long takerAccountId, Trade trade, long makerFeeAssetId, long makerFee, long takerFeeAssetId, long takerFee)
 {
     public TradeView()
     {
-        this(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, new Trade());
+        this(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L, new Trade(), 0L, 0L, 0L, 0L);
     }
 
 }

@@ -368,6 +368,7 @@ public final class BindingIntegrationTest
         contracts();
         referencePrices();
         conditionalOrders();
+        tradingRules();
         persistence();
         System.out.println("Java bindings: spot, futures, perpetual, reads, callbacks, concurrency, close and recovery passed");
     }
@@ -472,6 +473,67 @@ public final class BindingIntegrationTest
             contractBook.placeContract(seller, OrderSide.Bid, OrderType.Limit, TimeInForce.GTC, 100, 10, 4, new ContractOrderOptions().withLeverage(1)).join();
             exchange.contracts().updateMark(perpetual, 90, 5).join();
             check(protective.snapshot().join().status() == ConditionalOrderStatus.Activated && position.snapshot().join().closed());
+        }
+    }
+
+    private static void tradingRules() throws Exception
+    {
+        var directory = Files.createTempDirectory("advmatch-java-rules-");
+        var config = new ExchangeConfig().withPersistence(new PersistenceConfig().withDirectory(directory.toString()));
+        long stateHash;
+        long symbolId;
+        long quoteId;
+        try (var exchange = new MatchingExchange(config))
+        {
+            var base = exchange.assets().create("BASE", "BASE", 0).join();
+            var quote = exchange.assets().create("QUOTE", "QUOTE", 0).join();
+            quoteId = quote.id();
+            var buyer = exchange.users().create().join();
+            var seller = exchange.users().create().join();
+            buyer.spotAccount().join().updateBalance(quote, 1000000).join();
+            seller.spotAccount().join().updateBalance(base, 1000).join();
+            var symbol = exchange.symbols().create("SPOT", SymbolType.Spot, base, quote).join();
+            symbolId = symbol.id();
+            var book = exchange.books().addSpot(symbol, OrderBookImplementation.Radix).join();
+            var rules = new TradingRules().withPriceTick(5).withQuantityStep(10).withMinQuantity(10)
+                .withFees(new FeeSchedule(10000, 20000)).withRisk(new RiskLimits().withMaxActiveOrders(2).withMaxAccountNotional(50000))
+                .withSelfTradePrevention(SelfTradePrevention.CancelBoth);
+            exchange.rules().configure(symbol, rules).join();
+            check(symbol.snapshot().join().tradingRules().equals(rules));
+            var invalid = exchange.submit(new PlaceOrder(buyer.id(), symbol.id(), OrderSide.Bid, OrderType.Limit, TimeInForce.GTC, 101, 100, 1)).join();
+            check(!invalid.result().accepted() && invalid.result().state() == PlaceOrderState.InvalidPriceTick.code());
+            var maker = book.place(seller, OrderSide.Ask, OrderType.Limit, TimeInForce.GTC, 100, 100, 2).join();
+            check(exchange.rules().userRisk(symbol, seller).join().activeOrders() == 1);
+            var taker = book.place(buyer, OrderSide.Bid, OrderType.Limit, TimeInForce.FOK, 100, 100, 3).join();
+            check(maker.snapshot().join().paidFees() == 100 && taker.snapshot().join().paidFees() == 2);
+            check(exchange.rules().spotFees(base).join().balance() == 2 && exchange.rules().spotFees(quote).join().balance() == 100);
+            exchange.rules().withdrawSpotFees(buyer.spotAccount().join(), quote, 50).join();
+            check(exchange.rules().spotFees(quote).join().balance() == 50);
+            var own = book.place(seller, OrderSide.Ask, OrderType.Limit, TimeInForce.PostOnly, 100, 10, 4).join();
+            seller.spotAccount().join().updateBalance(quote, 1000).join();
+            var prevented = book.place(seller, OrderSide.Bid, OrderType.Limit, TimeInForce.IOC, 100, 10, 5).join();
+            check(own.snapshot().join().filling().status() == OrderStatus.Cancelled && prevented.snapshot().join().filling().filled() == 0);
+            check(exchange.rules().userRisk(symbol, seller).join().activeOrders() == 0);
+            var report = exchange.audit().report().join();
+            check(report.consistent() && report.conserved() && report.issues().isEmpty());
+            exchange.submit(new Checkpoint()).join();
+            stateHash = report.stateHash();
+        }
+
+        try (var exchange = new MatchingExchange(config))
+        {
+            var report = exchange.audit().report().join();
+            check(report.conserved() && report.consistent() && report.stateHash() == stateHash);
+            check(exchange.symbols().get(symbolId).snapshot().join().tradingRules().priceTick() == 5);
+            check(exchange.rules().spotFees(exchange.assets().get(quoteId)).join().balance() == 50);
+        }
+
+        try (var paths = Files.walk(directory))
+        {
+            for (var path : paths.sorted(java.util.Comparator.reverseOrder()).toList())
+            {
+                Files.delete(path);
+            }
         }
     }
 

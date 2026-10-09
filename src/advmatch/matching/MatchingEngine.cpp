@@ -29,8 +29,8 @@ namespace advmatch
     }
 
     MatchingEngine::MatchingEngine(UserManager& userManager, SymbolManager& symbolManager)
-        : contracts(std::make_unique<ContractEngine>(*this)), conditionalOrders(std::make_unique<ConditionalOrderEngine>(*this)), userManager(userManager), symbolManager(symbolManager),
-          settleEngine(this->accountLedger)
+        : tradingRules(std::make_unique<TradingRuleEngine>(*this)), auditEngine(std::make_unique<audit::AuditEngine>(*this)), contracts(std::make_unique<ContractEngine>(*this)), conditionalOrders(std::make_unique<ConditionalOrderEngine>(*this)), userManager(userManager), symbolManager(symbolManager),
+          settleEngine(this->accountLedger, this)
     {
     }
 
@@ -100,6 +100,8 @@ namespace advmatch
         this->bookServices[symbolId - 1] = {&this->contracts->getRiskEngine(), &this->contracts->getLedger(), &this->contracts->getSettleEngine()};
         this->conditionalOrders->addSymbol(symbolId);
         this->conditionalOrders->price(symbolId, TriggerPriceSource::Mark, markPrice, timestamp);
+        this->tradingRules->addSymbol(symbolId);
+        this->symbolManager.getSymbol(symbolId)->tradingRules.fees = {spec.makerFeeRate, spec.takerFeeRate};
         return {};
     }
 
@@ -144,13 +146,14 @@ namespace advmatch
             return false;
         }
 
-        book = createOrderBook(symbolId, nullptr, implementation);
+        book = createOrderBook(symbolId, &this->settleEngine, implementation);
         book->observationListener = this->observationListener;
         ++this->orderBookCount;
         this->bookServices.resize(this->orderBooks.size());
         this->bookUpdateTimestamps.resize(this->orderBooks.size());
         this->bookServices[symbolId - 1] = {&this->riskEngine, &this->accountLedger, &this->settleEngine};
         this->conditionalOrders->addSymbol(symbolId);
+        this->tradingRules->addSymbol(symbolId);
         return true;
     }
 
@@ -283,6 +286,17 @@ namespace advmatch
         }
 
         const PlaceOrderRiskDecision riskDecision = services.risk->checkPlaceOrder(*node, mktBidResult.second);
+        const PlaceOrderState ruleState = this->tradingRules->prepare(*node);
+        if (ruleState != PlaceOrderState::Success)
+        {
+            if (contract)
+            {
+                this->contracts->discardPreparedOrder(*node);
+            }
+
+            this->orderPool.release(node);
+            return reject(ruleState);
+        }
         if (riskDecision.rejectReason)
         {
             if (contract)
@@ -328,6 +342,8 @@ namespace advmatch
         {
             ContractSettleEngine::attach(*node);
         }
+
+        TradingRuleEngine::acquire(*node);
 
         auto result = book->place(*node, timestamp, trades);
         if (contract)
@@ -421,6 +437,11 @@ namespace advmatch
         }
 
         const ModifyOrderRiskDecision riskDecision = services.risk->checkModifyPrice(*node, price);
+        const auto ruleState = this->tradingRules->check(*node, price, order.getUnfilledQuantity());
+        if (ruleState != PlaceOrderState::Success)
+        {
+            return {TradingRuleEngine::modifyState(ruleState)};
+        }
         if (riskDecision.rejectReason)
         {
             return {*riskDecision.rejectReason};
@@ -509,6 +530,12 @@ namespace advmatch
         }
 
         const ModifyOrderRiskDecision riskDecision = services.risk->checkModifyQuantity(*node, change);
+        const Quantity remaining = change < 0 ? unfilledQuantity - decrease : unfilledQuantity + static_cast<Quantity>(change);
+        const auto ruleState = remaining == 0 ? PlaceOrderState::Success : this->tradingRules->check(*node, order.getPrice(), remaining);
+        if (ruleState != PlaceOrderState::Success)
+        {
+            return {TradingRuleEngine::modifyState(ruleState)};
+        }
         if (riskDecision.rejectReason)
         {
             return {*riskDecision.rejectReason};

@@ -53,6 +53,11 @@ namespace advmatch
             return state == PlaceOrderState::InvalidTimestamp ? ConditionalOrderState::InvalidTimestamp : ConditionalOrderState::InvalidOrder;
         }
 
+        if (request.triggerPrice % symbol->tradingRules.priceTick != 0 || this->matching.getTradingRuleEngine().check(*symbol, request.side, request.type, request.price, request.quantity, request.contractOptions ? request.contractOptions->priceLimit : 0) != PlaceOrderState::Success)
+        {
+            return ConditionalOrderState::InvalidOrder;
+        }
+
         if (request.timestamp < this->prices[request.symbolId - 1][static_cast<std::size_t>(request.source)].timestamp)
         {
             return ConditionalOrderState::InvalidTimestamp;

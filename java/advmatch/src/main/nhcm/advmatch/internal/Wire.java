@@ -215,6 +215,133 @@ public final class Wire
         return new ConditionalOrderView(reader.u64(), Wire.readConditionalOrderRequest(reader), ConditionalOrderStatus.fromCode(reader.u8()), reader.u64(), reader.u64(), reader.u64(), reader.u64(), (reader.bool() ? PlaceOrderState.fromCode(reader.u8()) : null));
     }
 
+    public static void writeFeeSchedule(WireWriter writer, FeeSchedule value)
+    {
+        writer.u32(value.makerRate());
+        writer.u32(value.takerRate());
+    }
+
+    public static FeeSchedule readFeeSchedule(WireReader reader)
+    {
+        return new FeeSchedule(reader.u32(), reader.u32());
+    }
+
+    public static void writeRiskLimits(WireWriter writer, RiskLimits value)
+    {
+        writer.u64(value.maxOrderQuantity());
+        writer.i64(value.maxOrderNotional());
+        writer.i64(value.maxPositionNotional());
+        writer.i64(value.maxAccountNotional());
+        writer.u32(value.maxActiveOrders());
+        writer.u16(value.maxLeverage());
+    }
+
+    public static RiskLimits readRiskLimits(WireReader reader)
+    {
+        return new RiskLimits(reader.u64(), reader.i64(), reader.i64(), reader.i64(), reader.u32(), reader.u16());
+    }
+
+    public static void writeTradingRules(WireWriter writer, TradingRules value)
+    {
+        writer.u64(value.priceTick());
+        writer.u64(value.quantityStep());
+        writer.u64(value.minQuantity());
+        writer.i64(value.minOrderNotional());
+        Wire.writeFeeSchedule(writer, value.fees());
+        Wire.writeRiskLimits(writer, value.risk());
+        writer.u8(value.selfTradePrevention().code());
+    }
+
+    public static TradingRules readTradingRules(WireReader reader)
+    {
+        return new TradingRules(reader.u64(), reader.u64(), reader.u64(), reader.i64(), Wire.readFeeSchedule(reader), Wire.readRiskLimits(reader), SelfTradePrevention.fromCode(reader.u8()));
+    }
+
+    public static void writeUserRiskView(WireWriter writer, UserRiskView value)
+    {
+        writer.u32(value.symbolId());
+        writer.u64(value.userId());
+        writer.u64(value.activeOrders());
+        writer.i64(value.pendingNotional());
+        writer.i64(value.positionNotional());
+    }
+
+    public static UserRiskView readUserRiskView(WireReader reader)
+    {
+        return new UserRiskView(reader.u32(), reader.u64(), reader.u64(), reader.i64(), reader.i64());
+    }
+
+    public static void writeFeeBalanceView(WireWriter writer, FeeBalanceView value)
+    {
+        writer.u32(value.assetId());
+        writer.i64(value.balance());
+    }
+
+    public static FeeBalanceView readFeeBalanceView(WireReader reader)
+    {
+        return new FeeBalanceView(reader.u32(), reader.i64());
+    }
+
+    public static void writeAssetAudit(WireWriter writer, AssetAudit value)
+    {
+        writer.u32(value.assetId());
+        writer.string(value.externalFlow());
+        writer.string(value.active());
+        writer.string(value.reserved());
+        writer.string(value.spotFees());
+        writer.string(value.contractFees());
+        writer.string(value.insurance());
+        writer.string(value.clearing());
+        writer.string(value.fundingRounding());
+        writer.string(value.actual());
+        writer.string(value.difference());
+        writer.bool(value.conserved());
+    }
+
+    public static AssetAudit readAssetAudit(WireReader reader)
+    {
+        return new AssetAudit(reader.u32(), reader.string(), reader.string(), reader.string(), reader.string(), reader.string(), reader.string(), reader.string(), reader.string(), reader.string(), reader.string(), reader.bool());
+    }
+
+    public static void writeAuditIssue(WireWriter writer, AuditIssue value)
+    {
+        writer.u8(value.type().code());
+        writer.u64(value.entityId());
+        writer.u32(value.assetId());
+        writer.string(value.message());
+    }
+
+    public static AuditIssue readAuditIssue(WireReader reader)
+    {
+        return new AuditIssue(AuditIssueType.fromCode(reader.u8()), reader.u64(), reader.u32(), reader.string());
+    }
+
+    public static void writeAuditReport(WireWriter writer, AuditReport value)
+    {
+        writer.bool(value.conserved());
+        writer.bool(value.consistent());
+        writer.u64(value.stateHash());
+        writer.u64(value.checkedAccounts());
+        writer.u64(value.checkedOrders());
+        writer.u64(value.checkedPositions());
+        writer.u64(value.issueCount());
+        writer.u64(value.assets().size());
+        for (var item : value.assets())
+        {
+            Wire.writeAssetAudit(writer, item);
+        }
+        writer.u64(value.issues().size());
+        for (var item : value.issues())
+        {
+            Wire.writeAuditIssue(writer, item);
+        }
+    }
+
+    public static AuditReport readAuditReport(WireReader reader)
+    {
+        return new AuditReport(reader.bool(), reader.bool(), reader.u64(), reader.u64(), reader.u64(), reader.u64(), reader.u64(), reader.list(() -> Wire.readAssetAudit(reader)), reader.list(() -> Wire.readAuditIssue(reader)));
+    }
+
     public static void writeQuote(WireWriter writer, Quote value)
     {
         writer.u64(value.price());
@@ -289,11 +416,12 @@ public final class Wire
         writer.u64(value.maxRecordBytes());
         writer.u64(value.maxSnapshotBytes());
         writer.u64(value.retainedRequests());
+        writer.bool(value.verifyRecovery());
     }
 
     public static PersistenceConfig readPersistenceConfig(WireReader reader)
     {
-        return new PersistenceConfig(reader.bool(), reader.string(), FlushPolicy.fromCode(reader.u8()), reader.u64(), reader.u64(), reader.u64(), reader.u64(), reader.bool(), TailRecovery.fromCode(reader.u8()), reader.u64(), reader.u64(), reader.u64());
+        return new PersistenceConfig(reader.bool(), reader.string(), FlushPolicy.fromCode(reader.u8()), reader.u64(), reader.u64(), reader.u64(), reader.u64(), reader.bool(), TailRecovery.fromCode(reader.u8()), reader.u64(), reader.u64(), reader.u64(), reader.bool());
     }
 
     public static void writeObservationConfig(WireWriter writer, ObservationConfig value)
@@ -499,11 +627,12 @@ public final class Wire
         writer.u32(value.quoteAssetId());
         writer.bool(value.active());
         writer.string(value.name());
+        Wire.writeTradingRules(writer, value.tradingRules());
     }
 
     public static SymbolView readSymbolView(WireReader reader)
     {
-        return new SymbolView(reader.u32(), SymbolType.fromCode(reader.u8()), reader.u32(), reader.u32(), reader.bool(), reader.string());
+        return new SymbolView(reader.u32(), SymbolType.fromCode(reader.u8()), reader.u32(), reader.u32(), reader.bool(), reader.string(), Wire.readTradingRules(reader));
     }
 
     public static void writeOrderView(WireWriter writer, OrderView value)
@@ -538,11 +667,15 @@ public final class Wire
         {
             writer.u8(value.marginMode().code());
         }
+        writer.u32(value.makerFeeRate());
+        writer.u32(value.takerFeeRate());
+        writer.u32(value.feeAssetId());
+        writer.i64(value.paidFees());
     }
 
     public static OrderView readOrderView(WireReader reader)
     {
-        return new OrderView(reader.u64(), reader.u64(), reader.u64(), reader.u32(), reader.u32(), reader.u32(), OrderSide.fromCode(reader.u8()), OrderType.fromCode(reader.u8()), TimeInForce.fromCode(reader.u8()), reader.u64(), reader.u64(), Wire.readOrderFillingStatus(reader), reader.u64(), reader.u64(), reader.u64(), reader.u64(), reader.u64(), reader.u32(), reader.i64(), reader.u64(), reader.u16(), reader.bool(), reader.bool(), reader.bool(), reader.u64(), (reader.bool() ? MarginMode.fromCode(reader.u8()) : null));
+        return new OrderView(reader.u64(), reader.u64(), reader.u64(), reader.u32(), reader.u32(), reader.u32(), OrderSide.fromCode(reader.u8()), OrderType.fromCode(reader.u8()), TimeInForce.fromCode(reader.u8()), reader.u64(), reader.u64(), Wire.readOrderFillingStatus(reader), reader.u64(), reader.u64(), reader.u64(), reader.u64(), reader.u64(), reader.u32(), reader.i64(), reader.u64(), reader.u16(), reader.bool(), reader.bool(), reader.bool(), reader.u64(), (reader.bool() ? MarginMode.fromCode(reader.u8()) : null), reader.u32(), reader.u32(), reader.u32(), reader.i64());
     }
 
     public static void writePositionView(WireWriter writer, PositionView value)
@@ -700,11 +833,15 @@ public final class Wire
         writer.u64(value.makerAccountId());
         writer.u64(value.takerAccountId());
         Wire.writeTrade(writer, value.trade());
+        writer.u32(value.makerFeeAssetId());
+        writer.i64(value.makerFee());
+        writer.u32(value.takerFeeAssetId());
+        writer.i64(value.takerFee());
     }
 
     public static TradeView readTradeView(WireReader reader)
     {
-        return new TradeView(reader.u64(), reader.u64(), reader.u32(), reader.u64(), reader.u64(), reader.u64(), reader.u64(), reader.u64(), Wire.readTrade(reader));
+        return new TradeView(reader.u64(), reader.u64(), reader.u32(), reader.u64(), reader.u64(), reader.u64(), reader.u64(), reader.u64(), Wire.readTrade(reader), reader.u32(), reader.i64(), reader.u32(), reader.i64());
     }
 
     public static void writeContractEventView(WireWriter writer, ContractEventView value)

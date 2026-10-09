@@ -26,7 +26,12 @@ public enum PlaceOrderState
     ContractExpired(20),
     FundingRequired(21),
     Liquidating(22),
-    Unknown(23);
+    Unknown(23),
+    InvalidPriceTick(24),
+    InvalidQuantityStep(25),
+    MinimumNotional(26),
+    RiskLimitExceeded(27),
+    PostOnlyWouldTrade(28);
 
     private final int code;
 

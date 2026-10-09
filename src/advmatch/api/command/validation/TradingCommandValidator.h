@@ -35,7 +35,7 @@ namespace advmatch::api::command
                     {
                         enumeration(value.request.side, OrderSide::Bid);
                         enumeration(value.request.type, OrderType::Limit);
-                        enumeration(value.request.timeInForce, TimeInForce::FOK);
+                        enumeration(value.request.timeInForce, TimeInForce::PostOnly);
                         enumeration(value.request.kind, ConditionalOrderKind::TakeProfit);
                         enumeration(value.request.source, TriggerPriceSource::Index);
                         if (value.request.contractOptions)
@@ -47,7 +47,7 @@ namespace advmatch::api::command
                     {
                         enumeration(value.side, OrderSide::Bid);
                         enumeration(value.type, OrderType::Limit);
-                        enumeration(value.timeInForce, TimeInForce::FOK);
+                        enumeration(value.timeInForce, TimeInForce::PostOnly);
                         if (value.contractOptions)
                         {
                             enumeration(value.contractOptions->marginMode, MarginMode::Cross);
@@ -56,6 +56,10 @@ namespace advmatch::api::command
                     else if constexpr (std::is_same_v<Command, commands::AddSpotBook> || std::is_same_v<Command, commands::AddContractBook>)
                     {
                         enumeration(value.implementation, OrderBookImplementation::IndexedTree);
+                    }
+                    else if constexpr (std::is_same_v<Command, commands::ConfigureTradingRules>)
+                    {
+                        enumeration(value.rules.selfTradePrevention, SelfTradePrevention::CancelBoth);
                     }
 
                     return true;

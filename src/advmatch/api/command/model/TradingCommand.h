@@ -249,6 +249,19 @@ namespace advmatch
             ConditionalOrderId conditionalOrderId;
             Timestamp timestamp;
         };
+
+        struct ConfigureTradingRules
+        {
+            SymbolId symbolId;
+            TradingRules rules;
+        };
+
+        struct WithdrawSpotFees
+        {
+            AccountId accountId;
+            AssetId assetId;
+            PositiveBalanceChange amount;
+        };
     }
 
     // Indexes are on-disk operation codes. Only append new alternatives; changing
@@ -261,7 +274,8 @@ namespace advmatch
         commands::Expire, commands::Deliver, commands::Liquidate, commands::ProcessLiquidations,
         commands::SetAutomaticLiquidationBudget, commands::ArchiveHistory, commands::ConfigureReferencePrice,
         commands::ConfigureContractSchedule, commands::PublishExternalPrice, commands::RefreshReferencePrice, commands::UpdateReferencePrice,
-        commands::PlaceConditionalOrder, commands::ModifyConditionalOrder, commands::CancelConditionalOrder>;
+        commands::PlaceConditionalOrder, commands::ModifyConditionalOrder, commands::CancelConditionalOrder,
+        commands::ConfigureTradingRules, commands::WithdrawSpotFees>;
 
 }
 

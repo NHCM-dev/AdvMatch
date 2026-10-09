@@ -21,7 +21,8 @@ namespace advmatch
     {
         GTC,
         IOC,
-        FOK
+        FOK,
+        PostOnly
     };
 
     enum class OrderStatus : std::uint8_t

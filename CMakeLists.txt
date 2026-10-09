@@ -217,6 +217,13 @@ add_library(advmatch_core STATIC
     src/advmatch/matching/settleengines/impl/ContractSettleEngine.cpp
     src/advmatch/matching/MatchingEngine.cpp
     src/advmatch/matching/conditional/ConditionalOrderEngine.cpp
+    src/advmatch/matching/rules/TradingRuleEngine.cpp
+    src/advmatch/matching/rules/TradingRuleEngine.h
+    src/advmatch/matching/rules/SelfTradePolicy.h
+    src/advmatch/audit/AuditEngine.cpp
+    src/advmatch/audit/AuditEngine.h
+    src/advmatch/audit/model/AuditReport.h
+    src/advmatch/trading/rules/TradingRules.h
     src/advmatch/matching/conditional/ConditionalOrderEngine.h
     src/advmatch/trading/conditional/ConditionalOrder.h
     src/advmatch/matching/MatchingEngine.h
@@ -407,6 +414,11 @@ endif()
 if(BUILD_TESTING)
     if(ADVMATCH_BUILD_CPP_SDK)
         add_executable(advmatch_reference_tests tests/reference.cpp)
+        add_executable(advmatch_trading_rule_tests tests/trading_rules.cpp)
+        target_link_libraries(advmatch_trading_rule_tests PRIVATE AdvMatch::sdk)
+        advmatch_configure_runtime(advmatch_trading_rule_tests)
+        add_test(NAME advmatch_trading_rule_tests COMMAND advmatch_trading_rule_tests)
+        set_tests_properties(advmatch_trading_rule_tests PROPERTIES TIMEOUT 120)
         add_executable(advmatch_conditional_tests tests/conditional.cpp)
         target_link_libraries(advmatch_conditional_tests PRIVATE AdvMatch::sdk)
         advmatch_configure_runtime(advmatch_conditional_tests)
@@ -596,6 +608,7 @@ if(ADVMATCH_BUILD_CPP_SDK)
         trading/futures/Position.h trading/futures/Contract.h matching/Trade.h
         trading/futures/ReferencePrice.h trading/futures/ReferencePriceAlgorithm.h
         trading/conditional/ConditionalOrder.h
+        trading/rules/TradingRules.h audit/model/AuditReport.h
         matching/orderbooks/OrderBookTypes.h ledging/account/AccountTypes.h
         api/ApiError.h api/model/CommandResult.h api/model/ReadResponse.h
         api/command/model/TradingCommand.h api/async/Executor.h api/async/FutureError.h

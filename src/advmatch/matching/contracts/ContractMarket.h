@@ -20,6 +20,7 @@ namespace advmatch
         ContractAccount* account = nullptr;
         Position* position = nullptr;
         CrossMarginState* crossMargin = nullptr;
+        TradingRiskState* riskState = nullptr;
         OrderNode* firstOrder = nullptr;
         std::size_t openOrderCount = 0;
         std::size_t orderReferences = 0;

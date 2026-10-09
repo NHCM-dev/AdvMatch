@@ -2,17 +2,24 @@
 #define ADVMATCH_MATCHING_H
 
 #include "../trading/Order.h"
+#include "advmatch/trading/rules/TradingRules.h"
 
 #include <cstdint>
 
 namespace advmatch
 {
+    namespace audit
+    {
+        class AuditEngine;
+    }
+
     struct ContractParticipant;
     struct ContractMarket;
     class Account;
     class User;
     struct Symbol;
     struct PriceLevel;
+    struct TradingRiskState;
 
     // MatchingEngine owns this node through BigAllocs. UserManager and
     // SymbolManager retain deactivated objects, so these borrowed addresses
@@ -52,6 +59,13 @@ namespace advmatch
         OrderNode* contractNext = nullptr;
         Price executionPriceLimit = 0;
         Balance reservedBalance = 0;
+        TradingRiskState* riskState = nullptr;
+        Balance riskPendingNotional = 0;
+        bool riskAcquired = false;
+        SelfTradePrevention selfTradePrevention = SelfTradePrevention::Allow;
+        MMRRate makerFeeRate = 0;
+        MMRRate takerFeeRate = 0;
+        Balance paidFees = 0;
     };
 
     struct PriceLevel

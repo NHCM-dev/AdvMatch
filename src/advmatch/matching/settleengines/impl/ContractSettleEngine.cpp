@@ -3,6 +3,8 @@
 #include "advmatch/matching/riskengines/impl/ContractRiskEngine.h"
 #include "advmatch/util/ContractMath.h"
 #include "advmatch/matching/contracts/LiquidateEngine.h"
+#include "advmatch/matching/rules/TradingRuleEngine.h"
+#include "advmatch/matching/rules/SelfTradePolicy.h"
 
 #include <algorithm>
 #include <cassert>
@@ -64,6 +66,7 @@ namespace advmatch
         BigAllocs<OrderNode, 1, 64> orderPool;
         ContractMarket market;
         DenseMap<ContractAccount*, StandardContractAccount*> accounts;
+        NodeHashMap<UserId, TradingRiskState> riskStates;
 
         void reset()
         {
@@ -76,6 +79,7 @@ namespace advmatch
             this->market.orderParticipants.clear();
             this->market.participantPool = &this->participants;
             this->accounts.clear();
+            this->riskStates.clear();
         }
     };
 
@@ -118,6 +122,11 @@ namespace advmatch
 
             result.size = static_cast<Quantity>(size);
             result.entryNotional = *entry;
+            const auto& limits = market.symbol->tradingRules.risk;
+            if ((limits.maxPositionNotional != 0 && result.entryNotional > limits.maxPositionNotional) || (participant.riskState && limits.maxAccountNotional != 0 && static_cast<WideBalance>(participant.riskState->positionNotional) - position.entryNotional + result.entryNotional > limits.maxAccountNotional))
+            {
+                return ContractState::RiskLimitExceeded;
+            }
             result.margin = position.marginMode == MarginMode::Isolated ? *margin : ContractMath::margin(*entry, position.leverage);
         }
         else
@@ -243,6 +252,11 @@ namespace advmatch
             assert(result);
             static_cast<void>(result);
         }
+        if (participant.riskState)
+        {
+            participant.riskState->positionNotional += plan.entryNotional - position.entryNotional;
+        }
+
         if (applyCross && position.marginMode == MarginMode::Cross)
         {
             participant.crossMargin->initialMargin += plan.margin - position.initialMargin;
@@ -479,6 +493,11 @@ namespace advmatch
                 participant.account = &account;
                 participant.position = account.findPosition(id);
                 participant.crossMargin = &account.crossMargin(source.symbol->quoteAssetId);
+                if (originalParticipant.riskState)
+                {
+                    auto [risk, inserted] = workspace.riskStates.try_emplace(original.basicOrder.userId, *originalParticipant.riskState);
+                    participant.riskState = &risk->second;
+                }
             }
 
             auto* node = workspace.orderPool.emplace(original.basicOrder, *original.user, account,
@@ -492,6 +511,13 @@ namespace advmatch
             node->reduceOnly = original.reduceOnly;
             node->liquidationOrder = original.liquidationOrder;
             node->executionPriceLimit = original.executionPriceLimit;
+            node->riskState = participant.riskState;
+            node->riskAcquired = original.riskAcquired;
+            node->riskPendingNotional = original.riskPendingNotional;
+            node->selfTradePrevention = original.selfTradePrevention;
+            node->makerFeeRate = original.makerFeeRate;
+            node->takerFeeRate = original.takerFeeRate;
+            node->paidFees = original.paidFees;
             attach(*node);
             return *node;
         };
@@ -527,7 +553,7 @@ namespace advmatch
                     break;
                 }
 
-                if (action == MatchAction::CancelTaker)
+                if (action == MatchAction::CancelTaker || action == MatchAction::CancelBoth)
                 {
                     eligible = false;
                     return false;
@@ -546,6 +572,12 @@ namespace advmatch
 
     MatchAction ContractSettleEngine::prepare(OrderNode& maker, OrderNode& taker, Price price, Quantity& quantity)
     {
+        const auto prevention = SelfTradePolicy::prepare(maker, taker);
+        if (prevention != MatchAction::Execute)
+        {
+            return prevention;
+        }
+
         if (maker.account == taker.account)
         {
             return MatchAction::CancelTaker;
@@ -689,6 +721,17 @@ namespace advmatch
             return MatchAction::CancelTaker;
         }
 
+        const auto& limits = market.symbol->tradingRules.risk;
+        if (maker.riskState && maker.riskState == taker.riskState && limits.maxAccountNotional != 0 && static_cast<WideBalance>(maker.riskState->positionNotional) + this->makerPlan.entryNotional - maker.contractParticipant->position->entryNotional + this->takerPlan.entryNotional - taker.contractParticipant->position->entryNotional > limits.maxAccountNotional)
+        {
+            return MatchAction::CancelTaker;
+        }
+
+        if (!ContractMath::balance(static_cast<WideBalance>(maker.paidFees) + this->makerPlan.fee) || !ContractMath::balance(static_cast<WideBalance>(taker.paidFees) + this->takerPlan.fee))
+        {
+            return MatchAction::CancelTaker;
+        }
+
         this->makerPlan.orderId = maker.basicOrder.orderId;
         this->makerPlan.counterOrderId = taker.basicOrder.orderId;
         this->takerPlan.orderId = taker.basicOrder.orderId;
@@ -698,6 +741,8 @@ namespace advmatch
 
     void ContractSettleEngine::commit(const Trade&, OrderNode& maker, OrderNode& taker, Timestamp timestamp)
     {
+        maker.paidFees += this->makerPlan.fee;
+        taker.paidFees += this->takerPlan.fee;
         ContractMarket& market = *taker.contractMarket;
         apply(market, *maker.contractParticipant, this->makerPlan, timestamp, true, true, false, &this->makerBalance);
         apply(market, *taker.contractParticipant, this->takerPlan, timestamp, true, true, false, &this->takerBalance);
@@ -722,6 +767,8 @@ namespace advmatch
         {
             detach(maker);
         }
+
+        TradingRuleEngine::reconcile(maker);
     }
 
     void ContractSettleEngine::cancelled(OrderNode& node)
@@ -753,10 +800,13 @@ namespace advmatch
         {
             this->accountLedger.releaseTo(node, *required);
         }
+
+        TradingRuleEngine::reconcile(node);
     }
 
     void ContractSettleEngine::releaseReservation(OrderNode& node)
     {
+        TradingRuleEngine::release(node);
         this->accountLedger.releaseAll(node);
         detach(node);
     }

@@ -10,6 +10,8 @@ namespace advmatch
     {
         switch (state)
         {
+            case ContractState::RiskLimitExceeded:
+                return PlaceOrderState::RiskLimitExceeded;
             case ContractState::InvalidLeverage:
                 return PlaceOrderState::InvalidLeverage;
             case ContractState::InvalidMarginMode:
