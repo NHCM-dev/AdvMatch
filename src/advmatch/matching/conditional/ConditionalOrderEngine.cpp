@@ -37,6 +37,11 @@ namespace advmatch
         }
 
         const bool contract = symbol->symbolType != SymbolType::Spot;
+        if (this->matching.getTradingControlEngine().halted(*symbol))
+        {
+            return ConditionalOrderState::TradingDisabled;
+        }
+
         if (contract != request.contractOptions.has_value() || (!contract && request.source != TriggerPriceSource::LastTrade))
         {
             return ConditionalOrderState::InvalidOrder;
@@ -349,7 +354,7 @@ namespace advmatch
         }
 
         point = {value, timestamp};
-        if (market && market->waiting != 0)
+        if (market && market->waiting != 0 && !this->matching.getTradingControlEngine().halted(symbolId))
         {
             this->events.push_back({symbolId, source, point});
         }
@@ -360,6 +365,27 @@ namespace advmatch
         for (const auto& trade : trades)
         {
             this->price(symbolId, TriggerPriceSource::LastTrade, trade.price, timestamp);
+        }
+    }
+
+    void ConditionalOrderEngine::resume(SymbolId symbolId, Timestamp timestamp)
+    {
+        if (symbolId == 0 || symbolId > this->markets.size() || !this->markets[symbolId - 1] || this->markets[symbolId - 1]->waiting == 0)
+        {
+            return;
+        }
+
+        const auto* contract = this->matching.getContractEngine().findMarket(symbolId);
+        timestamp = std::max(timestamp, this->matching.bookUpdateTimestamps[symbolId - 1]);
+        timestamp = std::max(timestamp, this->markets[symbolId - 1]->commandTimestamp);
+        timestamp = std::max(timestamp, contract ? contract->commandTimestamp : 0);
+        for (std::size_t source = 0; source < 3; ++source)
+        {
+            const auto& point = this->prices[symbolId - 1][source];
+            if (point.price != 0)
+            {
+                this->events.push_back({symbolId, static_cast<TriggerPriceSource>(source), {point.price, std::max(timestamp, point.timestamp)}});
+            }
         }
     }
 
@@ -404,6 +430,11 @@ namespace advmatch
             {
                 const auto event = this->events.front();
                 this->events.pop_front();
+                if (this->matching.getTradingControlEngine().halted(event.symbolId))
+                {
+                    continue;
+                }
+
                 auto& market = *this->markets[event.symbolId - 1];
                 const auto source = static_cast<std::size_t>(event.source);
                 for (bool rising : {true, false})

@@ -7,6 +7,7 @@
 
 #include "../util/ValueTypes.h"
 #include "rules/TradingRules.h"
+#include "TradingControl.h"
 #include <string>
 #include <utility>
 
@@ -37,6 +38,7 @@ namespace advmatch
         AssetId baseAssetId; // Example: BTC
         AssetId quoteAssetId; // Example: USDT
         TradingRules tradingRules;
+        TradingHalt tradingHalt;
 
         [[nodiscard]]
         bool isActive() const noexcept

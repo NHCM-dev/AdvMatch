@@ -40,6 +40,8 @@ namespace advmatch::binding
     inline UserRiskView readUserRiskView(BinaryReader& reader);
     inline void write(BinaryWriter& writer, const FeeBalanceView& value);
     inline FeeBalanceView readFeeBalanceView(BinaryReader& reader);
+    inline void write(BinaryWriter& writer, const TradingStatusView& value);
+    inline TradingStatusView readTradingStatusView(BinaryReader& reader);
     inline void write(BinaryWriter& writer, const audit::AssetAudit& value);
     inline audit::AssetAudit readAssetAudit(BinaryReader& reader);
     inline void write(BinaryWriter& writer, const audit::AuditIssue& value);
@@ -529,6 +531,32 @@ namespace advmatch::binding
         return value;
     }
 
+    inline void write(BinaryWriter& writer, const TradingStatusView& value)
+    {
+        writer.number(value.symbolId);
+        writer.boolean(value.halted);
+        writer.boolean(value.exchangeHalted);
+        writer.boolean(value.symbolHalted);
+        writer.number(value.exchangeUpdatedTimestamp);
+        writer.number(value.symbolUpdatedTimestamp);
+        writer.string(value.exchangeReason);
+        writer.string(value.symbolReason);
+    }
+
+    inline TradingStatusView readTradingStatusView(BinaryReader& reader)
+    {
+        TradingStatusView value{};
+        value.symbolId = reader.number<SymbolId>();
+        value.halted = reader.boolean();
+        value.exchangeHalted = reader.boolean();
+        value.symbolHalted = reader.boolean();
+        value.exchangeUpdatedTimestamp = reader.number<Timestamp>();
+        value.symbolUpdatedTimestamp = reader.number<Timestamp>();
+        value.exchangeReason = reader.string();
+        value.symbolReason = reader.string();
+        return value;
+    }
+
     inline void write(BinaryWriter& writer, const audit::AssetAudit& value)
     {
         writer.number(value.assetId);
@@ -681,7 +709,7 @@ namespace advmatch::binding
     inline CommandResult readCommandResult(BinaryReader& reader)
     {
         CommandResult value{};
-        value.type = reader.enumeration(static_cast<CommandResultType>(8));
+        value.type = reader.enumeration(static_cast<CommandResultType>(9));
         value.state = reader.number<std::uint8_t>();
         value.accepted = reader.boolean();
         value.entityId = reader.number<std::uint64_t>();
@@ -817,7 +845,7 @@ namespace advmatch::binding
     inline observe::ReadIdentity readReadIdentity(BinaryReader& reader)
     {
         observe::ReadIdentity value{};
-        value.kind = reader.enumeration(static_cast<observe::ReadKind>(35));
+        value.kind = reader.enumeration(static_cast<observe::ReadKind>(36));
         value.userId = reader.number<UserId>();
         value.accountId = reader.number<AccountId>();
         value.assetId = reader.number<AssetId>();
@@ -878,7 +906,7 @@ namespace advmatch::binding
     inline observe::ObservationQuery readObservationQuery(BinaryReader& reader)
     {
         observe::ObservationQuery value{};
-        value.kind = reader.enumeration(static_cast<observe::ReadKind>(35));
+        value.kind = reader.enumeration(static_cast<observe::ReadKind>(36));
         value.userId = reader.number<UserId>();
         value.accountId = reader.number<AccountId>();
         value.assetId = reader.number<AssetId>();

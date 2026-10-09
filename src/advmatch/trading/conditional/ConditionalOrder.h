@@ -42,7 +42,8 @@ namespace advmatch
         WrongUser,
         NotWaiting,
         InvalidOco,
-        Overflow
+        Overflow,
+        TradingDisabled
     };
 
     struct ConditionalOrderRequest

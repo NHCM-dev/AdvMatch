@@ -309,6 +309,14 @@ for jd, jc in [
 contracts.append(method("CompletableFuture<CommandReceipt> bindSpot(Symbol symbol, Symbol spot)", "spot.requireOwner(this.exchange);\nreturn this.configureReference(symbol, new ReferencePriceConfig().withSources(java.util.List.of(new PriceSource().withSourceId(spot.id()))));"))
 output_class("ContractManager", "manager", "Manager", contracts)
 
+output_class("TradingControlManager", "manager", "Manager", [
+    method("CompletableFuture<CommandReceipt> halt(String reason, long timestamp)", "return this.exchange.submit(new SetTradingHalt(0, true, timestamp, reason)).thenApply(ApiResults::accepted);"),
+    method("CompletableFuture<CommandReceipt> halt(Symbol symbol, String reason, long timestamp)", "symbol.requireOwner(this.exchange);\nreturn this.exchange.submit(new SetTradingHalt(symbol.id(), true, timestamp, reason)).thenApply(ApiResults::accepted);"),
+    method("CompletableFuture<CommandReceipt> resume(long timestamp)", "return this.exchange.submit(new SetTradingHalt(0, false, timestamp, \"\")).thenApply(ApiResults::accepted);"),
+    method("CompletableFuture<CommandReceipt> resume(Symbol symbol, long timestamp)", "symbol.requireOwner(this.exchange);\nreturn this.exchange.submit(new SetTradingHalt(symbol.id(), false, timestamp, \"\")).thenApply(ApiResults::accepted);"),
+    method("CompletableFuture<TradingStatusView> status()", "return this.exchange.submit(new ReadTradingStatus(new ObservationQuery())).thenApply(ApiResults::one);"),
+    method("CompletableFuture<TradingStatusView> status(Symbol symbol)", "symbol.requireOwner(this.exchange);\nreturn this.exchange.submit(new ReadTradingStatus(new ObservationQuery().withSymbolId(symbol.id()))).thenApply(ApiResults::one);")])
+
 output_class("AuditManager", "manager", "Manager", [method("CompletableFuture<AuditReport> report()", "return this.report(64);"), method("CompletableFuture<AuditReport> report(long maxIssues)", "return this.exchange.submit(new ReadAudit(new ObservationQuery().withLimit(maxIssues))).thenApply(ApiResults::one);")])
 output_class("TradingRuleManager", "manager", "Manager", [
     method("CompletableFuture<CommandReceipt> configure(Symbol symbol, TradingRules rules)", "symbol.requireOwner(this.exchange);\nreturn this.exchange.submit(new ConfigureTradingRules(symbol.id(), rules)).thenApply(ApiResults::accepted);"),

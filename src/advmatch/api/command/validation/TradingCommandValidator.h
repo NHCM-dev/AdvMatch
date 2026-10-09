@@ -23,7 +23,7 @@ namespace advmatch::api::command
             {
                 using Command = std::decay_t<decltype(value)>;
                 if constexpr (std::is_same_v<Command, commands::CreateAsset> || std::is_same_v<Command, commands::CreateSymbol> ||
-                    std::is_same_v<Command, commands::ArchiveHistory> || std::is_same_v<Command, commands::ConfigureReferencePrice>)
+                    std::is_same_v<Command, commands::ArchiveHistory> || std::is_same_v<Command, commands::ConfigureReferencePrice> || std::is_same_v<Command, commands::SetTradingHalt>)
                 {
                     // Variable payloads still need their exact configured byte
                     // limit checked. All other commands have fixed wire sizes.

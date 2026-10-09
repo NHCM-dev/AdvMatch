@@ -282,6 +282,23 @@ public final class Wire
         return new FeeBalanceView(reader.u32(), reader.i64());
     }
 
+    public static void writeTradingStatusView(WireWriter writer, TradingStatusView value)
+    {
+        writer.u32(value.symbolId());
+        writer.bool(value.halted());
+        writer.bool(value.exchangeHalted());
+        writer.bool(value.symbolHalted());
+        writer.u64(value.exchangeUpdatedTimestamp());
+        writer.u64(value.symbolUpdatedTimestamp());
+        writer.string(value.exchangeReason());
+        writer.string(value.symbolReason());
+    }
+
+    public static TradingStatusView readTradingStatusView(WireReader reader)
+    {
+        return new TradingStatusView(reader.u32(), reader.bool(), reader.bool(), reader.bool(), reader.u64(), reader.u64(), reader.string(), reader.string());
+    }
+
     public static void writeAssetAudit(WireWriter writer, AssetAudit value)
     {
         writer.u32(value.assetId());

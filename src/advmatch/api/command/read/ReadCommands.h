@@ -95,6 +95,7 @@ namespace advmatch::api::command
     using ReadAudit = ReadOperation<observe::ReadKind::Audit, observe::AuditReport>;
     using ReadUserRisk = ReadOperation<observe::ReadKind::UserRisk, observe::UserRiskView>;
     using ReadSpotFeeBalance = ReadOperation<observe::ReadKind::SpotFeeBalance, observe::FeeBalanceView>;
+    using ReadTradingStatus = ReadOperation<observe::ReadKind::TradingStatus, observe::TradingStatusView>;
 
     class ReadBatch final : public Command<observe::ObservationBatch>
     {

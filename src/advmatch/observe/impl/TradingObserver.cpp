@@ -369,7 +369,7 @@ namespace advmatch::observe
         {
             page.state = ReadState::SourceFaulted;
         }
-        else if (query.kind > ReadKind::SpotFeeBalance || query.positionFilter > PositionFilter::Trading || query.limit == 0 || query.limit > this->config.maxRows || query.scanBudget == 0 || query.scanBudget > this->config.maxScan)
+        else if (query.kind > ReadKind::TradingStatus || query.positionFilter > PositionFilter::Trading || query.limit == 0 || query.limit > this->config.maxRows || query.scanBudget == 0 || query.scanBudget > this->config.maxScan)
         {
             page.state = ReadState::InvalidQuery;
         }

@@ -20,6 +20,7 @@ namespace advmatch::observe
     using advmatch::ConditionalOrderView;
     using advmatch::UserRiskView;
     using advmatch::FeeBalanceView;
+    using advmatch::TradingStatusView;
     using audit::AuditReport;
     enum class ReadState : std::uint8_t
     {
@@ -69,7 +70,8 @@ namespace advmatch::observe
         ConditionalOrders,
         Audit,
         UserRisk,
-        SpotFeeBalance
+        SpotFeeBalance,
+        TradingStatus
     };
 
     enum class PositionFilter : std::uint8_t
@@ -394,7 +396,7 @@ namespace advmatch::observe
     using ObservationData = std::variant<std::monostate, OverviewView, std::vector<AssetView>,
         std::vector<UserView>, std::vector<AccountView>, std::vector<BalanceView>, std::vector<CrossMarginView>,
         std::vector<SymbolView>, std::vector<OrderView>, std::vector<PositionView>, std::vector<BookView>,
-        std::vector<DepthView>, std::vector<MarketView>, std::vector<TradeView>, std::vector<ContractEventView>, std::vector<ConditionalOrderView>, std::vector<AuditReport>, std::vector<UserRiskView>, std::vector<FeeBalanceView>>;
+        std::vector<DepthView>, std::vector<MarketView>, std::vector<TradeView>, std::vector<ContractEventView>, std::vector<ConditionalOrderView>, std::vector<AuditReport>, std::vector<UserRiskView>, std::vector<FeeBalanceView>, std::vector<TradingStatusView>>;
 
     struct ObservationResult
     {

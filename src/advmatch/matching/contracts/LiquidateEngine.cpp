@@ -41,6 +41,11 @@ namespace advmatch
     {
         trades.clear();
         Position& position = *participant.position;
+        if (matching.getTradingControlEngine().halted(*market.symbol))
+        {
+            return {ContractState::TradingHalted};
+        }
+
         if (timestamp < market.commandTimestamp)
         {
             return {ContractState::InvalidTimestamp};
@@ -77,6 +82,15 @@ namespace advmatch
         for (ContractParticipant* target : targets)
         {
             target->position->liquidating = target->position->positionSize != 0;
+            if (matching.getTradingControlEngine().halted(*target->market->symbol))
+            {
+                // Keep cross-liquidation membership while execution is paused.
+                // Closing another symbol can restore equity above maintenance;
+                // the remaining liquidation must still continue after resume.
+                enqueue(*target->market, *target);
+                continue;
+            }
+
             contracts.cancelOrders(*target->market, *target, timestamp);
             enqueue(*target->market, *target);
         }
@@ -85,6 +99,12 @@ namespace advmatch
         for (ContractParticipant* target : targets)
         {
             Position& candidate = *target->position;
+            if (matching.getTradingControlEngine().halted(*target->market->symbol))
+            {
+                result.state = ContractState::PendingLiquidation;
+                continue;
+            }
+
             if (candidate.positionSize == 0)
             {
                 continue;

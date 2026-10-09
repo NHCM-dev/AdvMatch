@@ -1,4 +1,4 @@
-# AdvMatch
+# AdvMatch 1.0.0
 
 (Credit to GPT-5.6, GPT-6.1)
 
@@ -61,7 +61,7 @@ Windows 将 `advmatch_sdk.dll` 放在应用旁边。C++ 应用与 SDK 需要使�
 
 ```powershell
 .\java\gradlew.bat -p java :advmatch:build :advmatch:runExample
-java -jar java/advmatch/build/libs/advmatch-0.0.1-tests.jar
+java -jar java/advmatch/build/libs/advmatch-1.0.0-tests.jar
 ```
 
 SDK JAR 位于 `java/advmatch/build/libs/`；测试 JAR 包含集成测试和全部 benchmark。已有原生构建可加 `-PskipNativeBuild`。Java 使用 `nhcm.advmatch.MatchingExchange` 和 `CompletableFuture`，用 try-with-resources 关闭会话；JAR 需要匹配运行平台和架构。
@@ -129,6 +129,21 @@ auto report = exchange.audit().report().get();
 `audit().report()` 检查各资产外部净流入与账户余额、冻结资金、手续费、保险金、清算及资金费舍入余额之和，并校验订单 / 保证金冻结、盘口聚合和风控缓存。报告包含问题列表和经济状态指纹；总额使用宽整数并以十进制字符串返回。
 
 校验在所属交易线程执行，会遍历并排序保留数据，适合维护和测试；不要每笔交易调用。`persistence.verifyRecovery` 默认开启，WAL / checkpoint 恢复完成后执行校验，异常阻止启动。外部存取款必须通过 `UpdateBalance` 命令，直接修改底层账户会绕过净流入记账。Java 提供同名 Manager 与读取接口。
+
+## 停牌与恢复交易
+
+```cpp
+exchange.trading().halt(symbol, "market maintenance", timestamp).get();
+auto status = exchange.trading().status(symbol).get();
+exchange.trading().resume(symbol, timestamp + 1).get();
+// 全所停牌 / 恢复，Java 使用相同方法和 .join()
+exchange.trading().halt("exchange maintenance", timestamp + 2).get();
+exchange.trading().resume(timestamp + 3).get();
+```
+
+全所与交易对停牌相互独立，任一生效即停止撮合。停牌拒绝新单、改单和新建 / 修改条件单，暂停条件单触发与强平成交；停牌操作自身不撤单、不释放冻结，撤单和读取继续可用。标记价 / 指数价更新、补保证金、资金费结算和现金交割仍可执行，相关维护操作仍遵循原有风控规则。
+
+恢复时按各价格源最新值重新评估等待条件单，不补触发停牌期间已经回撤的历史价格；恢复可能直接产生子单与成交。待强平仓位可通过 `processLiquidations` 处理，后续行情 / 流动性更新也会继续处理。恢复不会重新开放已到期或已交割的期货。状态、原因和时间戳通过 `trading().status()` 查询，并随 WAL / checkpoint 恢复；各停牌范围的时间戳不能倒退，原因最多 256 个 UTF-8 字节。
 
 ## 压测
 

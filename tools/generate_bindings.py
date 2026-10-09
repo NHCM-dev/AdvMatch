@@ -88,6 +88,7 @@ files = [
     "src/advmatch/trading/futures/ReferencePrice.h",
     "src/advmatch/trading/conditional/ConditionalOrder.h",
     "src/advmatch/trading/rules/TradingRules.h", "src/advmatch/audit/model/AuditReport.h",
+    "src/advmatch/trading/TradingControl.h",
     "src/advmatch/matching/orderbooks/OrderBookTypes.h", "src/advmatch/trading/Asset.h",
     "src/advmatch/ledging/account/AccountTypes.h", "src/advmatch/api/model/CommandResult.h",
     "src/advmatch/observe/model/ObservationTypes.h", "src/advmatch/persistence/config/PersistenceConfig.h",
@@ -128,6 +129,7 @@ add("src/advmatch/trading/futures/Contract.h", "ContractSpec ContractOrderOption
 add("src/advmatch/trading/futures/ReferencePrice.h", "PriceSource ReferencePriceConfig ExternalPrice WeightedPrice ReferencePrices ContractSchedule")
 add("src/advmatch/trading/conditional/ConditionalOrder.h", "ConditionalOrderRequest ConditionalOrderView")
 add("src/advmatch/trading/rules/TradingRules.h", "FeeSchedule RiskLimits TradingRules UserRiskView FeeBalanceView")
+add("src/advmatch/trading/TradingControl.h", "TradingStatusView")
 add("src/advmatch/audit/model/AuditReport.h", "AssetAudit AuditIssue AuditReport", "audit::")
 add("src/advmatch/matching/orderbooks/OrderBookTypes.h", "Quote")
 add("src/advmatch/matching/Trade.h", "Trade")
@@ -143,7 +145,7 @@ cppnames["ExchangeConfig"] = "BindingConfig"
 command_text = source("src/advmatch/api/command/model/TradingCommand.h")
 command_names = re.findall(r"commands::(\w+)", command_text[command_text.index("using TradingCommand"):])
 commands = {name: fields(command_text, name) for name in command_names}
-row_types = ["AssetView", "UserView", "AccountView", "BalanceView", "CrossMarginView", "SymbolView", "OrderView", "PositionView", "BookView", "DepthView", "MarketView", "TradeView", "ContractEventView", "ConditionalOrderView", "AuditReport", "UserRiskView", "FeeBalanceView"]
+row_types = ["AssetView", "UserView", "AccountView", "BalanceView", "CrossMarginView", "SymbolView", "OrderView", "PositionView", "BookView", "DepthView", "MarketView", "TradeView", "ContractEventView", "ConditionalOrderView", "AuditReport", "UserRiskView", "FeeBalanceView", "TradingStatusView"]
 reads = {}
 for name, kind, row in re.findall(r"using (Read\w+) = ReadOperation<observe::ReadKind::(\w+), observe::(\w+)>;", source("src/advmatch/api/command/read/ReadCommands.h")):
     reads[name] = (kind, row)
@@ -376,7 +378,7 @@ groups = {
     "CreateAsset": "management", "RemoveAsset": "management", "CreateUser": "management", "RemoveUser": "management", "CreateSymbol": "management", "RemoveSymbol": "management",
     "UpdateBalance": "account", "Transfer": "account", "AddSpotBook": "order", "PlaceOrder": "order", "ModifyPrice": "order", "ModifyQuantity": "order", "CancelOrder": "order", "ArchiveHistory": "maintenance",
     "PlaceConditionalOrder": "order", "ModifyConditionalOrder": "order", "CancelConditionalOrder": "order",
-    "ConfigureTradingRules": "management", "WithdrawSpotFees": "account",
+    "ConfigureTradingRules": "management", "WithdrawSpotFees": "account", "SetTradingHalt": "management",
 }
 for operation, (name, fs) in enumerate(commands.items()):
     group = groups.get(name, "contract")

@@ -3,7 +3,13 @@ plugins {
 }
 
 group = 'nhcm'
-version = '0.0.1'
+version = '1.0.0'
+
+tasks.withType(Jar).configureEach {
+    manifest {
+        attributes 'Implementation-Title': 'AdvMatch', 'Implementation-Version': project.version.toString()
+    }
+}
 
 java {
     toolchain { languageVersion = JavaLanguageVersion.of(21) }

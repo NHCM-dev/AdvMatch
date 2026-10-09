@@ -20,6 +20,7 @@
 #include "advmatch/trading/factory/impl/BasicOrderFactory.h"
 #include "conditional/ConditionalOrderEngine.h"
 #include "rules/TradingRuleEngine.h"
+#include "control/TradingControlEngine.h"
 #include "advmatch/audit/AuditEngine.h"
 
 namespace advmatch
@@ -42,6 +43,7 @@ namespace advmatch
         };
 
         std::unique_ptr<TradingRuleEngine> tradingRules;
+        std::unique_ptr<TradingControlEngine> tradingControl;
         std::unique_ptr<audit::AuditEngine> auditEngine;
         std::unique_ptr<ContractEngine> contracts;
         std::unique_ptr<ConditionalOrderEngine> conditionalOrders;
@@ -51,6 +53,7 @@ namespace advmatch
         friend class ContractSettleEngine;
         friend class ConditionalOrderEngine;
         friend class TradingRuleEngine;
+        friend class TradingControlEngine;
         friend class SpotSettleEngine;
         friend class audit::AuditEngine;
 
@@ -93,6 +96,16 @@ namespace advmatch
         OrderBook* findBook(SymbolId symbolId) noexcept;
 
     public:
+        TradingControlEngine& getTradingControlEngine() noexcept
+        {
+            return *this->tradingControl;
+        }
+
+        const TradingControlEngine& getTradingControlEngine() const noexcept
+        {
+            return *this->tradingControl;
+        }
+
         audit::AuditEngine& getAuditEngine() noexcept
         {
             return *this->auditEngine;

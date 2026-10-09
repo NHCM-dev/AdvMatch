@@ -9,6 +9,7 @@
 #include "manager/OrderManager.h"
 #include "manager/ConditionalOrderManager.h"
 #include "manager/TradingRuleManager.h"
+#include "manager/TradingControlManager.h"
 #include "manager/AuditManager.h"
 #include "manager/PositionManager.h"
 #include "manager/OrderBookManager.h"
@@ -22,6 +23,11 @@ namespace advmatch::sdk
     class MatchingExchange final : public Exchange
     {
     public:
+        TradingControlManager trading() const
+        {
+            return TradingControlManager(this->session);
+        }
+
         TradingRuleManager rules() const
         {
             return TradingRuleManager(this->session);

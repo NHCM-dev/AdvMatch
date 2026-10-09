@@ -31,6 +31,8 @@ namespace advmatch::sdk
     using advmatch::FeeSchedule;
     using advmatch::RiskLimits;
     using advmatch::TradingRules;
+    using advmatch::TradingControlState;
+    using advmatch::TradingStatusView;
     using advmatch::UserRiskView;
     using advmatch::FeeBalanceView;
     using advmatch::audit::AuditIssueType;

@@ -6,6 +6,7 @@
 #include "order/OrderCommands.h"
 #include "order/ConditionalOrderCommands.h"
 #include "management/TradingRuleCommands.h"
+#include "management/TradingControlCommands.h"
 #include "contract/ContractCommands.h"
 #include "maintenance/HistoryCommands.h"
 #include "read/ReadCommands.h"

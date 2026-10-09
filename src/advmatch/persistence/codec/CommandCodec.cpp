@@ -29,6 +29,14 @@ namespace advmatch
             }
 
         public:
+            void operator()(const commands::SetTradingHalt& value)
+            {
+                this->writer.number(value.symbolId);
+                this->writer.boolean(value.halted);
+                this->writer.number(value.timestamp);
+                this->writer.string(value.reason);
+            }
+
             void operator()(const commands::ConfigureTradingRules& value)
             {
                 this->writer.number(value.symbolId);
@@ -414,6 +422,8 @@ namespace advmatch
                     return commands::ConfigureTradingRules{reader.number<SymbolId>(), TradingRulesCodec::read(reader)};
                 case 34:
                     return commands::WithdrawSpotFees{reader.number<AccountId>(), reader.number<AssetId>(), reader.number<PositiveBalanceChange>()};
+                case 35:
+                    return commands::SetTradingHalt{reader.number<SymbolId>(), reader.boolean(), reader.number<Timestamp>(), reader.string()};
                 default: throw PersistenceError(PersistenceFailure::UnsupportedVersion, "unknown trading operation");
             }
         }
@@ -462,7 +472,7 @@ namespace advmatch
     {
         BinaryReader reader(bytes);
         CommandResult result;
-        result.type = reader.enumeration(CommandResultType::TradingRule);
+        result.type = reader.enumeration(CommandResultType::TradingControl);
         result.state = reader.number<std::uint8_t>();
         result.accepted = reader.boolean();
         result.entityId = reader.number<std::uint64_t>();

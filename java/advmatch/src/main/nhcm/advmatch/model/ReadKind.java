@@ -38,7 +38,8 @@ public enum ReadKind
     ConditionalOrders(32),
     Audit(33),
     UserRisk(34),
-    SpotFeeBalance(35);
+    SpotFeeBalance(35),
+    TradingStatus(36);
 
     private final int code;
 

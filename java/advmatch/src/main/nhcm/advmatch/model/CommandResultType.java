@@ -11,7 +11,8 @@ public enum CommandResultType
     Contract(5),
     Archive(6),
     Conditional(7),
-    TradingRule(8);
+    TradingRule(8),
+    TradingControl(9);
 
     private final int code;
 

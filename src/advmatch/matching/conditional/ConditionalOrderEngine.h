@@ -84,6 +84,7 @@ namespace advmatch
         ConditionalOrderResult modify(UserId userId, ConditionalOrderId id, Price triggerPrice, Price price, Quantity quantity, Timestamp timestamp);
         ConditionalOrderResult cancel(UserId userId, ConditionalOrderId id, Timestamp timestamp);
         void cancelSymbol(SymbolId symbolId, Timestamp timestamp);
+        void resume(SymbolId symbolId, Timestamp timestamp);
         void price(SymbolId symbolId, TriggerPriceSource source, Price price, Timestamp timestamp);
         void trades(SymbolId symbolId, const TradeBuffer& trades, Timestamp timestamp);
         void process();

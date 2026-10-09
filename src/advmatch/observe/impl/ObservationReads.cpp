@@ -90,6 +90,9 @@ namespace advmatch::observe
 
         switch (query.kind)
         {
+            case ReadKind::TradingStatus:
+                detail::point(result, this->matching.getTradingControlEngine().query(query.symbolId));
+                return;
             case ReadKind::Audit:
                 detail::point(result, std::optional(this->matching.getAuditEngine().report(this->assets, query.limit)));
                 return;

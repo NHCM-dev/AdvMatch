@@ -636,6 +636,11 @@ namespace advmatch
             return {};
         }
 
+        if (this->matching.getTradingControlEngine().halted(*market->symbol))
+        {
+            return {force ? ContractState::TradingHalted : ContractState::Success};
+        }
+
         if (market->pendingLiquidations.empty())
         {
             market->lastLiquidationRevision = market->liquidityRevision;

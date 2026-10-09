@@ -13,7 +13,8 @@ public enum ConditionalOrderState
     WrongUser(7),
     NotWaiting(8),
     InvalidOco(9),
-    Overflow(10);
+    Overflow(10),
+    TradingDisabled(11);
 
     private final int code;
 

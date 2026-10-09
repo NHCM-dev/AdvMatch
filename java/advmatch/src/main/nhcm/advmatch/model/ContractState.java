@@ -23,7 +23,8 @@ public enum ContractState
     PendingLiquidation(17),
     Overflow(18),
     PriceUnavailable(19),
-    RiskLimitExceeded(20);
+    RiskLimitExceeded(20),
+    TradingHalted(21);
 
     private final int code;
 

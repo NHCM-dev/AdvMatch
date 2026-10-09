@@ -34,6 +34,7 @@ public final class ResponseCodec
             case 16 -> reader.list(() -> Wire.readAuditReport(reader));
             case 17 -> reader.list(() -> Wire.readUserRiskView(reader));
             case 18 -> reader.list(() -> Wire.readFeeBalanceView(reader));
+            case 19 -> reader.list(() -> Wire.readTradingStatusView(reader));
             default -> throw new IllegalArgumentException("Unknown observation payload");
         };
         return new ObservationResult(query, page, data);

@@ -369,6 +369,7 @@ public final class BindingIntegrationTest
         referencePrices();
         conditionalOrders();
         tradingRules();
+        tradingHalt();
         persistence();
         System.out.println("Java bindings: spot, futures, perpetual, reads, callbacks, concurrency, close and recovery passed");
     }
@@ -473,6 +474,66 @@ public final class BindingIntegrationTest
             contractBook.placeContract(seller, OrderSide.Bid, OrderType.Limit, TimeInForce.GTC, 100, 10, 4, new ContractOrderOptions().withLeverage(1)).join();
             exchange.contracts().updateMark(perpetual, 90, 5).join();
             check(protective.snapshot().join().status() == ConditionalOrderStatus.Activated && position.snapshot().join().closed());
+        }
+    }
+
+    private static void tradingHalt() throws Exception
+    {
+        var directory = Files.createTempDirectory("advmatch-java-halt-");
+        var config = new ExchangeConfig().withPersistence(new PersistenceConfig().withDirectory(directory.toString()));
+        long symbolId;
+        long stateHash;
+        try (var exchange = new MatchingExchange(config))
+        {
+            var base = exchange.assets().create("BASE", "BASE", 0).join();
+            var quote = exchange.assets().create("QUOTE", "QUOTE", 0).join();
+            var buyer = exchange.users().create().join();
+            var seller = exchange.users().create().join();
+            buyer.spotAccount().join().updateBalance(quote, 10000).join();
+            seller.spotAccount().join().updateBalance(base, 100).join();
+            var symbol = exchange.symbols().create("SPOT", SymbolType.Spot, base, quote).join();
+            symbolId = symbol.id();
+            var book = exchange.books().addSpot(symbol, OrderBookImplementation.Radix).join();
+            var order = book.place(seller, OrderSide.Ask, OrderType.Limit, TimeInForce.GTC, 100, 10, 1).join();
+            exchange.trading().halt(symbol, "交易对维护", 2).join();
+            var status = exchange.trading().status(symbol).join();
+            check(status.halted() && status.symbolHalted() && !status.exchangeHalted() && status.symbolReason().equals("交易对维护"));
+            var result = exchange.submit(new PlaceOrder(buyer.id(), symbolId, OrderSide.Bid, OrderType.Limit, TimeInForce.IOC, 100, 10, 3)).join();
+            check(!result.result().accepted() && result.result().state() == PlaceOrderState.TradingDisabled.code());
+            result = exchange.submit(new ModifyPrice(seller.id(), order.id(), 90, 3)).join();
+            check(!result.result().accepted() && result.result().state() == ModifyOrderState.TradingDisabled.code());
+            check(order.snapshot().join().resting());
+            order.cancel(4).join();
+            check(seller.spotAccount().join().balances(new ObservationQuery().withAssetId(base.id())).join().values().getFirst().reserved() == 0);
+            exchange.trading().halt("exchange maintenance", 5).join();
+            exchange.trading().resume(symbol, 6).join();
+            check(exchange.trading().status(symbol).join().halted());
+            exchange.trading().halt(symbol, "local", 7).join();
+            exchange.submit(new Checkpoint()).join();
+            var report = exchange.audit().report().join();
+            check(report.conserved() && report.consistent());
+            stateHash = report.stateHash();
+        }
+
+        try (var exchange = new MatchingExchange(config))
+        {
+            var symbol = exchange.symbols().get(symbolId);
+            var status = exchange.trading().status(symbol).join();
+            check(status.exchangeHalted() && status.symbolHalted() && exchange.audit().report().join().stateHash() == stateHash);
+            exchange.trading().resume(8).join();
+            check(exchange.trading().status(symbol).join().halted() && !exchange.trading().status().join().halted());
+            exchange.trading().resume(symbol, 9).join();
+            check(!exchange.trading().status(symbol).join().halted());
+            var invalid = exchange.submit(new SetTradingHalt(symbolId, true, 7, "stale")).join();
+            check(!invalid.result().accepted() && invalid.result().state() == TradingControlState.InvalidTimestamp.code());
+        }
+
+        try (var paths = Files.walk(directory))
+        {
+            for (var path : paths.sorted(java.util.Comparator.reverseOrder()).toList())
+            {
+                Files.delete(path);
+            }
         }
     }
 

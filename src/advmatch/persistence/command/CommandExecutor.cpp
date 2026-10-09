@@ -321,6 +321,11 @@ namespace advmatch
                 const auto value = account && this->state.assets.containsAsset(command.assetId) ? this->state.matching.withdrawSpotFees(*account, command.assetId, command.amount) : TradingRuleResult{TradingRuleState::InvalidAccount};
                 return businessResult(CommandResultType::TradingRule, value);
             }
+
+            CommandResult operator()(const commands::SetTradingHalt& command)
+            {
+                return businessResult(CommandResultType::TradingControl, this->state.matching.getTradingControlEngine().setHalt(command.symbolId, command.halted, command.timestamp, command.reason));
+            }
         };
     }
 

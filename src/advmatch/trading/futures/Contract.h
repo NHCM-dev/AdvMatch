@@ -28,7 +28,8 @@ namespace advmatch
         PendingLiquidation,
         Overflow,
         PriceUnavailable,
-        RiskLimitExceeded
+        RiskLimitExceeded,
+        TradingHalted
     };
 
     struct ContractResult

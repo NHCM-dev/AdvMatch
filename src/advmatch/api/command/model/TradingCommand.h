@@ -262,6 +262,14 @@ namespace advmatch
             AssetId assetId;
             PositiveBalanceChange amount;
         };
+
+        struct SetTradingHalt
+        {
+            SymbolId symbolId = 0;
+            bool halted = true;
+            Timestamp timestamp = 0;
+            std::string reason;
+        };
     }
 
     // Indexes are on-disk operation codes. Only append new alternatives; changing
@@ -275,7 +283,7 @@ namespace advmatch
         commands::SetAutomaticLiquidationBudget, commands::ArchiveHistory, commands::ConfigureReferencePrice,
         commands::ConfigureContractSchedule, commands::PublishExternalPrice, commands::RefreshReferencePrice, commands::UpdateReferencePrice,
         commands::PlaceConditionalOrder, commands::ModifyConditionalOrder, commands::CancelConditionalOrder,
-        commands::ConfigureTradingRules, commands::WithdrawSpotFees>;
+        commands::ConfigureTradingRules, commands::WithdrawSpotFees, commands::SetTradingHalt>;
 
 }
 

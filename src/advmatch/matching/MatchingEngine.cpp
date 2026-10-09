@@ -29,7 +29,7 @@ namespace advmatch
     }
 
     MatchingEngine::MatchingEngine(UserManager& userManager, SymbolManager& symbolManager)
-        : tradingRules(std::make_unique<TradingRuleEngine>(*this)), auditEngine(std::make_unique<audit::AuditEngine>(*this)), contracts(std::make_unique<ContractEngine>(*this)), conditionalOrders(std::make_unique<ConditionalOrderEngine>(*this)), userManager(userManager), symbolManager(symbolManager),
+        : tradingRules(std::make_unique<TradingRuleEngine>(*this)), tradingControl(std::make_unique<TradingControlEngine>(*this)), auditEngine(std::make_unique<audit::AuditEngine>(*this)), contracts(std::make_unique<ContractEngine>(*this)), conditionalOrders(std::make_unique<ConditionalOrderEngine>(*this)), userManager(userManager), symbolManager(symbolManager),
           settleEngine(this->accountLedger, this)
     {
     }
@@ -237,6 +237,11 @@ namespace advmatch
         }
 
         const bool contract = symbol->symbolType != SymbolType::Spot;
+        if (this->tradingControl->halted(*symbol))
+        {
+            return reject(PlaceOrderState::TradingDisabled);
+        }
+
         if (contract != (options != nullptr))
         {
             return reject(PlaceOrderState::InvalidSymbol);
@@ -407,6 +412,11 @@ namespace advmatch
         }
 
         BookServices& services = this->bookServices[node->basicOrder.symbolId - 1];
+        if (this->tradingControl->halted(*node->symbol))
+        {
+            return {ModifyOrderState::TradingDisabled};
+        }
+
         if (node->contractMarket)
         {
             if (this->contracts->beginCommand(node->basicOrder.symbolId, timestamp) != ContractState::Success)
@@ -509,6 +519,11 @@ namespace advmatch
         }
 
         BookServices& services = this->bookServices[node->basicOrder.symbolId - 1];
+        if (this->tradingControl->halted(*node->symbol))
+        {
+            return {ModifyOrderState::TradingDisabled};
+        }
+
         if (node->contractMarket)
         {
             if (this->contracts->beginCommand(node->basicOrder.symbolId, timestamp) != ContractState::Success)

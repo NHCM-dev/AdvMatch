@@ -88,6 +88,9 @@ namespace advmatch::audit
     {
         AuditReport report;
         Fingerprint hash;
+        const auto control = *this->matching.getTradingControlEngine().query();
+        hash.add(control.exchangeHalted, control.exchangeUpdatedTimestamp);
+        hash.text(control.exchangeReason);
         DenseMap<AssetId, Totals> totals;
         DenseMap<AccountId, DenseMap<AssetId, WideBalance>> reservations;
         DenseMap<AccountId, DenseMap<AssetId, CrossTotals>> cross;
@@ -259,6 +262,8 @@ namespace advmatch::audit
         for (const auto* symbol : symbols)
         {
             const auto& rules = symbol->tradingRules;
+            hash.add(symbol->tradingHalt.halted, symbol->tradingHalt.updatedTimestamp);
+            hash.text(symbol->tradingHalt.reason);
             hash.add(symbol->symbolId, symbol->symbolType, symbol->baseAssetId, symbol->quoteAssetId, symbol->isActive(), rules.priceTick, rules.quantityStep, rules.minQuantity, rules.minOrderNotional, rules.fees.makerRate, rules.fees.takerRate, rules.risk.maxOrderQuantity, rules.risk.maxOrderNotional, rules.risk.maxPositionNotional, rules.risk.maxAccountNotional, rules.risk.maxActiveOrders, rules.risk.maxLeverage, rules.selfTradePrevention);
             hash.text(symbol->name);
             if (const auto* market = contracts.findMarket(symbol->symbolId))
