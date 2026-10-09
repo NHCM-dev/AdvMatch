@@ -678,7 +678,7 @@ using namespace advmatch::binding;
 
 extern "C" ADVMATCH_API int advmatch_abi_version(void)
 {
-    return 2;
+    return 3;
 }
 
 extern "C" ADVMATCH_API const char* advmatch_last_error(void)

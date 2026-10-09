@@ -332,13 +332,14 @@ namespace advmatch::observe
             book->observedLevelCount(OrderSide::Bid), book->observedLevelCount(OrderSide::Ask)}) : std::nullopt;
     }
 
-    std::optional<MarketView> TradingObserver::market(SymbolId symbolId) const noexcept
+    std::optional<MarketView> TradingObserver::market(SymbolId symbolId) const
     {
         const auto* value = this->matching.getContractEngine().findMarket(symbolId);
         return value != nullptr ? std::optional<MarketView>({symbolId, value->spec, value->status, value->markPrice, value->markTimestamp,
             value->commandTimestamp, value->nextFundingTimestamp, value->lastFundingTimestamp, value->deliveryPrice, value->insuranceBalance,
             value->clearingBalance, value->feeBalance, value->fundingRoundingBalance, value->liquidityRevision, value->lastLiquidationRevision,
-            value->participants.size(), value->activePositions.size(), value->orderParticipants.size(), value->pendingLiquidations.size()}) : std::nullopt;
+            value->participants.size(), value->activePositions.size(), value->orderParticipants.size(), value->pendingLiquidations.size(),
+            value->referenceConfig, value->referencePrices, value->referenceTimestamp, value->lastFundingRate, value->externalPrices}) : std::nullopt;
     }
 
     std::optional<DepthView> TradingObserver::level(SymbolId symbolId, OrderSide side, Price price) const noexcept

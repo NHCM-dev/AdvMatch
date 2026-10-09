@@ -36,6 +36,36 @@ public final class ContractManager extends Manager
         return this.exchange.submit(new UpdateMarkPrice(symbol.id(), price, timestamp)).thenApply(ApiResults::accepted);
     }
 
+    public CompletableFuture<CommandReceipt> configureReference(Symbol symbol, ReferencePriceConfig config)
+    {
+        symbol.requireOwner(this.exchange);
+        return this.exchange.submit(new ConfigureReferencePrice(symbol.id(), config)).thenApply(ApiResults::accepted);
+    }
+
+    public CompletableFuture<CommandReceipt> configureSchedule(Symbol symbol, ContractSchedule schedule, long timestamp)
+    {
+        symbol.requireOwner(this.exchange);
+        return this.exchange.submit(new ConfigureContractSchedule(symbol.id(), schedule, timestamp)).thenApply(ApiResults::accepted);
+    }
+
+    public CompletableFuture<CommandReceipt> publishPrice(Symbol symbol, long sourceId, long price, long timestamp)
+    {
+        symbol.requireOwner(this.exchange);
+        return this.exchange.submit(new PublishExternalPrice(symbol.id(), new ExternalPrice(sourceId, price, timestamp))).thenApply(ApiResults::accepted);
+    }
+
+    public CompletableFuture<CommandReceipt> refresh(Symbol symbol, long timestamp)
+    {
+        symbol.requireOwner(this.exchange);
+        return this.exchange.submit(new RefreshReferencePrice(symbol.id(), timestamp)).thenApply(ApiResults::accepted);
+    }
+
+    public CompletableFuture<CommandReceipt> updateReference(Symbol symbol, ReferencePrices prices, long timestamp)
+    {
+        symbol.requireOwner(this.exchange);
+        return this.exchange.submit(new UpdateReferencePrice(symbol.id(), prices, timestamp)).thenApply(ApiResults::accepted);
+    }
+
     public CompletableFuture<CommandReceipt> settleFunding(Symbol symbol, int rate, long timestamp)
     {
         symbol.requireOwner(this.exchange);
@@ -65,5 +95,11 @@ public final class ContractManager extends Manager
         symbol.requireOwner(this.exchange);
         source.requireOwner(this.exchange);
         return this.exchange.submit(new FundInsurance(symbol.id(), source.id(), amount)).thenApply(ApiResults::accepted);
+    }
+
+    public CompletableFuture<CommandReceipt> bindSpot(Symbol symbol, Symbol spot)
+    {
+        spot.requireOwner(this.exchange);
+        return this.configureReference(symbol, new ReferencePriceConfig().withSources(java.util.List.of(new PriceSource().withSourceId(spot.id()))));
     }
 }

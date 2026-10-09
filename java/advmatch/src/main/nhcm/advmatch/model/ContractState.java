@@ -21,7 +21,8 @@ public enum ContractState
     NotDue(15),
     LiquidationNotRequired(16),
     PendingLiquidation(17),
-    Overflow(18);
+    Overflow(18),
+    PriceUnavailable(19);
 
     private final int code;
 

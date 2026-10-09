@@ -258,6 +258,11 @@ add_library(advmatch_core STATIC
     src/advmatch/matching/riskengines/impl/ContractRiskEngine.h
     src/advmatch/util/ContractUtil.h)
 target_sources(advmatch_core PRIVATE
+    src/advmatch/matching/contracts/ReferencePriceAlgorithm.cpp
+    src/advmatch/matching/contracts/ReferencePriceEngine.cpp
+    src/advmatch/matching/contracts/ReferencePriceEngine.h
+    src/advmatch/persistence/codec/ReferencePriceCodec.h
+    src/advmatch/trading/futures/ReferencePrice.h src/advmatch/trading/futures/ReferencePriceAlgorithm.h
     src/advmatch/api/ApiError.h
     src/advmatch/api/async/CompletableFuture.h
     src/advmatch/api/async/CompletionSource.h
@@ -380,6 +385,9 @@ if(ADVMATCH_BUILD_EXAMPLES)
         add_executable(advmatch_cpp_sdk_example examples/cpp-sdk/main.cpp)
         target_link_libraries(advmatch_cpp_sdk_example PRIVATE AdvMatch::sdk)
         advmatch_configure_runtime(advmatch_cpp_sdk_example)
+        add_executable(advmatch_reference_example examples/contract-reference/main.cpp)
+        target_link_libraries(advmatch_reference_example PRIVATE AdvMatch::sdk)
+        advmatch_configure_runtime(advmatch_reference_example)
     endif()
     add_executable(advmatch_exchange_example examples/exchange/main.cpp)
     target_link_libraries(advmatch_exchange_example PRIVATE AdvMatch::core)
@@ -395,6 +403,11 @@ endif()
 
 if(BUILD_TESTING)
     if(ADVMATCH_BUILD_CPP_SDK)
+        add_executable(advmatch_reference_tests tests/reference.cpp)
+        target_link_libraries(advmatch_reference_tests PRIVATE AdvMatch::sdk)
+        advmatch_configure_runtime(advmatch_reference_tests)
+        add_test(NAME advmatch_reference_tests COMMAND advmatch_reference_tests)
+        set_tests_properties(advmatch_reference_tests PROPERTIES TIMEOUT 60)
         add_executable(advmatch_sdk_tests tests/sdk.cpp)
         target_link_libraries(advmatch_sdk_tests PRIVATE AdvMatch::sdk)
         advmatch_configure_runtime(advmatch_sdk_tests)
@@ -573,6 +586,7 @@ if(ADVMATCH_BUILD_CPP_SDK)
     set(ADVMATCH_SDK_VALUE_HEADERS
         util/ValueTypes.h util/Result.h trading/Asset.h trading/Symbol.h trading/OrderTypes.h
         trading/futures/Position.h trading/futures/Contract.h matching/Trade.h
+        trading/futures/ReferencePrice.h trading/futures/ReferencePriceAlgorithm.h
         matching/orderbooks/OrderBookTypes.h ledging/account/AccountTypes.h
         api/ApiError.h api/model/CommandResult.h api/model/ReadResponse.h
         api/command/model/TradingCommand.h api/async/Executor.h api/async/FutureError.h
@@ -593,15 +607,15 @@ if(ADVMATCH_BUILD_CPP_SDK)
     install(FILES "${CMAKE_CURRENT_BINARY_DIR}/AdvMatchConfig.cmake" "${CMAKE_CURRENT_BINARY_DIR}/AdvMatchConfigVersion.cmake"
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/AdvMatch")
     install(DIRECTORY examples/cpp-sdk/ DESTINATION examples/cpp-sdk)
-    install(FILES docs/cpp-sdk.md DESTINATION docs)
+    install(DIRECTORY examples/contract-reference/ DESTINATION examples/contract-reference)
     if(ADVMATCH_BUILD_EXAMPLES)
         install(TARGETS advmatch_cpp_sdk_example RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+        install(TARGETS advmatch_reference_example RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
     endif()
 endif()
 if(ADVMATCH_BUILD_EXAMPLES)
     install(TARGETS advmatch_exchange_example advmatch_observe_example advmatch_persistence_example RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
-install(FILES docs/exchange-api.md docs/bindings.md docs/java-benchmarks.md docs/performance.md docs/persistence.md docs/observe.md DESTINATION docs)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
     install(FILES README.md DESTINATION .)
 endif()

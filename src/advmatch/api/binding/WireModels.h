@@ -14,6 +14,18 @@ namespace advmatch::binding
     inline ContractOrderOptions readContractOrderOptions(BinaryReader& reader);
     inline void write(BinaryWriter& writer, const ContractEvent& value);
     inline ContractEvent readContractEvent(BinaryReader& reader);
+    inline void write(BinaryWriter& writer, const PriceSource& value);
+    inline PriceSource readPriceSource(BinaryReader& reader);
+    inline void write(BinaryWriter& writer, const ReferencePriceConfig& value);
+    inline ReferencePriceConfig readReferencePriceConfig(BinaryReader& reader);
+    inline void write(BinaryWriter& writer, const ExternalPrice& value);
+    inline ExternalPrice readExternalPrice(BinaryReader& reader);
+    inline void write(BinaryWriter& writer, const WeightedPrice& value);
+    inline WeightedPrice readWeightedPrice(BinaryReader& reader);
+    inline void write(BinaryWriter& writer, const ReferencePrices& value);
+    inline ReferencePrices readReferencePrices(BinaryReader& reader);
+    inline void write(BinaryWriter& writer, const ContractSchedule& value);
+    inline ContractSchedule readContractSchedule(BinaryReader& reader);
     inline void write(BinaryWriter& writer, const Quote& value);
     inline Quote readQuote(BinaryReader& reader);
     inline void write(BinaryWriter& writer, const Trade& value);
@@ -193,6 +205,137 @@ namespace advmatch::binding
         value.timestamp = reader.number<Timestamp>();
         value.orderId = reader.number<OrderId>();
         value.counterOrderId = reader.number<OrderId>();
+        return value;
+    }
+
+    inline void write(BinaryWriter& writer, const PriceSource& value)
+    {
+        writer.enumeration(value.type);
+        writer.number(value.sourceId);
+        writer.number(value.weight);
+        writer.number(value.numerator);
+        writer.number(value.denominator);
+    }
+
+    inline PriceSource readPriceSource(BinaryReader& reader)
+    {
+        PriceSource value{};
+        value.type = reader.enumeration(static_cast<PriceSourceType>(1));
+        value.sourceId = reader.number<std::uint64_t>();
+        value.weight = reader.number<std::uint32_t>();
+        value.numerator = reader.number<std::uint32_t>();
+        value.denominator = reader.number<std::uint32_t>();
+        return value;
+    }
+
+    inline void write(BinaryWriter& writer, const ReferencePriceConfig& value)
+    {
+        writer.number<std::uint64_t>(value.sources.size());
+        for (const auto& item : value.sources)
+        {
+            write(writer, item);
+        }
+        writer.number(value.minimumSources);
+        writer.number(value.maxAge);
+        writer.number(value.maxDeviationRate);
+        writer.number(value.markClampRate);
+        writer.number(value.interestRate);
+        writer.number(value.fundingClampRate);
+        writer.boolean(value.automaticFunding);
+        writer.boolean(value.automaticDelivery);
+        writer.number(value.maxCatchUpPeriods);
+    }
+
+    inline ReferencePriceConfig readReferencePriceConfig(BinaryReader& reader)
+    {
+        ReferencePriceConfig value{};
+        const auto sourcesCount = reader.count();
+        value.sources.reserve(sourcesCount);
+        for (std::size_t index = 0; index < sourcesCount; ++index)
+        {
+            value.sources.push_back(readPriceSource(reader));
+        }
+        value.minimumSources = reader.number<std::uint32_t>();
+        value.maxAge = reader.number<Timestamp>();
+        value.maxDeviationRate = reader.number<MMRRate>();
+        value.markClampRate = reader.number<MMRRate>();
+        value.interestRate = reader.number<std::int32_t>();
+        value.fundingClampRate = reader.number<MMRRate>();
+        value.automaticFunding = reader.boolean();
+        value.automaticDelivery = reader.boolean();
+        value.maxCatchUpPeriods = reader.number<std::uint32_t>();
+        return value;
+    }
+
+    inline void write(BinaryWriter& writer, const ExternalPrice& value)
+    {
+        writer.number(value.sourceId);
+        writer.number(value.price);
+        writer.number(value.timestamp);
+    }
+
+    inline ExternalPrice readExternalPrice(BinaryReader& reader)
+    {
+        ExternalPrice value{};
+        value.sourceId = reader.number<std::uint64_t>();
+        value.price = reader.number<Price>();
+        value.timestamp = reader.number<Timestamp>();
+        return value;
+    }
+
+    inline void write(BinaryWriter& writer, const WeightedPrice& value)
+    {
+        writer.number(value.price);
+        writer.number(value.timestamp);
+        writer.number(value.weight);
+    }
+
+    inline WeightedPrice readWeightedPrice(BinaryReader& reader)
+    {
+        WeightedPrice value{};
+        value.price = reader.number<Price>();
+        value.timestamp = reader.number<Timestamp>();
+        value.weight = reader.number<std::uint32_t>();
+        return value;
+    }
+
+    inline void write(BinaryWriter& writer, const ReferencePrices& value)
+    {
+        writer.number(value.indexPrice);
+        writer.number(value.markPrice);
+        writer.number(value.premiumRate);
+        writer.number(value.fundingRate);
+        writer.number(value.deliveryPrice);
+        writer.number(value.sourceCount);
+    }
+
+    inline ReferencePrices readReferencePrices(BinaryReader& reader)
+    {
+        ReferencePrices value{};
+        value.indexPrice = reader.number<Price>();
+        value.markPrice = reader.number<Price>();
+        value.premiumRate = reader.number<std::int32_t>();
+        value.fundingRate = reader.number<std::int32_t>();
+        value.deliveryPrice = reader.number<Price>();
+        value.sourceCount = reader.number<std::uint32_t>();
+        return value;
+    }
+
+    inline void write(BinaryWriter& writer, const ContractSchedule& value)
+    {
+        writer.number(value.fundingInterval);
+        writer.number(value.nextFundingTimestamp);
+        writer.number(value.maxFundingRate);
+        writer.number(value.expiryTimestamp);
+    }
+
+    inline ContractSchedule readContractSchedule(BinaryReader& reader)
+    {
+        ContractSchedule value{};
+        value.fundingInterval = reader.number<Timestamp>();
+        value.nextFundingTimestamp = reader.number<Timestamp>();
+        value.maxFundingRate = reader.number<MMRRate>();
+        value.expiryTimestamp = reader.number<Timestamp>();
         return value;
     }
 
@@ -851,6 +994,15 @@ namespace advmatch::binding
         writer.number<std::uint64_t>(value.openPositions);
         writer.number<std::uint64_t>(value.orderParticipants);
         writer.number<std::uint64_t>(value.pendingLiquidations);
+        write(writer, value.referenceConfig);
+        write(writer, value.referencePrices);
+        writer.number(value.referenceTimestamp);
+        writer.number(value.lastFundingRate);
+        writer.number<std::uint64_t>(value.externalPrices.size());
+        for (const auto& item : value.externalPrices)
+        {
+            write(writer, item);
+        }
     }
 
     inline observe::MarketView readMarketView(BinaryReader& reader)
@@ -875,6 +1027,16 @@ namespace advmatch::binding
         value.openPositions = readSize(reader);
         value.orderParticipants = readSize(reader);
         value.pendingLiquidations = readSize(reader);
+        value.referenceConfig = readReferencePriceConfig(reader);
+        value.referencePrices = readReferencePrices(reader);
+        value.referenceTimestamp = reader.number<Timestamp>();
+        value.lastFundingRate = reader.number<std::int32_t>();
+        const auto externalPricesCount = reader.count();
+        value.externalPrices.reserve(externalPricesCount);
+        for (std::size_t index = 0; index < externalPricesCount; ++index)
+        {
+            value.externalPrices.push_back(readExternalPrice(reader));
+        }
         return value;
     }
 

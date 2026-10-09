@@ -72,7 +72,7 @@ namespace advmatch::observe
         std::optional<PositionView> position(PositionId positionId, AccountId accountId = 0) const noexcept;
         std::optional<BookView> book(SymbolId symbolId) const noexcept;
         std::optional<DepthView> level(SymbolId symbolId, OrderSide side, Price price) const noexcept;
-        std::optional<MarketView> market(SymbolId symbolId) const noexcept;
+        std::optional<MarketView> market(SymbolId symbolId) const;
 
         // Reuse caller-owned buffers for allocation-free numeric point/depth reads.
         std::size_t readOrders(std::span<const OrderId> ids, std::span<std::optional<OrderView>> output) const noexcept;

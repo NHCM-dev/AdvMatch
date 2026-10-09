@@ -3,6 +3,7 @@
 
 #include "advmatch/matching/orderbooks/OrderBookTypes.h"
 #include "advmatch/trading/futures/Contract.h"
+#include "advmatch/trading/futures/ReferencePrice.h"
 
 #include "../../model/CommandResult.h"
 
@@ -193,6 +194,38 @@ namespace advmatch
             std::vector<OrderId> orders;
             std::vector<PositionId> positions;
         };
+
+        struct ConfigureReferencePrice
+        {
+            SymbolId symbolId;
+            ReferencePriceConfig config;
+        };
+
+        struct ConfigureContractSchedule
+        {
+            SymbolId symbolId;
+            ContractSchedule schedule;
+            Timestamp timestamp;
+        };
+
+        struct PublishExternalPrice
+        {
+            SymbolId symbolId;
+            ExternalPrice price;
+        };
+
+        struct RefreshReferencePrice
+        {
+            SymbolId symbolId;
+            Timestamp timestamp;
+        };
+
+        struct UpdateReferencePrice
+        {
+            SymbolId symbolId;
+            ReferencePrices prices;
+            Timestamp timestamp;
+        };
     }
 
     // Indexes are on-disk operation codes. Only append new alternatives; changing
@@ -203,7 +236,8 @@ namespace advmatch
         commands::ModifyPrice, commands::ModifyQuantity, commands::CancelOrder, commands::SetLeverage,
         commands::AddMargin, commands::UpdateMarkPrice, commands::FundInsurance, commands::SettleFunding,
         commands::Expire, commands::Deliver, commands::Liquidate, commands::ProcessLiquidations,
-        commands::SetAutomaticLiquidationBudget, commands::ArchiveHistory>;
+        commands::SetAutomaticLiquidationBudget, commands::ArchiveHistory, commands::ConfigureReferencePrice,
+        commands::ConfigureContractSchedule, commands::PublishExternalPrice, commands::RefreshReferencePrice, commands::UpdateReferencePrice>;
 
 }
 

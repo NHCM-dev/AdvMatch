@@ -401,6 +401,12 @@ namespace advmatch
             return {ContractState::InvalidPrice};
         }
 
+        return this->applyMarkPrice(*market, price, timestamp, true);
+    }
+
+    ContractResult ContractEngine::applyMarkPrice(ContractMarket& value, Price price, Timestamp timestamp, bool processLiquidations)
+    {
+        ContractMarket* market = &value;
         auto& updates = this->markUpdates;
         auto& crossUpdates = this->crossUpdates;
         updates.clear();
@@ -464,7 +470,7 @@ namespace advmatch
             LiquidateEngine::enqueue(*market, *update.participant);
         }
 
-        return this->processLiquidations(symbolId, timestamp, false);
+        return processLiquidations ? this->processLiquidations(market->symbol->symbolId, timestamp, false) : ContractResult{};
     }
 
     ContractResult ContractEngine::fundInsurance(SymbolId symbolId, Account& source, PositiveBalanceChange amount)
@@ -530,6 +536,7 @@ namespace advmatch
 
         if (result)
         {
+            market->lastFundingRate = rate;
             ++market->liquidityRevision;
             for (const auto& [id, participant] : market->activePositions)
             {

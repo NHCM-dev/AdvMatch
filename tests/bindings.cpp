@@ -62,7 +62,7 @@ namespace
 
 int main()
 {
-    CHECK(advmatch_abi_version() == 2);
+    CHECK(advmatch_abi_version() == 3);
     BindingConfig config;
     config.persistence.enabled = false;
     config.maxPendingRequests = 1;

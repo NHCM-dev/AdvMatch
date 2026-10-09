@@ -38,7 +38,7 @@ namespace advmatch
         // Deactivated IDs keep their slots and are never reused.
         std::vector<Symbol*> symbolIndex;
         DenseMap<std::string, SymbolId> symbolsByName;
-        DenseSet<SymbolKey, SymbolKeyHash> symbolPairs;
+        ankerl::unordered_dense::map<SymbolKey, SymbolId, SymbolKeyHash> symbolPairs;
         SymbolId nextSymbolId = 1;
         std::size_t activeSymbolCount = 0;
 
@@ -71,6 +71,9 @@ namespace advmatch
 
         [[nodiscard]]
         const Symbol* getSymbol(SymbolId symbolId) const noexcept;
+
+        [[nodiscard]]
+        const Symbol* getSymbol(SymbolType type, AssetId base, AssetId quote) const noexcept;
 
         [[nodiscard]]
         std::size_t getSymbolCount() const noexcept;

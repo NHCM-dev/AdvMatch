@@ -71,6 +71,8 @@ namespace advmatch
         BigAllocs<OrderNode> orderPool;
         std::vector<OrderNode*> orders;
         std::vector<std::unique_ptr<OrderBook>> orderBooks;
+        // Direct slots; pricing refreshes read these without traversing orders.
+        std::vector<Timestamp> bookUpdateTimestamps;
         OrderId nextOrderId = 1;
         std::size_t historyCursor = 0;
         bool historyPositionTurn = false;
@@ -81,6 +83,11 @@ namespace advmatch
         OrderBook* findBook(SymbolId symbolId) noexcept;
 
     public:
+        Timestamp bookTimestamp(SymbolId symbolId) const noexcept
+        {
+            return symbolId != 0 && symbolId <= this->bookUpdateTimestamps.size() ? this->bookUpdateTimestamps[symbolId - 1] : 0;
+        }
+
         explicit MatchingEngine(UserManager& userManager, SymbolManager& symbolManager);
         ~MatchingEngine();
 

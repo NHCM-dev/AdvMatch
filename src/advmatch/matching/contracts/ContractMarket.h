@@ -5,6 +5,7 @@
 #include "advmatch/matching/Matching.h"
 #include "advmatch/trading/futures/Contract.h"
 #include "LiquidationQueue.h"
+#include "advmatch/trading/futures/ReferencePrice.h"
 
 #include <limits>
 #include <utility>
@@ -43,6 +44,12 @@ namespace advmatch
         Timestamp commandTimestamp = 0;
         Timestamp nextFundingTimestamp = 0;
         Timestamp lastFundingTimestamp = 0;
+        ReferencePriceConfig referenceConfig;
+        std::vector<ExternalPrice> externalPrices;
+        SymbolId defaultSpotSymbolId = 0;
+        ReferencePrices referencePrices;
+        Timestamp referenceTimestamp = 0;
+        std::int32_t lastFundingRate = 0;
         Price deliveryPrice = 0;
         Balance insuranceBalance = 0;
         // Signed clearing cash: offsets all realized PnL. Funding rounding

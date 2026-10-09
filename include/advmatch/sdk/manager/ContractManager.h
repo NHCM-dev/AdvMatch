@@ -64,6 +64,44 @@ namespace advmatch::sdk
             return this->update(symbol, commands::SettleFunding{symbol.id(), rate, timestamp}, requestId);
         }
 
+        CompletableFuture<CommandReceipt> configureReference(const Symbol& symbol, ReferencePriceConfig config, std::uint64_t requestId = 0) const
+        {
+            return this->update(symbol, commands::ConfigureReferencePrice{symbol.id(), std::move(config)}, requestId);
+        }
+
+        CompletableFuture<CommandReceipt> bindSpot(const Symbol& symbol, const Symbol& spot, std::uint64_t requestId = 0) const
+        {
+            return detail::Results::attempt<CommandReceipt>([&]
+            {
+                spot.requireOwner(this->api);
+                ReferencePriceConfig config;
+                config.sources.push_back(PriceSource{PriceSourceType::Spot, spot.id()});
+                return this->configureReference(symbol, std::move(config), requestId);
+            });
+        }
+
+        CompletableFuture<CommandReceipt> configureSchedule(const Symbol& symbol, ContractSchedule schedule, Timestamp timestamp, std::uint64_t requestId = 0) const
+        {
+            return this->update(symbol, commands::ConfigureContractSchedule{symbol.id(), schedule, timestamp}, requestId);
+        }
+
+        CompletableFuture<CommandReceipt> publishPrice(const Symbol& symbol, std::uint64_t sourceId, Price price, Timestamp timestamp, std::uint64_t requestId = 0) const
+        {
+            return this->update(symbol, commands::PublishExternalPrice{symbol.id(), ExternalPrice{sourceId, price, timestamp}}, requestId);
+        }
+
+        // Caller supplies timestamps; refresh computes prices and handles due
+        // funding/delivery on the owner thread. No background wall-clock work.
+        CompletableFuture<CommandReceipt> refresh(const Symbol& symbol, Timestamp timestamp, std::uint64_t requestId = 0) const
+        {
+            return this->update(symbol, commands::RefreshReferencePrice{symbol.id(), timestamp}, requestId);
+        }
+
+        CompletableFuture<CommandReceipt> updateReference(const Symbol& symbol, ReferencePrices prices, Timestamp timestamp, std::uint64_t requestId = 0) const
+        {
+            return this->update(symbol, commands::UpdateReferencePrice{symbol.id(), prices, timestamp}, requestId);
+        }
+
         CompletableFuture<CommandReceipt> expire(const Symbol& symbol, Timestamp timestamp, std::uint64_t requestId = 0) const
         {
             return this->update(symbol, commands::Expire{symbol.id(), timestamp}, requestId);

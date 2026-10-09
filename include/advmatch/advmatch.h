@@ -18,7 +18,8 @@
 extern "C" {
 #endif
 
-/* ABI 2 adds asynchronous Exchange requests. Binding packets use schema 1.
+/* ABI 3 extends contract market views and adds reference-price commands.
+ * Binding packets use schema 1; persisted operation codes are append-only.
  * Every export catches C++ exceptions. Error messages are UTF-8 and thread-local.
  * Handles are validated IDs, never addresses. Status: 0=success, 1=pending,
  * -1=error, -2=cancelled, -3=queue full (command was not executed).

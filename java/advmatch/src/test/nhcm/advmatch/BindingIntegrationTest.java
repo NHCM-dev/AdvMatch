@@ -366,6 +366,7 @@ public final class BindingIntegrationTest
         objectApi();
         spotAndConcurrency();
         contracts();
+        referencePrices();
         persistence();
         System.out.println("Java bindings: spot, futures, perpetual, reads, callbacks, concurrency, close and recovery passed");
     }
@@ -422,6 +423,49 @@ public final class BindingIntegrationTest
             check(entered.await(10, TimeUnit.SECONDS) && !second.isDone());
             held.complete(8);
             check(first.get(10, TimeUnit.SECONDS) == 8 && second.get(10, TimeUnit.SECONDS) == 9);
+        }
+    }
+
+    private static void referencePrices()
+    {
+        try (var exchange = new MatchingExchange(memory()))
+        {
+            var base = exchange.assets().create("BTC", "BTC", 0).join();
+            var quote = exchange.assets().create("USD", "USD", 0).join();
+            var buyer = exchange.users().create().join();
+            var seller = exchange.users().create().join();
+            buyer.spotAccount().join().updateBalance(quote, 100000000).join();
+            seller.spotAccount().join().updateBalance(base, 100).join();
+            buyer.contractAccount().join().updateBalance(quote, 100000000).join();
+            seller.contractAccount().join().updateBalance(quote, 100000000).join();
+            var spot = exchange.symbols().create("SPOT", SymbolType.Spot, base, quote).join();
+            var spotBook = exchange.books().addSpot(spot, OrderBookImplementation.Radix).join();
+            spotBook.place(buyer, OrderSide.Bid, OrderType.Limit, TimeInForce.GTC, 99900, 1, 1).join();
+            spotBook.place(seller, OrderSide.Ask, OrderType.Limit, TimeInForce.GTC, 100100, 1, 1).join();
+            var perpetual = exchange.symbols().create("PERP", SymbolType.Perpetual, base, quote).join();
+            var spec = new ContractSpec().withTakerFeeRate(0).withLiquidationFeeRate(0).withFundingInterval(100).withFirstFundingTimestamp(100);
+            var book = exchange.books().addContract(perpetual, spec, 100000, 0, OrderBookImplementation.Radix).join();
+            book.placeContract(seller, OrderSide.Ask, OrderType.Limit, TimeInForce.GTC, 100000, 10, 2, new ContractOrderOptions()).join();
+            var order = book.placeContract(buyer, OrderSide.Bid, OrderType.Limit, TimeInForce.IOC, 100000, 10, 3, new ContractOrderOptions()).join();
+            exchange.contracts().bindSpot(perpetual, spot).join();
+            exchange.contracts().refresh(perpetual, 100).join();
+            var market = exchange.contracts().market(perpetual).join();
+            check(market.referencePrices().indexPrice() == 100000 && market.lastFundingRate() == 100 && market.nextFundingTimestamp() == 200);
+            check(order.position().join().snapshot().join().fundingPnL() == -100);
+            var config = new ReferencePriceConfig().withSources(List.of(new PriceSource().withType(PriceSourceType.External).withSourceId(7)));
+            exchange.contracts().configureReference(perpetual, config).join();
+            exchange.contracts().publishPrice(perpetual, 7, 101000, 101).join();
+            exchange.contracts().refresh(perpetual, 101).join();
+            market = exchange.contracts().market(perpetual).join();
+            check(market.referencePrices().indexPrice() == 101000 && market.externalPrices().getFirst().sourceId() == 7);
+            exchange.contracts().configureSchedule(perpetual, new ContractSchedule().withFundingInterval(200).withNextFundingTimestamp(400), 102).join();
+            exchange.contracts().updateReference(perpetual, new ReferencePrices(100000, 100000, 0, -500, 100000, 1), 102).join();
+            check(exchange.contracts().market(perpetual).join().referencePrices().fundingRate() == -500);
+            var future = exchange.symbols().create("FUTURE", SymbolType.Future, base, quote).join();
+            exchange.books().addContract(future, new ContractSpec().withTakerFeeRate(0).withExpiryTimestamp(500), 100000, 0, OrderBookImplementation.Radix).join();
+            exchange.contracts().configureSchedule(future, new ContractSchedule().withExpiryTimestamp(600), 100).join();
+            exchange.contracts().refresh(future, 600).join();
+            check(exchange.contracts().market(future).join().status() == ContractStatus.Settled);
         }
     }
 

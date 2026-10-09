@@ -1,10 +1,18 @@
 #include <advmatch/sdk/AdvMatch.h>
 
 #include <iostream>
+#include <array>
 
 int main()
 {
     namespace sdk = advmatch::sdk;
+
+    sdk::DefaultReferencePriceAlgorithm algorithm;
+    const std::array<sdk::WeightedPrice, 1> samples = {{{100, 1, 1}}};
+    if (!algorithm.calculate(samples, 0, sdk::ReferencePriceConfig{}, sdk::ContractSpec{}, 1))
+    {
+        throw std::runtime_error("SDK reference algorithm verification failed");
+    }
 
     sdk::ExchangeConfig config;
     config.persistence.enabled = false;

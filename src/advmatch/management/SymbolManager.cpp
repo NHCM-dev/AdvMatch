@@ -42,7 +42,7 @@ namespace advmatch
         try
         {
             this->symbolsByName.emplace(result.first->second.name, symbolId);
-            this->symbolPairs.emplace(key);
+            this->symbolPairs.emplace(key, symbolId);
         }
         catch (...)
         {
@@ -73,6 +73,12 @@ namespace advmatch
     {
         Symbol* symbol = symbolId != 0 && symbolId <= this->symbolIndex.size() ? this->symbolIndex[symbolId - 1] : nullptr;
         return symbol && symbol->isActive() ? symbol : nullptr;
+    }
+
+    const Symbol* SymbolManager::getSymbol(SymbolType type, AssetId base, AssetId quote) const noexcept
+    {
+        const auto iterator = this->symbolPairs.find(SymbolKey{type, base, quote});
+        return iterator == this->symbolPairs.end() ? nullptr : this->getSymbol(iterator->second);
     }
 
     bool SymbolManager::removeSymbol(SymbolId symbolId)

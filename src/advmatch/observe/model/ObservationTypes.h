@@ -5,6 +5,7 @@
 #include "advmatch/ledging/account/AccountTypes.h"
 #include "advmatch/matching/Trade.h"
 #include "advmatch/trading/futures/Contract.h"
+#include "advmatch/trading/futures/ReferencePrice.h"
 #include "advmatch/trading/futures/Position.h"
 
 #include <span>
@@ -306,6 +307,11 @@ namespace advmatch::observe
         std::size_t openPositions;
         std::size_t orderParticipants;
         std::size_t pendingLiquidations;
+        ReferencePriceConfig referenceConfig;
+        ReferencePrices referencePrices;
+        Timestamp referenceTimestamp;
+        std::int32_t lastFundingRate;
+        std::vector<ExternalPrice> externalPrices;
     };
 
     struct OverviewView

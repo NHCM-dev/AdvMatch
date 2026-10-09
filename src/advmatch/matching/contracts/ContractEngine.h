@@ -6,6 +6,7 @@
 #include "FundingRateEngine.h"
 #include "DeliveryEngine.h"
 #include "LiquidateEngine.h"
+#include "ReferencePriceEngine.h"
 #include "advmatch/matching/riskengines/impl/ContractRiskEngine.h"
 #include "advmatch/matching/settleengines/impl/ContractSettleEngine.h"
 #include "advmatch/util/PagedPointerIndex.h"
@@ -24,6 +25,7 @@ namespace advmatch
         ContractState beginCommand(ContractMarket& market, Timestamp timestamp);
         ContractState prepareOrder(OrderNode& node, const ContractOrderOptions& options, Timestamp timestamp, ContractParticipant* resolved);
         static ContractState commandState(const ContractMarket& market, Timestamp timestamp) noexcept;
+        ContractResult applyMarkPrice(ContractMarket& market, Price price, Timestamp timestamp, bool processLiquidations);
         MatchingEngine& matching;
         ContractEventSink* eventSink = nullptr;
         bool processingLiquidations = false;
@@ -60,6 +62,7 @@ namespace advmatch
         ContractRiskEngine risk;
         ContractSettleEngine settlement;
         FundingRateEngine funding;
+        ReferencePriceEngine reference;
         DeliveryEngine delivery;
         LiquidateEngine liquidation;
 
@@ -115,6 +118,11 @@ namespace advmatch
             LeverageMultiplier leverage, Timestamp timestamp);
         ContractResult addMargin(PositionId positionId, UserId userId, SymbolId symbolId, BalanceChange amount);
         ContractResult updateMarkPrice(SymbolId symbolId, Price price, Timestamp timestamp);
+        ContractResult configureReference(SymbolId symbolId, const ReferencePriceConfig& config);
+        ContractResult configureSchedule(SymbolId symbolId, const ContractSchedule& schedule, Timestamp timestamp);
+        ContractResult publishPrice(SymbolId symbolId, const ExternalPrice& price);
+        ContractResult refreshReference(SymbolId symbolId, Timestamp timestamp);
+        ContractResult updateReference(SymbolId symbolId, const ReferencePrices& prices, Timestamp timestamp);
         ContractResult fundInsurance(SymbolId symbolId, Account& source, PositiveBalanceChange amount);
         ContractResult settleFunding(SymbolId symbolId, std::int32_t rate, Timestamp timestamp);
         ContractResult expire(SymbolId symbolId, Timestamp timestamp);

@@ -10,6 +10,7 @@
 #include "advmatch/api/async/impl/ThreadPoolExecutor.h"
 #include "advmatch/config/ExchangeConfig.h"
 #include "advmatch/persistence/model/PersistenceStatus.h"
+#include "advmatch/trading/futures/ReferencePriceAlgorithm.h"
 
 namespace advmatch::sdk
 {
@@ -57,6 +58,15 @@ namespace advmatch::sdk
     using advmatch::ContractStatus;
     using advmatch::ContractSpec;
     using advmatch::ContractOrderOptions;
+    using advmatch::PriceSourceType;
+    using advmatch::PriceSource;
+    using advmatch::ExternalPrice;
+    using advmatch::WeightedPrice;
+    using advmatch::ReferencePriceConfig;
+    using advmatch::ReferencePrices;
+    using advmatch::ContractSchedule;
+    using advmatch::ReferencePriceAlgorithm;
+    using advmatch::DefaultReferencePriceAlgorithm;
     using advmatch::ContractEvent;
     using advmatch::ContractEventType;
     using advmatch::Quote;

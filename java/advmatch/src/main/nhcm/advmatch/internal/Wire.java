@@ -79,6 +79,95 @@ public final class Wire
         return new ContractEvent(ContractEventType.fromCode(reader.u8()), reader.u32(), reader.u64(), reader.u64(), reader.u64(), reader.u64(), reader.i64(), reader.i64(), reader.i64(), reader.i64(), reader.u64(), reader.u64(), reader.u64());
     }
 
+    public static void writePriceSource(WireWriter writer, PriceSource value)
+    {
+        writer.u8(value.type().code());
+        writer.u64(value.sourceId());
+        writer.u32(value.weight());
+        writer.u32(value.numerator());
+        writer.u32(value.denominator());
+    }
+
+    public static PriceSource readPriceSource(WireReader reader)
+    {
+        return new PriceSource(PriceSourceType.fromCode(reader.u8()), reader.u64(), reader.u32(), reader.u32(), reader.u32());
+    }
+
+    public static void writeReferencePriceConfig(WireWriter writer, ReferencePriceConfig value)
+    {
+        writer.u64(value.sources().size());
+        for (var item : value.sources())
+        {
+            Wire.writePriceSource(writer, item);
+        }
+        writer.u32(value.minimumSources());
+        writer.u64(value.maxAge());
+        writer.u32(value.maxDeviationRate());
+        writer.u32(value.markClampRate());
+        writer.i32(value.interestRate());
+        writer.u32(value.fundingClampRate());
+        writer.bool(value.automaticFunding());
+        writer.bool(value.automaticDelivery());
+        writer.u32(value.maxCatchUpPeriods());
+    }
+
+    public static ReferencePriceConfig readReferencePriceConfig(WireReader reader)
+    {
+        return new ReferencePriceConfig(reader.list(() -> Wire.readPriceSource(reader)), reader.u32(), reader.u64(), reader.u32(), reader.u32(), reader.i32(), reader.u32(), reader.bool(), reader.bool(), reader.u32());
+    }
+
+    public static void writeExternalPrice(WireWriter writer, ExternalPrice value)
+    {
+        writer.u64(value.sourceId());
+        writer.u64(value.price());
+        writer.u64(value.timestamp());
+    }
+
+    public static ExternalPrice readExternalPrice(WireReader reader)
+    {
+        return new ExternalPrice(reader.u64(), reader.u64(), reader.u64());
+    }
+
+    public static void writeWeightedPrice(WireWriter writer, WeightedPrice value)
+    {
+        writer.u64(value.price());
+        writer.u64(value.timestamp());
+        writer.u32(value.weight());
+    }
+
+    public static WeightedPrice readWeightedPrice(WireReader reader)
+    {
+        return new WeightedPrice(reader.u64(), reader.u64(), reader.u32());
+    }
+
+    public static void writeReferencePrices(WireWriter writer, ReferencePrices value)
+    {
+        writer.u64(value.indexPrice());
+        writer.u64(value.markPrice());
+        writer.i32(value.premiumRate());
+        writer.i32(value.fundingRate());
+        writer.u64(value.deliveryPrice());
+        writer.u32(value.sourceCount());
+    }
+
+    public static ReferencePrices readReferencePrices(WireReader reader)
+    {
+        return new ReferencePrices(reader.u64(), reader.u64(), reader.i32(), reader.i32(), reader.u64(), reader.u32());
+    }
+
+    public static void writeContractSchedule(WireWriter writer, ContractSchedule value)
+    {
+        writer.u64(value.fundingInterval());
+        writer.u64(value.nextFundingTimestamp());
+        writer.u32(value.maxFundingRate());
+        writer.u64(value.expiryTimestamp());
+    }
+
+    public static ContractSchedule readContractSchedule(WireReader reader)
+    {
+        return new ContractSchedule(reader.u64(), reader.u64(), reader.u32(), reader.u64());
+    }
+
     public static void writeQuote(WireWriter writer, Quote value)
     {
         writer.u64(value.price());
@@ -503,11 +592,20 @@ public final class Wire
         writer.u64(value.openPositions());
         writer.u64(value.orderParticipants());
         writer.u64(value.pendingLiquidations());
+        Wire.writeReferencePriceConfig(writer, value.referenceConfig());
+        Wire.writeReferencePrices(writer, value.referencePrices());
+        writer.u64(value.referenceTimestamp());
+        writer.i32(value.lastFundingRate());
+        writer.u64(value.externalPrices().size());
+        for (var item : value.externalPrices())
+        {
+            Wire.writeExternalPrice(writer, item);
+        }
     }
 
     public static MarketView readMarketView(WireReader reader)
     {
-        return new MarketView(reader.u32(), Wire.readContractSpec(reader), ContractStatus.fromCode(reader.u8()), reader.u64(), reader.u64(), reader.u64(), reader.u64(), reader.u64(), reader.u64(), reader.i64(), reader.i64(), reader.i64(), reader.i64(), reader.u64(), reader.u64(), reader.u64(), reader.u64(), reader.u64(), reader.u64());
+        return new MarketView(reader.u32(), Wire.readContractSpec(reader), ContractStatus.fromCode(reader.u8()), reader.u64(), reader.u64(), reader.u64(), reader.u64(), reader.u64(), reader.u64(), reader.i64(), reader.i64(), reader.i64(), reader.i64(), reader.u64(), reader.u64(), reader.u64(), reader.u64(), reader.u64(), reader.u64(), Wire.readReferencePriceConfig(reader), Wire.readReferencePrices(reader), reader.u64(), reader.i32(), reader.list(() -> Wire.readExternalPrice(reader)));
     }
 
     public static void writeOverviewView(WireWriter writer, OverviewView value)

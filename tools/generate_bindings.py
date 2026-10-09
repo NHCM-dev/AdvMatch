@@ -85,6 +85,7 @@ for alias, underlying in aliases.items():
 files = [
     "src/advmatch/trading/OrderTypes.h", "src/advmatch/trading/Symbol.h",
     "src/advmatch/trading/futures/Position.h", "src/advmatch/trading/futures/Contract.h",
+    "src/advmatch/trading/futures/ReferencePrice.h",
     "src/advmatch/matching/orderbooks/OrderBookTypes.h", "src/advmatch/trading/Asset.h",
     "src/advmatch/ledging/account/AccountTypes.h", "src/advmatch/api/model/CommandResult.h",
     "src/advmatch/observe/model/ObservationTypes.h", "src/advmatch/persistence/config/PersistenceConfig.h",
@@ -122,6 +123,7 @@ def add(file, names, prefix=""):
 
 add("src/advmatch/trading/OrderTypes.h", "OrderFillingStatus")
 add("src/advmatch/trading/futures/Contract.h", "ContractSpec ContractOrderOptions ContractEvent")
+add("src/advmatch/trading/futures/ReferencePrice.h", "PriceSource ReferencePriceConfig ExternalPrice WeightedPrice ReferencePrices ContractSchedule")
 add("src/advmatch/matching/orderbooks/OrderBookTypes.h", "Quote")
 add("src/advmatch/matching/Trade.h", "Trade")
 add("src/advmatch/api/model/CommandResult.h", "CommandResult CommandReceipt")
@@ -324,7 +326,7 @@ for name, fs in models.items():
     for t, n, _ in fs:
         if t.startswith("std::vector<"):
             jlines += [f"    public {name}", "    {", f"        {n} = List.copyOf({n});", "    }", ""]
-    if name in ("ObservationQuery", "ExchangeConfig", "PersistenceConfig", "ObservationConfig", "ContractSpec", "ContractOrderOptions"):
+    if name in ("ObservationQuery", "ExchangeConfig", "PersistenceConfig", "ObservationConfig", "ContractSpec", "ContractOrderOptions", "PriceSource", "ReferencePriceConfig", "ReferencePrices", "ContractSchedule"):
         for t, n, _ in fs:
             args = ", ".join("value" if fn == n else "this." + fn for _, fn, _ in fs)
             jlines += [f"    public {name} with{cap(n)}({java_type(t)} value)", "    {", f"        return new {name}({args});", "    }", ""]

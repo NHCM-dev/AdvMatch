@@ -279,15 +279,21 @@ output_class("MatchingEngine", "manager", "Manager", [method("CompletableFuture<
 contracts = [checked("setAutomaticLiquidationBudget(long maxCandidates)", "new SetAutomaticLiquidationBudget(maxCandidates)"), method("CompletableFuture<MarketView> market(Symbol symbol)", "symbol.requireOwner(this.exchange);\nreturn this.exchange.submit(new ReadMarket(new ObservationQuery().withSymbolId(symbol.id()))).thenApply(ApiResults::one);")]
 for jd, jc in [
     ("updateMark(Symbol symbol, long price, long timestamp)", "new UpdateMarkPrice(symbol.id(), price, timestamp)"),
+    ("configureReference(Symbol symbol, ReferencePriceConfig config)", "new ConfigureReferencePrice(symbol.id(), config)"),
+    ("configureSchedule(Symbol symbol, ContractSchedule schedule, long timestamp)", "new ConfigureContractSchedule(symbol.id(), schedule, timestamp)"),
+    ("publishPrice(Symbol symbol, long sourceId, long price, long timestamp)", "new PublishExternalPrice(symbol.id(), new ExternalPrice(sourceId, price, timestamp))"),
+    ("refresh(Symbol symbol, long timestamp)", "new RefreshReferencePrice(symbol.id(), timestamp)"),
+    ("updateReference(Symbol symbol, ReferencePrices prices, long timestamp)", "new UpdateReferencePrice(symbol.id(), prices, timestamp)"),
     ("settleFunding(Symbol symbol, int rate, long timestamp)", "new SettleFunding(symbol.id(), rate, timestamp)"),
     ("expire(Symbol symbol, long timestamp)", "new Expire(symbol.id(), timestamp)"),
     ("deliver(Symbol symbol, long price, long timestamp)", "new Deliver(symbol.id(), price, timestamp)"),
     ("processLiquidations(Symbol symbol, long timestamp, boolean force, long maxCandidates)", "new ProcessLiquidations(symbol.id(), timestamp, force, maxCandidates)"),
     ("fundInsurance(Symbol symbol, Account source, long amount)", "new FundInsurance(symbol.id(), source.id(), amount)")]:
     m = checked(jd, jc)
-    extra = "source.requireOwner(this.exchange);\n" if "source" in jd else ""
+    extra = "source.requireOwner(this.exchange);\n" if "Account source" in jd else ""
 
     contracts.append((m[0], "symbol.requireOwner(this.exchange);\n" + extra + m[1]))
+contracts.append(method("CompletableFuture<CommandReceipt> bindSpot(Symbol symbol, Symbol spot)", "spot.requireOwner(this.exchange);\nreturn this.configureReference(symbol, new ReferencePriceConfig().withSources(java.util.List.of(new PriceSource().withSourceId(spot.id()))));"))
 output_class("ContractManager", "manager", "Manager", contracts)
 
 emit(JAVA / "MatchingExchange.java", """

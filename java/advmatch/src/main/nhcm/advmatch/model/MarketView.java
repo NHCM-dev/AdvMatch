@@ -3,11 +3,16 @@ package nhcm.advmatch.model;
 
 import java.util.List;
 
-public record MarketView(long symbolId, ContractSpec spec, ContractStatus status, long markPrice, long markTimestamp, long commandTimestamp, long nextFundingTimestamp, long lastFundingTimestamp, long deliveryPrice, long insuranceBalance, long clearingBalance, long feeBalance, long fundingRoundingBalance, long liquidityRevision, long lastLiquidationRevision, long retainedPositions, long openPositions, long orderParticipants, long pendingLiquidations)
+public record MarketView(long symbolId, ContractSpec spec, ContractStatus status, long markPrice, long markTimestamp, long commandTimestamp, long nextFundingTimestamp, long lastFundingTimestamp, long deliveryPrice, long insuranceBalance, long clearingBalance, long feeBalance, long fundingRoundingBalance, long liquidityRevision, long lastLiquidationRevision, long retainedPositions, long openPositions, long orderParticipants, long pendingLiquidations, ReferencePriceConfig referenceConfig, ReferencePrices referencePrices, long referenceTimestamp, int lastFundingRate, List<ExternalPrice> externalPrices)
 {
     public MarketView()
     {
-        this(0, new ContractSpec(), ContractStatus.Trading, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+        this(0, new ContractSpec(), ContractStatus.Trading, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, new ReferencePriceConfig(), new ReferencePrices(), 0, 0, List.of());
+    }
+
+    public MarketView
+    {
+        externalPrices = List.copyOf(externalPrices);
     }
 
 }

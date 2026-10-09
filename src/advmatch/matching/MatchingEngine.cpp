@@ -93,6 +93,7 @@ namespace advmatch
 
         this->orderBooks.resize(std::max(this->orderBooks.size(), static_cast<std::size_t>(symbolId)));
         this->bookServices.resize(this->orderBooks.size());
+        this->bookUpdateTimestamps.resize(this->orderBooks.size());
         this->orderBooks[symbolId - 1] = createOrderBook(symbolId, &this->contracts->getSettleEngine(), implementation);
         this->orderBooks[symbolId - 1]->observationListener = this->observationListener;
         ++this->orderBookCount;
@@ -142,6 +143,7 @@ namespace advmatch
         book->observationListener = this->observationListener;
         ++this->orderBookCount;
         this->bookServices.resize(this->orderBooks.size());
+        this->bookUpdateTimestamps.resize(this->orderBooks.size());
         this->bookServices[symbolId - 1] = {&this->riskEngine, &this->accountLedger, &this->settleEngine};
         return true;
     }
@@ -338,6 +340,7 @@ namespace advmatch
         }
 
         services.settlement->settleTrades(trades);
+        this->bookUpdateTimestamps[symbolId - 1] = std::max(this->bookUpdateTimestamps[symbolId - 1], timestamp);
         services.settlement->reconcileReservation(*node);
         if (contract && !liquidation)
         {
@@ -422,6 +425,8 @@ namespace advmatch
         if (result)
         {
             services.settlement->settleTrades(trades);
+            auto& bookTimestamp = this->bookUpdateTimestamps[node->basicOrder.symbolId - 1];
+            bookTimestamp = std::max(bookTimestamp, timestamp);
         }
 
         services.settlement->reconcileReservation(*node);
@@ -502,6 +507,11 @@ namespace advmatch
         }
 
         auto result = book->modifyQuantity(*node, change, timestamp);
+        if (result)
+        {
+            auto& bookTimestamp = this->bookUpdateTimestamps[node->basicOrder.symbolId - 1];
+            bookTimestamp = std::max(bookTimestamp, timestamp);
+        }
         services.settlement->reconcileReservation(*node);
         return result;
     }
@@ -530,6 +540,8 @@ namespace advmatch
         if (result)
         {
             services.settlement->reconcileReservation(*node);
+            auto& bookTimestamp = this->bookUpdateTimestamps[node->basicOrder.symbolId - 1];
+            bookTimestamp = std::max(bookTimestamp, timestamp);
         }
 
         return result;

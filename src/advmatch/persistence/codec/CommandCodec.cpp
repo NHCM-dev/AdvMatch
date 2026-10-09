@@ -1,4 +1,5 @@
 #include "CommandCodec.h"
+#include "ReferencePriceCodec.h"
 
 namespace advmatch
 {
@@ -226,6 +227,38 @@ namespace advmatch
                     writer.number(id);
                 }
             }
+
+            void operator()(const commands::ConfigureReferencePrice& value)
+            {
+                writer.number(value.symbolId);
+                ReferencePriceCodec::write(writer, value.config);
+            }
+
+            void operator()(const commands::ConfigureContractSchedule& value)
+            {
+                writer.number(value.symbolId);
+                ReferencePriceCodec::write(writer, value.schedule);
+                writer.number(value.timestamp);
+            }
+
+            void operator()(const commands::PublishExternalPrice& value)
+            {
+                writer.number(value.symbolId);
+                ReferencePriceCodec::write(writer, value.price);
+            }
+
+            void operator()(const commands::RefreshReferencePrice& value)
+            {
+                writer.number(value.symbolId);
+                writer.number(value.timestamp);
+            }
+
+            void operator()(const commands::UpdateReferencePrice& value)
+            {
+                writer.number(value.symbolId);
+                ReferencePriceCodec::write(writer, value.prices);
+                writer.number(value.timestamp);
+            }
         };
 
         ContractSpec readSpec(BinaryReader& reader)
@@ -324,6 +357,16 @@ namespace advmatch
 
                     return value;
                 }
+                case 25:
+                    return commands::ConfigureReferencePrice{reader.number<SymbolId>(), ReferencePriceCodec::readReferencePriceConfig(reader)};
+                case 26:
+                    return commands::ConfigureContractSchedule{reader.number<SymbolId>(), ReferencePriceCodec::readContractSchedule(reader), reader.number<Timestamp>()};
+                case 27:
+                    return commands::PublishExternalPrice{reader.number<SymbolId>(), ReferencePriceCodec::readExternalPrice(reader)};
+                case 28:
+                    return commands::RefreshReferencePrice{reader.number<SymbolId>(), reader.number<Timestamp>()};
+                case 29:
+                    return commands::UpdateReferencePrice{reader.number<SymbolId>(), ReferencePriceCodec::readReferencePrices(reader), reader.number<Timestamp>()};
                 default: throw PersistenceError(PersistenceFailure::UnsupportedVersion, "unknown trading operation");
             }
         }

@@ -255,6 +255,31 @@ namespace advmatch
                 result.archivedPositions = value.archivedPositions;
                 return result;
             }
+
+            CommandResult operator()(const commands::ConfigureReferencePrice& command)
+            {
+                return contractResult(this->contracts().configureReference(command.symbolId, command.config));
+            }
+
+            CommandResult operator()(const commands::ConfigureContractSchedule& command)
+            {
+                return contractResult(this->contracts().configureSchedule(command.symbolId, command.schedule, command.timestamp));
+            }
+
+            CommandResult operator()(const commands::PublishExternalPrice& command)
+            {
+                return contractResult(this->contracts().publishPrice(command.symbolId, command.price));
+            }
+
+            CommandResult operator()(const commands::RefreshReferencePrice& command)
+            {
+                return contractResult(this->contracts().refreshReference(command.symbolId, command.timestamp));
+            }
+
+            CommandResult operator()(const commands::UpdateReferencePrice& command)
+            {
+                return contractResult(this->contracts().updateReference(command.symbolId, command.prices, command.timestamp));
+            }
         };
     }
 
