@@ -1,11 +1,14 @@
 #ifndef ADVMATCH_TRADING_COMMAND_H
 #define ADVMATCH_TRADING_COMMAND_H
 
-#include "advmatch/matching/MatchingEngine.h"
+#include "advmatch/matching/orderbooks/OrderBookTypes.h"
+#include "advmatch/trading/futures/Contract.h"
 
 #include "../../model/CommandResult.h"
 
 #include <variant>
+#include <vector>
+#include <limits>
 
 namespace advmatch
 {

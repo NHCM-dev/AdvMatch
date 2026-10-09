@@ -4,13 +4,13 @@
 
 #ifndef ADVMATCH_ASSET_H
 #define ADVMATCH_ASSET_H
-#include "../util/Types.h"
+#include "../util/ValueTypes.h"
 #include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
 
-#include "../util/Utils.h"
+#include "../util/Result.h"
 
 namespace advmatch
 {

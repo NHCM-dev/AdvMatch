@@ -5,7 +5,7 @@
 #ifndef ADVMATCH_SYMBOL_H
 #define ADVMATCH_SYMBOL_H
 
-#include "../util/Types.h"
+#include "../util/ValueTypes.h"
 #include <string>
 #include <utility>
 

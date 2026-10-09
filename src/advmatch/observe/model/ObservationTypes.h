@@ -1,11 +1,15 @@
 #ifndef ADVMATCH_OBSERVATION_TYPES_H
 #define ADVMATCH_OBSERVATION_TYPES_H
 
-#include "advmatch/matching/MatchingEngine.h"
+#include "advmatch/matching/orderbooks/OrderBookTypes.h"
+#include "advmatch/ledging/account/AccountTypes.h"
+#include "advmatch/matching/Trade.h"
+#include "advmatch/trading/futures/Contract.h"
 #include "advmatch/trading/futures/Position.h"
 
 #include <span>
 #include <variant>
+#include <vector>
 
 namespace advmatch::observe
 {

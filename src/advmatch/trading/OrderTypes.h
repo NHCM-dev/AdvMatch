@@ -1,7 +1,7 @@
 #ifndef ADVMATCH_ORDER_TYPES_H
 #define ADVMATCH_ORDER_TYPES_H
 
-#include "../util/Types.h"
+#include "../util/ValueTypes.h"
 
 namespace advmatch
 {

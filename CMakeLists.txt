@@ -41,6 +41,7 @@ include(GNUInstallDirs)
 option(ADVMATCH_USE_SYSTEM_DEPENDENCIES "Use compatible dependencies installed on the host" OFF)
 option(ADVMATCH_BUILD_BENCHMARKS "Build the standalone performance benchmarks" ON)
 option(ADVMATCH_BUILD_EXAMPLES "Build developer usage examples" ON)
+option(ADVMATCH_BUILD_CPP_SDK "Build the distributable C++ object SDK" ON)
 option(ADVMATCH_ENABLE_IPO "Optimize across AdvMatch translation units in Release" OFF)
 option(ADVMATCH_NATIVE_ARCH "Optimize for this host CPU (non-portable binaries)" OFF)
 option(ADVMATCH_STATIC_MINGW_RUNTIME "Statically link the MinGW runtime into distributable binaries" ON)
@@ -307,6 +308,10 @@ target_sources(advmatch_core PRIVATE
     src/advmatch/persistence/PersistentTradingEngine.h
     src/advmatch/persistence/TradingCommand.h)
 add_library(AdvMatch::core ALIAS advmatch_core)
+target_sources(advmatch_core PRIVATE
+    src/advmatch/util/ValueTypes.h src/advmatch/util/Result.h
+    src/advmatch/ledging/account/AccountTypes.h
+    src/advmatch/matching/Trade.h src/advmatch/matching/orderbooks/OrderBookTypes.h)
 set_target_properties(advmatch_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_compile_features(advmatch_core PUBLIC cxx_std_20)
 target_compile_definitions(advmatch_core PRIVATE ADVMATCH_VERSION="${PROJECT_VERSION}")
@@ -317,6 +322,29 @@ target_include_directories(advmatch_core PUBLIC
 target_link_libraries(advmatch_core
     PUBLIC AdvMatch::disruptor AdvMatch::boost_headers unordered_dense::unordered_dense absl::flat_hash_map absl::node_hash_map
     PRIVATE fmt::fmt spdlog::spdlog)
+
+if(ADVMATCH_BUILD_CPP_SDK)
+    # These async functions are used by public inline Future methods. Their
+    # implementation lives in core but must also be exported by the SDK DLL.
+    target_compile_definitions(advmatch_core PRIVATE ADVMATCH_SDK_BUILD)
+
+    add_library(advmatch_sdk SHARED src/advmatch/sdk/NativeExchangeApi.cpp)
+    file(GLOB_RECURSE ADVMATCH_SDK_PUBLIC_HEADERS CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/include/advmatch/sdk/*.h")
+    target_sources(advmatch_sdk PRIVATE ${ADVMATCH_SDK_PUBLIC_HEADERS})
+    add_library(AdvMatch::sdk ALIAS advmatch_sdk)
+    set_target_properties(advmatch_sdk PROPERTIES EXPORT_NAME sdk OUTPUT_NAME advmatch_sdk)
+    target_compile_features(advmatch_sdk PUBLIC cxx_std_20)
+    target_compile_definitions(advmatch_sdk PRIVATE ADVMATCH_SDK_BUILD PUBLIC ADVMATCH_SDK_SHARED)
+    target_include_directories(advmatch_sdk PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>)
+    target_link_libraries(advmatch_sdk PRIVATE AdvMatch::core PUBLIC Threads::Threads)
+    advmatch_configure_runtime(advmatch_sdk)
+    if(WIN32)
+        set_target_properties(advmatch_sdk PROPERTIES PREFIX "")
+    endif()
+endif()
 
 # Stable C symbols and plain C data types provide the boundary for JNI.
 add_library(advmatch SHARED
@@ -348,6 +376,11 @@ if(ADVMATCH_BUILD_JNI)
 endif()
 
 if(ADVMATCH_BUILD_EXAMPLES)
+    if(ADVMATCH_BUILD_CPP_SDK)
+        add_executable(advmatch_cpp_sdk_example examples/cpp-sdk/main.cpp)
+        target_link_libraries(advmatch_cpp_sdk_example PRIVATE AdvMatch::sdk)
+        advmatch_configure_runtime(advmatch_cpp_sdk_example)
+    endif()
     add_executable(advmatch_exchange_example examples/exchange/main.cpp)
     target_link_libraries(advmatch_exchange_example PRIVATE AdvMatch::core)
     advmatch_configure_runtime(advmatch_exchange_example)
@@ -361,6 +394,28 @@ if(ADVMATCH_BUILD_EXAMPLES)
 endif()
 
 if(BUILD_TESTING)
+    if(ADVMATCH_BUILD_CPP_SDK)
+        add_executable(advmatch_sdk_tests tests/sdk.cpp)
+        target_link_libraries(advmatch_sdk_tests PRIVATE AdvMatch::sdk)
+        advmatch_configure_runtime(advmatch_sdk_tests)
+        add_test(NAME advmatch_sdk_tests COMMAND advmatch_sdk_tests)
+        set_tests_properties(advmatch_sdk_tests PROPERTIES TIMEOUT 60)
+        add_executable(advmatch_sdk_adapter_tests tests/sdk_adapter.cpp)
+        target_link_libraries(advmatch_sdk_adapter_tests PRIVATE AdvMatch::sdk AdvMatch::core)
+        advmatch_configure_runtime(advmatch_sdk_adapter_tests)
+        add_test(NAME advmatch_sdk_adapter_tests COMMAND advmatch_sdk_adapter_tests)
+        set_tests_properties(advmatch_sdk_adapter_tests PROPERTIES TIMEOUT 30)
+        add_test(NAME advmatch_sdk_install_tests COMMAND ${CMAKE_COMMAND}
+            -DADVMATCH_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+            -DADVMATCH_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}
+            -DADVMATCH_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+            -DADVMATCH_C_COMPILER=${CMAKE_C_COMPILER}
+            -DADVMATCH_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}
+            -DADVMATCH_GENERATOR=${CMAKE_GENERATOR}
+            -DADVMATCH_CONFIG=$<CONFIG>
+            -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/sdk_install.cmake)
+        set_tests_properties(advmatch_sdk_install_tests PROPERTIES TIMEOUT 120)
+    endif()
     add_executable(advmatch_binding_tests tests/bindings.cpp)
     target_link_libraries(advmatch_binding_tests PRIVATE AdvMatch::core advmatch)
     advmatch_configure_runtime(advmatch_binding_tests)
@@ -505,6 +560,44 @@ if(ADVMATCH_BUILD_BENCHMARKS)
 endif()
 
 install(FILES include/advmatch/advmatch.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/advmatch)
+if(ADVMATCH_BUILD_CPP_SDK)
+    include(CMakePackageConfigHelpers)
+    install(TARGETS advmatch_sdk EXPORT AdvMatchSdkTargets
+        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+    install(DIRECTORY include/advmatch/sdk DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/advmatch)
+
+    # Public DTO/Future dependencies contain only standard library types.
+    # No engine, Disruptor, Abseil, Boost or dense-map header is required by users.
+    set(ADVMATCH_SDK_VALUE_HEADERS
+        util/ValueTypes.h util/Result.h trading/Asset.h trading/Symbol.h trading/OrderTypes.h
+        trading/futures/Position.h trading/futures/Contract.h matching/Trade.h
+        matching/orderbooks/OrderBookTypes.h ledging/account/AccountTypes.h
+        api/ApiError.h api/model/CommandResult.h api/model/ReadResponse.h
+        api/command/model/TradingCommand.h api/async/Executor.h api/async/FutureError.h
+        api/async/CompletableFuture.h api/async/detail/FutureState.h api/async/impl/ThreadPoolExecutor.h
+        config/ExchangeConfig.h observe/model/ObservationTypes.h
+        persistence/config/PersistenceConfig.h persistence/model/CommittedCommand.h
+        persistence/model/PersistenceStatus.h)
+    foreach(header IN LISTS ADVMATCH_SDK_VALUE_HEADERS)
+        get_filename_component(header_directory "${header}" DIRECTORY)
+        install(FILES "src/advmatch/${header}" DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/advmatch/${header_directory}")
+    endforeach()
+
+    configure_package_config_file(cmake/AdvMatchConfig.cmake.in "${CMAKE_CURRENT_BINARY_DIR}/AdvMatchConfig.cmake"
+        INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/AdvMatch")
+    write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/AdvMatchConfigVersion.cmake"
+        VERSION ${PROJECT_VERSION} COMPATIBILITY SameMajorVersion)
+    install(EXPORT AdvMatchSdkTargets NAMESPACE AdvMatch:: DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/AdvMatch")
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/AdvMatchConfig.cmake" "${CMAKE_CURRENT_BINARY_DIR}/AdvMatchConfigVersion.cmake"
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/AdvMatch")
+    install(DIRECTORY examples/cpp-sdk/ DESTINATION examples/cpp-sdk)
+    install(FILES docs/cpp-sdk.md DESTINATION docs)
+    if(ADVMATCH_BUILD_EXAMPLES)
+        install(TARGETS advmatch_cpp_sdk_example RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+    endif()
+endif()
 if(ADVMATCH_BUILD_EXAMPLES)
     install(TARGETS advmatch_exchange_example advmatch_observe_example advmatch_persistence_example RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
@@ -514,10 +607,22 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
 endif()
 install(FILES third_party/disruptor-cpp/LICENSE DESTINATION licenses/disruptor-cpp)
 
+# The SDK embeds these dependencies. Keep their notices with binary packages.
+foreach(dependency IN ITEMS fmt spdlog unordered_dense absl advmatch_boost)
+    set(dependency_license "${${dependency}_SOURCE_DIR}/LICENSE")
+    if(dependency STREQUAL "advmatch_boost")
+        set(dependency_license "${${dependency}_SOURCE_DIR}/LICENSE_1_0.txt")
+    endif()
+    if(EXISTS "${dependency_license}")
+        install(FILES "${dependency_license}" DESTINATION "licenses/${dependency}")
+    endif()
+endforeach()
+
 set(CPACK_GENERATOR ZIP)
 set(CPACK_PACKAGE_NAME AdvMatch)
 set(CPACK_PACKAGE_VENDOR AdvMatch)
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_FILE_NAME "AdvMatch-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}")
+set(CPACK_PACKAGE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
 set(CPACK_PACKAGE_CHECKSUM SHA256)
 include(CPack)

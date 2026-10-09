@@ -1,7 +1,11 @@
 #ifndef ADVMATCH_COMMITTED_COMMAND_H
 #define ADVMATCH_COMMITTED_COMMAND_H
 
-#include "advmatch/api/command/model/TradingCommand.h"
+#include "advmatch/api/model/CommandResult.h"
+#include "advmatch/matching/Trade.h"
+#include "advmatch/trading/futures/Contract.h"
+
+#include <vector>
 
 namespace advmatch
 {

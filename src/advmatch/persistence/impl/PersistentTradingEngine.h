@@ -1,6 +1,8 @@
 #ifndef ADVMATCH_PERSISTENT_TRADING_ENGINE_H
 #define ADVMATCH_PERSISTENT_TRADING_ENGINE_H
 
+#include "advmatch/matching/MatchingEngine.h"
+
 #include "../command/CommandExecutor.h"
 #include "../config/PersistenceConfig.h"
 #include "../abstract/PersistenceStore.h"

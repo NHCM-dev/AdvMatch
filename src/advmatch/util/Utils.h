@@ -5,6 +5,7 @@
 #ifndef ADVMATCH_UTILS_H
 #define ADVMATCH_UTILS_H
 #include "Types.h"
+#include "Result.h"
 #include <cstdint>
 #include <limits>
 #include <optional>
@@ -186,60 +187,5 @@ namespace advmatch::util
         return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
     }
 } // advmatch
-
-namespace advmatch
-{
-    template <typename State>
-    struct Result
-    {
-        explicit Result(State state)
-            : state(state), errorMessage(std::nullopt)
-        {
-        }
-
-        explicit Result(State state, std::string errorMessage)
-            : state(state), errorMessage(std::move(errorMessage))
-        {
-        }
-
-        State state;
-        std::optional<std::string> errorMessage;
-    };
-
-    template <typename State, typename Content>
-    struct ResultContent
-    {
-        explicit ResultContent(State state, Content content)
-            : state(state), content(content), errorMessage(std::nullopt)
-        {
-        }
-
-        explicit ResultContent(State state, Content content, std::string errorMessage)
-            : state(state), content(content), errorMessage(std::move(errorMessage))
-        {
-        }
-
-        explicit ResultContent(State state)
-            : state(state), content(std::nullopt), errorMessage(std::nullopt)
-        {
-        }
-
-        explicit ResultContent(State state, std::string errorMessage)
-            : state(state), content(std::nullopt), errorMessage(std::move(errorMessage))
-        {
-        }
-
-        State state;
-        std::optional<Content> content;
-        std::optional<std::string> errorMessage;
-    };
-
-    template <typename A, typename B>
-    struct Pair
-    {
-        A first;
-        B second;
-    };
-}
 
 #endif //ADVMATCH_UTILS_H

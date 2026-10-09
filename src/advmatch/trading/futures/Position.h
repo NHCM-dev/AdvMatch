@@ -4,7 +4,7 @@
 
 #ifndef ADVMATCH_POSITION_H
 #define ADVMATCH_POSITION_H
-#include "../../util/Types.h"
+#include "../../util/ValueTypes.h"
 #include <optional>
 
 namespace advmatch

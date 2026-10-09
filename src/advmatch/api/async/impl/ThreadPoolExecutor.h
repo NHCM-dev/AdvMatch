@@ -7,7 +7,7 @@
 
 namespace advmatch::api::async
 {
-    class ThreadPoolExecutor final : public Executor
+    class ADVMATCH_SDK_API ThreadPoolExecutor final : public Executor
     {
         struct Impl;
         std::unique_ptr<Impl> impl;

@@ -2,6 +2,7 @@
 #define ADVMATCH_ACCOUNT_H
 
 #include "../../trading/Asset.h"
+#include "AccountTypes.h"
 #include "../../util/Containers.h"
 #include "../../util/Types.h"
 
@@ -11,12 +12,6 @@
 namespace advmatch
 {
     class AccountManager;
-
-    enum class AccountType : std::uint8_t
-    {
-        Spot,
-        Contract
-    };
 
     class Account
     {

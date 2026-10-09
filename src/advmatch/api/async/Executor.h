@@ -1,6 +1,8 @@
 #ifndef ADVMATCH_ASYNC_EXECUTOR_H
 #define ADVMATCH_ASYNC_EXECUTOR_H
 
+#include "advmatch/sdk/Export.h"
+
 #include <functional>
 #include <memory>
 
@@ -15,7 +17,7 @@ namespace advmatch::api::async
         virtual void execute(std::function<void()> work) = 0;
     };
 
-    std::shared_ptr<Executor> defaultExecutor();
+    ADVMATCH_SDK_API std::shared_ptr<Executor> defaultExecutor();
 }
 
 #endif // ADVMATCH_ASYNC_EXECUTOR_H

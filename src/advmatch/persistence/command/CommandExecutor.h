@@ -1,6 +1,8 @@
 #ifndef ADVMATCH_COMMAND_EXECUTOR_H
 #define ADVMATCH_COMMAND_EXECUTOR_H
 
+#include "advmatch/matching/MatchingEngine.h"
+
 #include "advmatch/api/command/model/TradingCommand.h"
 #include "advmatch/management/AssetManager.h"
 

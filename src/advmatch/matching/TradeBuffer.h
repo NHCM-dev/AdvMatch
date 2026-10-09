@@ -2,6 +2,7 @@
 #define ADVMATCH_TRADE_BUFFER_H
 
 #include "../trading/OrderTypes.h"
+#include "Trade.h"
 #include "../util/Containers.h"
 
 #include <cstddef>
@@ -11,14 +12,6 @@ namespace advmatch
     struct OrderNode;
     class OrderBook;
     class SettleEngine;
-
-    struct Trade
-    {
-        OrderId makerOrderId;
-        OrderId takerOrderId;
-        Price price;
-        Quantity quantity;
-    };
 
     class TradeBuffer
     {

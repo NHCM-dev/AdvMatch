@@ -71,7 +71,7 @@ def fields(text, name):
     return result
 
 
-types = source("src/advmatch/util/Types.h")
+types = source("src/advmatch/util/ValueTypes.h")
 aliases = dict(re.findall(r"using (\w+) = (std::(?:u?int\d+_t));", types))
 numbers = {
     "std::uint8_t": ("int", "u8"), "std::uint16_t": ("int", "u16"),
@@ -85,8 +85,8 @@ for alias, underlying in aliases.items():
 files = [
     "src/advmatch/trading/OrderTypes.h", "src/advmatch/trading/Symbol.h",
     "src/advmatch/trading/futures/Position.h", "src/advmatch/trading/futures/Contract.h",
-    "src/advmatch/matching/orderbooks/OrderBook.h", "src/advmatch/trading/Asset.h",
-    "src/advmatch/ledging/account/Account.h", "src/advmatch/api/model/CommandResult.h",
+    "src/advmatch/matching/orderbooks/OrderBookTypes.h", "src/advmatch/trading/Asset.h",
+    "src/advmatch/ledging/account/AccountTypes.h", "src/advmatch/api/model/CommandResult.h",
     "src/advmatch/observe/model/ObservationTypes.h", "src/advmatch/persistence/config/PersistenceConfig.h",
 ]
 enums = {}
@@ -122,8 +122,8 @@ def add(file, names, prefix=""):
 
 add("src/advmatch/trading/OrderTypes.h", "OrderFillingStatus")
 add("src/advmatch/trading/futures/Contract.h", "ContractSpec ContractOrderOptions ContractEvent")
-add("src/advmatch/matching/orderbooks/OrderBook.h", "Quote")
-add("src/advmatch/matching/TradeBuffer.h", "Trade")
+add("src/advmatch/matching/orderbooks/OrderBookTypes.h", "Quote")
+add("src/advmatch/matching/Trade.h", "Trade")
 add("src/advmatch/api/model/CommandResult.h", "CommandResult CommandReceipt")
 add("src/advmatch/persistence/config/PersistenceConfig.h", "PersistenceConfig")
 add("src/advmatch/observe/model/ObservationTypes.h", "ObservationConfig ReadStamp ReadIdentity ReadCursor ObservationQuery ReadPage AssetView UserView AccountView BalanceView CrossMarginView SymbolView OrderView PositionView BookView DepthView MarketView OverviewView TradeView ContractEventView", "observe::")

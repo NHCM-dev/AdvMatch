@@ -1,7 +1,7 @@
 #ifndef ADVMATCH_PERSISTENCE_CONFIG_H
 #define ADVMATCH_PERSISTENCE_CONFIG_H
 
-#include "advmatch/util/Types.h"
+#include "advmatch/util/ValueTypes.h"
 #include <filesystem>
 
 namespace advmatch

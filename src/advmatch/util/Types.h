@@ -1,6 +1,8 @@
 #ifndef ADVMATCH_TYPES_H
 #define ADVMATCH_TYPES_H
 
+#include "ValueTypes.h"
+
 #include <absl/container/flat_hash_map.h>
 #include <absl/container/node_hash_map.h>
 #include <ankerl/unordered_dense.h>
@@ -21,17 +23,6 @@ namespace advmatch
         class TradingObserver;
     }
 
-    using UserId = std::uint64_t;
-    using AccountId = std::uint64_t;
-    using AssetId = std::uint32_t;
-    using SymbolId = std::uint32_t;
-    using OrderId = std::uint64_t;
-    using PositionId = std::uint64_t;
-
-    using Price = std::uint64_t;
-    using Quantity = std::uint64_t;
-    using QuantityChange = std::int64_t;
-
     // Balance is a stored ledging value. BalanceChange is a signed delta that
     // can credit or debit a balance. PositiveBalanceChange is a non-negative
     // amount used by reserve, release, consume, and settlement operations.
@@ -40,19 +31,6 @@ namespace advmatch
 #else
     using WideBalance = boost::multiprecision::int128_t;
 #endif
-
-    using Balance = std::int64_t;
-    using BalanceChange = std::int64_t;
-    using PositiveBalanceChange = std::uint64_t;
-
-    using Scale = std::uint8_t;
-    using LeverageMultiplier = std::uint16_t;
-    // Fixed-point decimal rate; Position.h defines the scale.
-    using MMRRate = std::uint32_t;
-
-    // Milliseconds since the Unix epoch.
-    using Timestamp = std::uint64_t;
-    using CommandSequence = std::uint64_t;
 
     // Elements are stored inline until InlineCapacity is exceeded. Growing past
     // the capacity invalidates every pointer, reference, and iterator. Erasing

@@ -2,6 +2,8 @@
 
 ## 使用入口
 
+外部 C++ 项目建议使用可独立安装的对象 SDK：`<advmatch/sdk/AdvMatch.h>`、`advmatch::sdk::MatchingExchange` 和 `AdvMatch::sdk`。User、Account、Order、Position 及各种 Manager 的用法见 [C++ SDK](cpp-sdk.md)。下面介绍仓库内的原生命令接口。
+
 包含 `advmatch/Exchange.h`、`advmatch/api/command/Commands.h`，链接 `AdvMatch::core`。这是 C++ API；Java 通过 JNI 调用同一套交易所命令，见 `docs/bindings.md`。
 
 `Exchange` 拥有完整交易会话：资产、用户、账户、交易对、现货/期货/永续撮合、风控、资金预留与结算、仓位、杠杆、强平、资金费、交割、持久化和读取。功能范围与现有交易引擎相同，Option 类型的元数据不表示已经实现期权定价/交易引擎。
@@ -244,7 +246,7 @@ target_link_libraries(my_exchange PRIVATE AdvMatch::core)
 advmatch_configure_runtime(my_exchange)
 ```
 
-当前 install/ZIP 提供可执行示例和原有 C ABI 库；C++ API 使用上述源码目标接入，不把只有 C ABI 的安装目录当成完整 C++ SDK。
+当前 install/ZIP 同时提供完整 C++ 对象 SDK（`AdvMatch::sdk`）、独立消费者示例和原有 C ABI/JNI 库。外部项目通过安装包的 CMake package 接入；上述原生 `AdvMatch::core` 接口仍用于仓库内开发。
 
 ```powershell
 cmake --preset release

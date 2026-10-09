@@ -1,0 +1,45 @@
+foreach(required IN ITEMS ADVMATCH_SOURCE_DIR ADVMATCH_BINARY_DIR ADVMATCH_CXX_COMPILER ADVMATCH_GENERATOR)
+    if(NOT DEFINED ${required})
+        message(FATAL_ERROR "Missing ${required}")
+    endif()
+endforeach()
+
+function(run_checked)
+    execute_process(COMMAND ${ARGV} RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
+    if(NOT result EQUAL 0)
+        message(FATAL_ERROR "SDK consumer command failed (${result}): ${ARGV}\n${output}\n${error}")
+    endif()
+endfunction()
+
+get_filename_component(test_root "${ADVMATCH_BINARY_DIR}/sdk-consumer" ABSOLUTE)
+string(RANDOM LENGTH 8 ALPHABET 0123456789abcdef run_id)
+set(run_root "${test_root}/${run_id}")
+set(staging "${run_root}/staging")
+set(prefix "${run_root}/relocated")
+
+# Both move targets are fixed children of this test's absolute build directory.
+get_filename_component(staging_checked "${staging}" ABSOLUTE)
+get_filename_component(prefix_checked "${prefix}" ABSOLUTE)
+if(NOT staging_checked STREQUAL staging OR NOT prefix_checked STREQUAL prefix)
+    message(FATAL_ERROR "Invalid SDK installation test paths")
+endif()
+
+run_checked("${CMAKE_COMMAND}" --install "${ADVMATCH_BINARY_DIR}" --config "${ADVMATCH_CONFIG}" --prefix "${staging}")
+file(RENAME "${staging}" "${prefix}")
+run_checked("${CMAKE_COMMAND}" -S "${ADVMATCH_SOURCE_DIR}/examples/cpp-sdk" -B "${run_root}/consumer"
+    -G "${ADVMATCH_GENERATOR}" "-DCMAKE_PREFIX_PATH=${prefix}" "-DCMAKE_CXX_COMPILER=${ADVMATCH_CXX_COMPILER}"
+    "-DCMAKE_MAKE_PROGRAM=${ADVMATCH_MAKE_PROGRAM}" "-DCMAKE_BUILD_TYPE=${ADVMATCH_CONFIG}")
+run_checked("${CMAKE_COMMAND}" --build "${run_root}/consumer" --config "${ADVMATCH_CONFIG}")
+
+set(executable "${run_root}/consumer/advmatch_cpp_sdk_consumer")
+if(WIN32)
+    string(APPEND executable ".exe")
+endif()
+if(NOT EXISTS "${executable}")
+    set(executable "${run_root}/consumer/${ADVMATCH_CONFIG}/advmatch_cpp_sdk_consumer")
+    if(WIN32)
+        string(APPEND executable ".exe")
+    endif()
+endif()
+run_checked("${executable}")
+message(STATUS "Relocated SDK package configured, linked and traded without repository/dependency include paths")

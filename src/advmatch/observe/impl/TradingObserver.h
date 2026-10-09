@@ -1,6 +1,8 @@
 #ifndef ADVMATCH_TRADING_OBSERVER_H
 #define ADVMATCH_TRADING_OBSERVER_H
 
+#include "advmatch/matching/MatchingEngine.h"
+
 #include "../model/ObservationTypes.h"
 #include "../abstract/OrderBookListener.h"
 #include "advmatch/management/AssetManager.h"
