@@ -7,6 +7,7 @@
 #include "manager/SymbolManager.h"
 #include "manager/AccountManager.h"
 #include "manager/OrderManager.h"
+#include "manager/ConditionalOrderManager.h"
 #include "manager/PositionManager.h"
 #include "manager/OrderBookManager.h"
 #include "manager/MatchingEngine.h"
@@ -44,6 +45,11 @@ namespace advmatch::sdk
         OrderManager orders() const
         {
             return OrderManager(this->session);
+        }
+
+        ConditionalOrderManager conditionalOrders() const
+        {
+            return ConditionalOrderManager(this->session);
         }
 
         PositionManager positions() const

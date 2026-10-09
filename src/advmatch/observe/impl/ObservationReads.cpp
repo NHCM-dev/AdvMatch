@@ -90,6 +90,38 @@ namespace advmatch::observe
 
         switch (query.kind)
         {
+            case ReadKind::ConditionalOrder:
+            case ReadKind::ConditionalOrders:
+            {
+                const auto& engine = this->matching.getConditionalOrderEngine();
+                const auto matches = [&](const ConditionalOrderView& value)
+                {
+                    const User* user = this->users.getUser(value.request.userId);
+                    const AccountId accountId = user ? (value.request.contractOptions ? user->getContractAccount().getAccountId() : user->getSpotAccount().getAccountId()) : 0;
+                    return (query.userId == 0 || query.userId == value.request.userId) && (query.symbolId == 0 || query.symbolId == value.request.symbolId) && (query.accountId == 0 || query.accountId == accountId) && (query.orderId == 0 || query.orderId == value.conditionalOrderId) && (query.price == 0 || query.price == value.request.triggerPrice) && (query.includeTerminal || value.status == ConditionalOrderStatus::Waiting);
+                };
+
+                if (query.kind == ReadKind::ConditionalOrder)
+                {
+                    auto value = engine.query(query.orderId);
+                    detail::point(result, value && matches(*value) ? value : std::nullopt);
+                    return;
+                }
+
+                auto& output = detail::rows<ConditionalOrderView>(result);
+                detail::scanSlots(engine.size(), query, page, [&](std::size_t index)
+                {
+                    auto value = engine.query(index + 1);
+                    if (value && matches(*value))
+                    {
+                        output.push_back(std::move(*value));
+                        return true;
+                    }
+
+                    return false;
+                });
+                return;
+            }
             case ReadKind::Overview:
                 result.data = this->overview();
                 page.count = 1;

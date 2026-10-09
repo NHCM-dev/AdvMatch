@@ -28,7 +28,7 @@ namespace advmatch::sdk
             {
                 query.accountId = this->entityId;
             }
-            else if constexpr (Kind == ReadKind::Order)
+            else if constexpr (Kind == ReadKind::Order || Kind == ReadKind::ConditionalOrder)
             {
                 query.orderId = this->entityId;
             }

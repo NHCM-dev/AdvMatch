@@ -301,6 +301,10 @@ namespace advmatch
             return market->referenceConfig.automaticDelivery ? this->deliver(symbolId, prices.deliveryPrice, timestamp) : this->expire(symbolId, timestamp);
         }
 
-        return this->processLiquidations(symbolId, timestamp, false);
+        const auto result = this->processLiquidations(symbolId, timestamp, false);
+        this->matching.getConditionalOrderEngine().price(symbolId, TriggerPriceSource::Mark, prices.markPrice, timestamp);
+        this->matching.getConditionalOrderEngine().price(symbolId, TriggerPriceSource::Index, prices.indexPrice, timestamp);
+        this->matching.getConditionalOrderEngine().process();
+        return result;
     }
 }

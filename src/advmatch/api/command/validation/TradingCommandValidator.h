@@ -31,7 +31,19 @@ namespace advmatch::api::command
                 }
                 else
                 {
-                    if constexpr (std::is_same_v<Command, commands::PlaceOrder>)
+                    if constexpr (std::is_same_v<Command, commands::PlaceConditionalOrder>)
+                    {
+                        enumeration(value.request.side, OrderSide::Bid);
+                        enumeration(value.request.type, OrderType::Limit);
+                        enumeration(value.request.timeInForce, TimeInForce::FOK);
+                        enumeration(value.request.kind, ConditionalOrderKind::TakeProfit);
+                        enumeration(value.request.source, TriggerPriceSource::Index);
+                        if (value.request.contractOptions)
+                        {
+                            enumeration(value.request.contractOptions->marginMode, MarginMode::Cross);
+                        }
+                    }
+                    else if constexpr (std::is_same_v<Command, commands::PlaceOrder>)
                     {
                         enumeration(value.side, OrderSide::Bid);
                         enumeration(value.type, OrderType::Limit);

@@ -216,6 +216,9 @@ add_library(advmatch_core STATIC
     src/advmatch/matching/contracts/DeliveryEngine.cpp
     src/advmatch/matching/settleengines/impl/ContractSettleEngine.cpp
     src/advmatch/matching/MatchingEngine.cpp
+    src/advmatch/matching/conditional/ConditionalOrderEngine.cpp
+    src/advmatch/matching/conditional/ConditionalOrderEngine.h
+    src/advmatch/trading/conditional/ConditionalOrder.h
     src/advmatch/matching/MatchingEngine.h
     src/advmatch/matching/Matching.h
     src/advmatch/matching/TradeBuffer.h
@@ -404,6 +407,11 @@ endif()
 if(BUILD_TESTING)
     if(ADVMATCH_BUILD_CPP_SDK)
         add_executable(advmatch_reference_tests tests/reference.cpp)
+        add_executable(advmatch_conditional_tests tests/conditional.cpp)
+        target_link_libraries(advmatch_conditional_tests PRIVATE AdvMatch::sdk)
+        advmatch_configure_runtime(advmatch_conditional_tests)
+        add_test(NAME advmatch_conditional_tests COMMAND advmatch_conditional_tests)
+        set_tests_properties(advmatch_conditional_tests PROPERTIES TIMEOUT 60)
         target_link_libraries(advmatch_reference_tests PRIVATE AdvMatch::sdk)
         advmatch_configure_runtime(advmatch_reference_tests)
         add_test(NAME advmatch_reference_tests COMMAND advmatch_reference_tests)
@@ -587,6 +595,7 @@ if(ADVMATCH_BUILD_CPP_SDK)
         util/ValueTypes.h util/Result.h trading/Asset.h trading/Symbol.h trading/OrderTypes.h
         trading/futures/Position.h trading/futures/Contract.h matching/Trade.h
         trading/futures/ReferencePrice.h trading/futures/ReferencePriceAlgorithm.h
+        trading/conditional/ConditionalOrder.h
         matching/orderbooks/OrderBookTypes.h ledging/account/AccountTypes.h
         api/ApiError.h api/model/CommandResult.h api/model/ReadResponse.h
         api/command/model/TradingCommand.h api/async/Executor.h api/async/FutureError.h

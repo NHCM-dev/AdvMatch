@@ -1,5 +1,6 @@
 #include "CommandCodec.h"
 #include "ReferencePriceCodec.h"
+#include "ConditionalOrderCodec.h"
 
 namespace advmatch
 {
@@ -30,6 +31,28 @@ namespace advmatch
             explicit Encoder(BinaryWriter& writer)
                 : writer(writer)
             {
+            }
+
+            void operator()(const commands::PlaceConditionalOrder& value)
+            {
+                ConditionalOrderCodec::write(this->writer, value.request);
+            }
+
+            void operator()(const commands::ModifyConditionalOrder& value)
+            {
+                this->writer.number(value.userId);
+                this->writer.number(value.conditionalOrderId);
+                this->writer.number(value.triggerPrice);
+                this->writer.number(value.price);
+                this->writer.number(value.quantity);
+                this->writer.number(value.timestamp);
+            }
+
+            void operator()(const commands::CancelConditionalOrder& value)
+            {
+                this->writer.number(value.userId);
+                this->writer.number(value.conditionalOrderId);
+                this->writer.number(value.timestamp);
             }
 
             void operator()(const commands::CreateAsset& value)
@@ -367,6 +390,12 @@ namespace advmatch
                     return commands::RefreshReferencePrice{reader.number<SymbolId>(), reader.number<Timestamp>()};
                 case 29:
                     return commands::UpdateReferencePrice{reader.number<SymbolId>(), ReferencePriceCodec::readReferencePrices(reader), reader.number<Timestamp>()};
+                case 30:
+                    return commands::PlaceConditionalOrder{ConditionalOrderCodec::read(reader)};
+                case 31:
+                    return commands::ModifyConditionalOrder{reader.number<UserId>(), reader.number<ConditionalOrderId>(), reader.number<Price>(), reader.number<Price>(), reader.number<Quantity>(), reader.number<Timestamp>()};
+                case 32:
+                    return commands::CancelConditionalOrder{reader.number<UserId>(), reader.number<ConditionalOrderId>(), reader.number<Timestamp>()};
                 default: throw PersistenceError(PersistenceFailure::UnsupportedVersion, "unknown trading operation");
             }
         }
@@ -415,7 +444,7 @@ namespace advmatch
     {
         BinaryReader reader(bytes);
         CommandResult result;
-        result.type = reader.enumeration(CommandResultType::Archive);
+        result.type = reader.enumeration(CommandResultType::Conditional);
         result.state = reader.number<std::uint8_t>();
         result.accepted = reader.boolean();
         result.entityId = reader.number<std::uint64_t>();

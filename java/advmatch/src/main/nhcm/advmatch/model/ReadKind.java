@@ -33,7 +33,9 @@ public enum ReadKind
     ContractEvents(27),
     Level(28),
     ManagedPositions(29),
-    MarketPositions(30);
+    MarketPositions(30),
+    ConditionalOrder(31),
+    ConditionalOrders(32);
 
     private final int code;
 

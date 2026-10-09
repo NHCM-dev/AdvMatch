@@ -11,6 +11,7 @@ namespace advmatch
     using AssetId = std::uint32_t;
     using SymbolId = std::uint32_t;
     using OrderId = std::uint64_t;
+    using ConditionalOrderId = std::uint64_t;
     using PositionId = std::uint64_t;
 
     using Price = std::uint64_t;

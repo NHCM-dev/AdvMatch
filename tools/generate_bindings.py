@@ -86,6 +86,7 @@ files = [
     "src/advmatch/trading/OrderTypes.h", "src/advmatch/trading/Symbol.h",
     "src/advmatch/trading/futures/Position.h", "src/advmatch/trading/futures/Contract.h",
     "src/advmatch/trading/futures/ReferencePrice.h",
+    "src/advmatch/trading/conditional/ConditionalOrder.h",
     "src/advmatch/matching/orderbooks/OrderBookTypes.h", "src/advmatch/trading/Asset.h",
     "src/advmatch/ledging/account/AccountTypes.h", "src/advmatch/api/model/CommandResult.h",
     "src/advmatch/observe/model/ObservationTypes.h", "src/advmatch/persistence/config/PersistenceConfig.h",
@@ -124,6 +125,7 @@ def add(file, names, prefix=""):
 add("src/advmatch/trading/OrderTypes.h", "OrderFillingStatus")
 add("src/advmatch/trading/futures/Contract.h", "ContractSpec ContractOrderOptions ContractEvent")
 add("src/advmatch/trading/futures/ReferencePrice.h", "PriceSource ReferencePriceConfig ExternalPrice WeightedPrice ReferencePrices ContractSchedule")
+add("src/advmatch/trading/conditional/ConditionalOrder.h", "ConditionalOrderRequest ConditionalOrderView")
 add("src/advmatch/matching/orderbooks/OrderBookTypes.h", "Quote")
 add("src/advmatch/matching/Trade.h", "Trade")
 add("src/advmatch/api/model/CommandResult.h", "CommandResult CommandReceipt")
@@ -138,7 +140,7 @@ cppnames["ExchangeConfig"] = "BindingConfig"
 command_text = source("src/advmatch/api/command/model/TradingCommand.h")
 command_names = re.findall(r"commands::(\w+)", command_text[command_text.index("using TradingCommand"):])
 commands = {name: fields(command_text, name) for name in command_names}
-row_types = ["AssetView", "UserView", "AccountView", "BalanceView", "CrossMarginView", "SymbolView", "OrderView", "PositionView", "BookView", "DepthView", "MarketView", "TradeView", "ContractEventView"]
+row_types = ["AssetView", "UserView", "AccountView", "BalanceView", "CrossMarginView", "SymbolView", "OrderView", "PositionView", "BookView", "DepthView", "MarketView", "TradeView", "ContractEventView", "ConditionalOrderView"]
 reads = {}
 for name, kind, row in re.findall(r"using (Read\w+) = ReadOperation<observe::ReadKind::(\w+), observe::(\w+)>;", source("src/advmatch/api/command/read/ReadCommands.h")):
     reads[name] = (kind, row)
@@ -326,7 +328,7 @@ for name, fs in models.items():
     for t, n, _ in fs:
         if t.startswith("std::vector<"):
             jlines += [f"    public {name}", "    {", f"        {n} = List.copyOf({n});", "    }", ""]
-    if name in ("ObservationQuery", "ExchangeConfig", "PersistenceConfig", "ObservationConfig", "ContractSpec", "ContractOrderOptions", "PriceSource", "ReferencePriceConfig", "ReferencePrices", "ContractSchedule"):
+    if name in ("ObservationQuery", "ExchangeConfig", "PersistenceConfig", "ObservationConfig", "ContractSpec", "ContractOrderOptions", "PriceSource", "ReferencePriceConfig", "ReferencePrices", "ContractSchedule", "ConditionalOrderRequest"):
         for t, n, _ in fs:
             args = ", ".join("value" if fn == n else "this." + fn for _, fn, _ in fs)
             jlines += [f"    public {name} with{cap(n)}({java_type(t)} value)", "    {", f"        return new {name}({args});", "    }", ""]
@@ -370,6 +372,7 @@ emit(ROOT / "src/advmatch/api/binding/WireModels.h", "\n".join(cpp))
 groups = {
     "CreateAsset": "management", "RemoveAsset": "management", "CreateUser": "management", "RemoveUser": "management", "CreateSymbol": "management", "RemoveSymbol": "management",
     "UpdateBalance": "account", "Transfer": "account", "AddSpotBook": "order", "PlaceOrder": "order", "ModifyPrice": "order", "ModifyQuantity": "order", "CancelOrder": "order", "ArchiveHistory": "maintenance",
+    "PlaceConditionalOrder": "order", "ModifyConditionalOrder": "order", "CancelConditionalOrder": "order",
 }
 for operation, (name, fs) in enumerate(commands.items()):
     group = groups.get(name, "contract")

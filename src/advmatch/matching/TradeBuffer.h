@@ -67,6 +67,12 @@ namespace advmatch
     public:
         using const_iterator = SmallVector<Trade, InlineTradeCapacity>::const_iterator;
 
+        // Merge only fully settled value records; no borrowed node links survive.
+        void appendSettled(const TradeBuffer& buffer)
+        {
+            this->trades.insert(this->trades.end(), buffer.begin(), buffer.end());
+        }
+
         void clear() noexcept
         {
             this->trades.clear();

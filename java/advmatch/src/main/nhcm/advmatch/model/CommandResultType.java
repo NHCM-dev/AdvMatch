@@ -9,7 +9,8 @@ public enum CommandResultType
     Modify(3),
     Cancel(4),
     Contract(5),
-    Archive(6);
+    Archive(6),
+    Conditional(7);
 
     private final int code;
 

@@ -29,7 +29,7 @@ namespace advmatch
     }
 
     MatchingEngine::MatchingEngine(UserManager& userManager, SymbolManager& symbolManager)
-        : contracts(std::make_unique<ContractEngine>(*this)), userManager(userManager), symbolManager(symbolManager),
+        : contracts(std::make_unique<ContractEngine>(*this)), conditionalOrders(std::make_unique<ConditionalOrderEngine>(*this)), userManager(userManager), symbolManager(symbolManager),
           settleEngine(this->accountLedger)
     {
     }
@@ -98,6 +98,8 @@ namespace advmatch
         this->orderBooks[symbolId - 1]->observationListener = this->observationListener;
         ++this->orderBookCount;
         this->bookServices[symbolId - 1] = {&this->contracts->getRiskEngine(), &this->contracts->getLedger(), &this->contracts->getSettleEngine()};
+        this->conditionalOrders->addSymbol(symbolId);
+        this->conditionalOrders->price(symbolId, TriggerPriceSource::Mark, markPrice, timestamp);
         return {};
     }
 
@@ -105,7 +107,10 @@ namespace advmatch
         TimeInForce timeInForce, Price price, Quantity quantity, Timestamp timestamp,
         const ContractOrderOptions& options, TradeBuffer& trades)
     {
-        return this->submitOrder(userId, symbolId, side, type, timeInForce, price, quantity, timestamp, trades, &options, false);
+        auto result = this->submitOrder(userId, symbolId, side, type, timeInForce, price, quantity, timestamp, trades, &options, false);
+        this->conditionalOrders->process();
+        this->conditionalOrders->collectTrades(trades);
+        return result;
     }
 
     bool MatchingEngine::reservePriceLevels(SymbolId symbolId, std::size_t bidLevels, std::size_t askLevels)
@@ -145,6 +150,7 @@ namespace advmatch
         this->bookServices.resize(this->orderBooks.size());
         this->bookUpdateTimestamps.resize(this->orderBooks.size());
         this->bookServices[symbolId - 1] = {&this->riskEngine, &this->accountLedger, &this->settleEngine};
+        this->conditionalOrders->addSymbol(symbolId);
         return true;
     }
 
@@ -192,7 +198,10 @@ namespace advmatch
                                                 TimeInForce timeInForce, Price price,
                                                 Quantity quantity, Timestamp timestamp, TradeBuffer& trades)
     {
-        return this->submitOrder(userId, symbolId, side, type, timeInForce, price, quantity, timestamp, trades, nullptr, false);
+        auto result = this->submitOrder(userId, symbolId, side, type, timeInForce, price, quantity, timestamp, trades, nullptr, false);
+        this->conditionalOrders->process();
+        this->conditionalOrders->collectTrades(trades);
+        return result;
     }
 
     PlaceOrderResult MatchingEngine::submitOrder(UserId userId, SymbolId symbolId, OrderSide side, OrderType type,
@@ -340,6 +349,7 @@ namespace advmatch
         }
 
         services.settlement->settleTrades(trades);
+        this->conditionalOrders->trades(symbolId, trades, timestamp);
         this->bookUpdateTimestamps[symbolId - 1] = std::max(this->bookUpdateTimestamps[symbolId - 1], timestamp);
         services.settlement->reconcileReservation(*node);
         if (contract && !liquidation)
@@ -425,6 +435,7 @@ namespace advmatch
         if (result)
         {
             services.settlement->settleTrades(trades);
+            this->conditionalOrders->trades(node->basicOrder.symbolId, trades, timestamp);
             auto& bookTimestamp = this->bookUpdateTimestamps[node->basicOrder.symbolId - 1];
             bookTimestamp = std::max(bookTimestamp, timestamp);
         }
@@ -440,6 +451,8 @@ namespace advmatch
             static_cast<void>(this->contracts->processLiquidations(node->basicOrder.symbolId, timestamp, false));
         }
 
+        this->conditionalOrders->process();
+        this->conditionalOrders->collectTrades(trades);
         return result;
     }
 

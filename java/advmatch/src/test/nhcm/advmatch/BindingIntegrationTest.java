@@ -367,6 +367,7 @@ public final class BindingIntegrationTest
         spotAndConcurrency();
         contracts();
         referencePrices();
+        conditionalOrders();
         persistence();
         System.out.println("Java bindings: spot, futures, perpetual, reads, callbacks, concurrency, close and recovery passed");
     }
@@ -423,6 +424,54 @@ public final class BindingIntegrationTest
             check(entered.await(10, TimeUnit.SECONDS) && !second.isDone());
             held.complete(8);
             check(first.get(10, TimeUnit.SECONDS) == 8 && second.get(10, TimeUnit.SECONDS) == 9);
+        }
+    }
+
+    private static void conditionalOrders()
+    {
+        try (var exchange = new MatchingExchange(memory()))
+        {
+            var base = exchange.assets().create("BASE", "BASE", 0).join();
+            var quote = exchange.assets().create("QUOTE", "QUOTE", 0).join();
+            var buyer = exchange.users().create().join();
+            var seller = exchange.users().create().join();
+            buyer.spotAccount().join().updateBalance(quote, 1000000).join();
+            seller.spotAccount().join().updateBalance(base, 1000).join();
+            var symbol = exchange.symbols().create("SPOT", SymbolType.Spot, base, quote).join();
+            var book = exchange.books().addSpot(symbol, OrderBookImplementation.Radix).join();
+            book.place(seller, OrderSide.Ask, OrderType.Limit, TimeInForce.GTC, 100, 1, 1).join();
+            book.place(buyer, OrderSide.Bid, OrderType.Limit, TimeInForce.IOC, 100, 1, 2).join();
+            var request = new ConditionalOrderRequest().withUserId(seller.id()).withSymbolId(symbol.id()).withQuantity(3).withTimestamp(3).withTriggerPrice(90);
+            var stop = exchange.conditionalOrders().place(request).join();
+            stop.modify(85, 0, 3, 4).join();
+            var profit = exchange.conditionalOrders().place(request.withTimestamp(4).withKind(ConditionalOrderKind.TakeProfit).withTriggerPrice(110).withOcoOrderId(stop.id())).join();
+            var disposable = exchange.conditionalOrders().place(request.withTimestamp(4).withTriggerPrice(50)).join();
+            disposable.cancel(4).join();
+            check(disposable.snapshot().join().status() == ConditionalOrderStatus.Cancelled);
+            book.place(buyer, OrderSide.Bid, OrderType.Limit, TimeInForce.GTC, 80, 10, 5).join();
+            book.place(seller, OrderSide.Ask, OrderType.Limit, TimeInForce.GTC, 85, 1, 6).join();
+            book.place(buyer, OrderSide.Bid, OrderType.Limit, TimeInForce.IOC, 85, 1, 6).join();
+            var view = stop.snapshot().join();
+            check(view.status() == ConditionalOrderStatus.Activated && view.triggeredPrice() == 85);
+            check(stop.order().join().snapshot().join().filling().filled() == 3);
+            check(profit.snapshot().join().status() == ConditionalOrderStatus.Cancelled);
+            check(exchange.conditionalOrders().list(new ObservationQuery().withIncludeTerminal(false)).join().values().isEmpty());
+            check(exchange.submit(new ReadConditionalOrders(new ObservationQuery().withUserId(seller.id()))).join().values().size() == 3);
+
+            buyer.contractAccount().join().updateBalance(quote, 1000000).join();
+            seller.contractAccount().join().updateBalance(quote, 1000000).join();
+            var perpetual = exchange.symbols().create("PERP", SymbolType.Perpetual, base, quote).join();
+            var spec = new ContractSpec().withTakerFeeRate(0).withPriceBandRate(200000).withFirstFundingTimestamp(1000);
+            var contractBook = exchange.books().addContract(perpetual, spec, 100, 0, OrderBookImplementation.Radix).join();
+            contractBook.placeContract(seller, OrderSide.Ask, OrderType.Limit, TimeInForce.GTC, 100, 10, 1, new ContractOrderOptions()).join();
+            var opening = contractBook.placeContract(buyer, OrderSide.Bid, OrderType.Limit, TimeInForce.IOC, 100, 10, 2, new ContractOrderOptions()).join();
+            var position = opening.position().join();
+            position.addMargin(1000).join();
+            var closing = new ContractOrderOptions().withPositionId(position.id()).withReduceOnly(true).withPriceLimit(50);
+            var protective = exchange.conditionalOrders().place(request.withUserId(buyer.id()).withSymbolId(perpetual.id()).withTimestamp(3).withQuantity(10).withSource(TriggerPriceSource.Mark).withContractOptions(closing)).join();
+            contractBook.placeContract(seller, OrderSide.Bid, OrderType.Limit, TimeInForce.GTC, 100, 10, 4, new ContractOrderOptions().withLeverage(1)).join();
+            exchange.contracts().updateMark(perpetual, 90, 5).join();
+            check(protective.snapshot().join().status() == ConditionalOrderStatus.Activated && position.snapshot().join().closed());
         }
     }
 

@@ -7,6 +7,7 @@
 #include "advmatch/trading/futures/Contract.h"
 #include "advmatch/trading/futures/ReferencePrice.h"
 #include "advmatch/trading/futures/Position.h"
+#include "advmatch/trading/conditional/ConditionalOrder.h"
 
 #include <span>
 #include <variant>
@@ -14,6 +15,7 @@
 
 namespace advmatch::observe
 {
+    using advmatch::ConditionalOrderView;
     enum class ReadState : std::uint8_t
     {
         Success,
@@ -57,7 +59,9 @@ namespace advmatch::observe
         ContractEvents,
         Level,
         ManagedPositions,
-        MarketPositions
+        MarketPositions,
+        ConditionalOrder,
+        ConditionalOrders
     };
 
     enum class PositionFilter : std::uint8_t
@@ -373,7 +377,7 @@ namespace advmatch::observe
     using ObservationData = std::variant<std::monostate, OverviewView, std::vector<AssetView>,
         std::vector<UserView>, std::vector<AccountView>, std::vector<BalanceView>, std::vector<CrossMarginView>,
         std::vector<SymbolView>, std::vector<OrderView>, std::vector<PositionView>, std::vector<BookView>,
-        std::vector<DepthView>, std::vector<MarketView>, std::vector<TradeView>, std::vector<ContractEventView>>;
+        std::vector<DepthView>, std::vector<MarketView>, std::vector<TradeView>, std::vector<ContractEventView>, std::vector<ConditionalOrderView>>;
 
     struct ObservationResult
     {

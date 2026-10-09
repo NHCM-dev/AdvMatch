@@ -18,6 +18,7 @@
 
 #include "advmatch/management/SymbolManager.h"
 #include "advmatch/trading/factory/impl/BasicOrderFactory.h"
+#include "conditional/ConditionalOrderEngine.h"
 
 namespace advmatch
 {
@@ -39,10 +40,12 @@ namespace advmatch
         };
 
         std::unique_ptr<ContractEngine> contracts;
+        std::unique_ptr<ConditionalOrderEngine> conditionalOrders;
         std::vector<BookServices> bookServices;
         friend class ContractEngine;
         friend class LiquidateEngine;
         friend class ContractSettleEngine;
+        friend class ConditionalOrderEngine;
 
         // Borrowed only by a synchronous submission on the owner thread. The
         // internal liquidation path resolves these once, but shares factory,
@@ -83,6 +86,16 @@ namespace advmatch
         OrderBook* findBook(SymbolId symbolId) noexcept;
 
     public:
+        ConditionalOrderEngine& getConditionalOrderEngine() noexcept
+        {
+            return *this->conditionalOrders;
+        }
+
+        const ConditionalOrderEngine& getConditionalOrderEngine() const noexcept
+        {
+            return *this->conditionalOrders;
+        }
+
         Timestamp bookTimestamp(SymbolId symbolId) const noexcept
         {
             return symbolId != 0 && symbolId <= this->bookUpdateTimestamps.size() ? this->bookUpdateTimestamps[symbolId - 1] : 0;

@@ -41,6 +41,18 @@ int main()
         throw std::runtime_error("SDK trade verification failed");
     }
 
+    sdk::ConditionalOrderRequest stop;
+    stop.quantity = 1;
+    stop.triggerPrice = 90;
+    stop.timestamp = 3;
+    const auto pending = exchange.conditionalOrders().place(seller, symbol, stop).get();
+    if (pending.snapshot().get().status != sdk::ConditionalOrderStatus::Waiting)
+    {
+        throw std::runtime_error("SDK conditional order verification failed");
+    }
+
+    pending.cancel(4).get();
+
     sdk::ObservationQuery query;
     query.userId = buyer.id();
     const auto user = exchange.submit(sdk::command::ReadUser(query)).get();

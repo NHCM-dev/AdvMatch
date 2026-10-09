@@ -26,6 +26,10 @@ namespace advmatch::binding
     inline ReferencePrices readReferencePrices(BinaryReader& reader);
     inline void write(BinaryWriter& writer, const ContractSchedule& value);
     inline ContractSchedule readContractSchedule(BinaryReader& reader);
+    inline void write(BinaryWriter& writer, const ConditionalOrderRequest& value);
+    inline ConditionalOrderRequest readConditionalOrderRequest(BinaryReader& reader);
+    inline void write(BinaryWriter& writer, const ConditionalOrderView& value);
+    inline ConditionalOrderView readConditionalOrderView(BinaryReader& reader);
     inline void write(BinaryWriter& writer, const Quote& value);
     inline Quote readQuote(BinaryReader& reader);
     inline void write(BinaryWriter& writer, const Trade& value);
@@ -339,6 +343,82 @@ namespace advmatch::binding
         return value;
     }
 
+    inline void write(BinaryWriter& writer, const ConditionalOrderRequest& value)
+    {
+        writer.number(value.userId);
+        writer.number(value.symbolId);
+        writer.enumeration(value.side);
+        writer.enumeration(value.type);
+        writer.enumeration(value.timeInForce);
+        writer.number(value.price);
+        writer.number(value.quantity);
+        writer.number(value.timestamp);
+        writer.enumeration(value.kind);
+        writer.enumeration(value.source);
+        writer.number(value.triggerPrice);
+        writer.boolean(value.contractOptions.has_value());
+        if (value.contractOptions)
+        {
+            write(writer, *value.contractOptions);
+        }
+        writer.number(value.ocoOrderId);
+    }
+
+    inline ConditionalOrderRequest readConditionalOrderRequest(BinaryReader& reader)
+    {
+        ConditionalOrderRequest value{};
+        value.userId = reader.number<UserId>();
+        value.symbolId = reader.number<SymbolId>();
+        value.side = reader.enumeration(static_cast<OrderSide>(1));
+        value.type = reader.enumeration(static_cast<OrderType>(1));
+        value.timeInForce = reader.enumeration(static_cast<TimeInForce>(2));
+        value.price = reader.number<Price>();
+        value.quantity = reader.number<Quantity>();
+        value.timestamp = reader.number<Timestamp>();
+        value.kind = reader.enumeration(static_cast<ConditionalOrderKind>(1));
+        value.source = reader.enumeration(static_cast<TriggerPriceSource>(2));
+        value.triggerPrice = reader.number<Price>();
+        if (reader.boolean())
+        {
+            value.contractOptions = readContractOrderOptions(reader);
+        }
+        value.ocoOrderId = reader.number<ConditionalOrderId>();
+        return value;
+    }
+
+    inline void write(BinaryWriter& writer, const ConditionalOrderView& value)
+    {
+        writer.number(value.conditionalOrderId);
+        write(writer, value.request);
+        writer.enumeration(value.status);
+        writer.number(value.orderId);
+        writer.number(value.positionId);
+        writer.number(value.updatedTimestamp);
+        writer.number(value.triggeredPrice);
+        writer.boolean(value.rejectReason.has_value());
+        if (value.rejectReason)
+        {
+            writer.enumeration(*value.rejectReason);
+        }
+    }
+
+    inline ConditionalOrderView readConditionalOrderView(BinaryReader& reader)
+    {
+        ConditionalOrderView value{};
+        value.conditionalOrderId = reader.number<ConditionalOrderId>();
+        value.request = readConditionalOrderRequest(reader);
+        value.status = reader.enumeration(static_cast<ConditionalOrderStatus>(3));
+        value.orderId = reader.number<OrderId>();
+        value.positionId = reader.number<PositionId>();
+        value.updatedTimestamp = reader.number<Timestamp>();
+        value.triggeredPrice = reader.number<Price>();
+        if (reader.boolean())
+        {
+            value.rejectReason = reader.enumeration(static_cast<PlaceOrderState>(23));
+        }
+        return value;
+    }
+
     inline void write(BinaryWriter& writer, const Quote& value)
     {
         writer.number(value.price);
@@ -393,7 +473,7 @@ namespace advmatch::binding
     inline CommandResult readCommandResult(BinaryReader& reader)
     {
         CommandResult value{};
-        value.type = reader.enumeration(static_cast<CommandResultType>(6));
+        value.type = reader.enumeration(static_cast<CommandResultType>(7));
         value.state = reader.number<std::uint8_t>();
         value.accepted = reader.boolean();
         value.entityId = reader.number<std::uint64_t>();
@@ -527,7 +607,7 @@ namespace advmatch::binding
     inline observe::ReadIdentity readReadIdentity(BinaryReader& reader)
     {
         observe::ReadIdentity value{};
-        value.kind = reader.enumeration(static_cast<observe::ReadKind>(30));
+        value.kind = reader.enumeration(static_cast<observe::ReadKind>(32));
         value.userId = reader.number<UserId>();
         value.accountId = reader.number<AccountId>();
         value.assetId = reader.number<AssetId>();
@@ -588,7 +668,7 @@ namespace advmatch::binding
     inline observe::ObservationQuery readObservationQuery(BinaryReader& reader)
     {
         observe::ObservationQuery value{};
-        value.kind = reader.enumeration(static_cast<observe::ReadKind>(30));
+        value.kind = reader.enumeration(static_cast<observe::ReadKind>(32));
         value.userId = reader.number<UserId>();
         value.accountId = reader.number<AccountId>();
         value.assetId = reader.number<AssetId>();

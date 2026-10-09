@@ -83,6 +83,23 @@ auto market = contracts.market(perpetual).get();
 
 手动 `updateMark` / `settleFunding` / `deliver` 仍可使用；关闭自动交割后，到期只停止交易。C++ 可继承 `ReferencePriceAlgorithm` 或默认实现，计算后通过 `updateReference` 提交，持久化记录计算结果。完整示例：[合约价格管理](examples/contract-reference/main.cpp)。JNI ABI 已升为 3，JAR 和原生库需一同更新。
 
+## 止盈止损
+
+通过 `exchange.conditionalOrders()` 创建、查询、修改和取消条件单；`ConditionalOrderRequest` 指定止盈 / 止损、触发价、成交价 / 标记价 / 指数价，以及市价 IOC / FOK 或限价子单。现货只支持成交价，合约支持三种价格源。
+
+```cpp
+sdk::ConditionalOrderRequest stop;
+stop.quantity = 1;
+stop.triggerPrice = 90'000;
+stop.timestamp = timestamp;
+auto pending = exchange.conditionalOrders().place(user, spot, stop).get();
+auto state = pending.snapshot().get();
+```
+
+买入止损 / 卖出止盈在 `price >= triggerPrice` 时触发，卖出止损 / 买入止盈在 `price <= triggerPrice` 时触发。已有价格满足条件时立即触发；没有对应价格时等待首次更新。每张条件单只激活一次，`orderId` 指向实际订单。
+
+等待期间不冻结资金；触发时重新风控，失败记录 `Rejected` 和 `rejectReason`。合约平仓传入 `positionId`、`reduceOnly` 和市价保护 `priceLimit`。`ocoOrderId` 关联同用户、同交易对的另一张等待单，任一子单被接受后取消另一张；风控拒绝保留另一张，手动取消只取消指定单。OCO 不保证成交，市价单受流动性和价格保护限制；期货到期会取消未触发单。条件单与触发结果随 WAL / checkpoint 恢复，C++ 和 Java 均使用同一命令接口。
+
 ## 压测
 
 ```powershell

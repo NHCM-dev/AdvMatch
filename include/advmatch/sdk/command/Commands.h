@@ -4,6 +4,7 @@
 #include "management/ManagementCommands.h"
 #include "account/AccountCommands.h"
 #include "order/OrderCommands.h"
+#include "order/ConditionalOrderCommands.h"
 #include "contract/ContractCommands.h"
 #include "maintenance/HistoryCommands.h"
 #include "read/ReadCommands.h"

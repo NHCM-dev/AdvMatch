@@ -251,6 +251,19 @@ for name, view, field in [("Asset", "AssetView", "assetId"), ("Symbol", "SymbolV
     output_class(name, "object", f"Entity<{view}>", methods)
 
 # Account subtype constructors deliberately validate the native type when read.
+output_class("ConditionalOrder", "object", "Entity<ConditionalOrderView>", [
+    snapshot("ReadConditionalOrder", "new ObservationQuery().withOrderId(this.id())", "ConditionalOrderView"),
+    method("CompletableFuture<Order> order()", "return this.snapshot().thenApply(value -> value.orderId() == 0 ? null : this.exchange.orders().get(value.orderId()));"),
+    method("CompletableFuture<CommandReceipt> cancel(long timestamp)", "return this.snapshot().thenCompose(value -> this.exchange.submit(new CancelConditionalOrder(value.request().userId(), this.id(), timestamp))).thenApply(ApiResults::accepted);"),
+    method("CompletableFuture<CommandReceipt> modify(long triggerPrice, long price, long quantity, long timestamp)", "return this.snapshot().thenCompose(value -> this.exchange.submit(new ModifyConditionalOrder(value.request().userId(), this.id(), triggerPrice, price, quantity, timestamp))).thenApply(ApiResults::accepted);")])
+
+output_class("ConditionalOrderManager", "manager", "Manager", [
+    method("ConditionalOrder get(long id)", "return new ConditionalOrder(this.exchange, id);"),
+    method("CompletableFuture<ConditionalOrder> find(long id)", "var handle = this.get(id);\nreturn handle.snapshot().thenApply(value -> handle);"),
+    method("CompletableFuture<ConditionalOrder> place(ConditionalOrderRequest request)", "return this.exchange.submit(new PlaceConditionalOrder(request)).thenApply(value -> this.get(ApiResults.accepted(value).result().entityId()));"),
+    method("CompletableFuture<ConditionalOrder> place(User user, Symbol symbol, ConditionalOrderRequest request)", "user.requireOwner(this.exchange);\nsymbol.requireOwner(this.exchange);\nreturn this.place(request.withUserId(user.id()).withSymbolId(symbol.id()));"),
+    readpage("list", "ReadConditionalOrders", "ConditionalOrderView", "ObservationQuery query", "query")])
+
 for name, kind in [("SpotAccount", "Spot"), ("ContractAccount", "Contract")]:
     output_class(name, "object", "Account", [method("CompletableFuture<AccountView> snapshot()", f"return super.snapshot().thenApply(value ->\n{{\n    if (value.type() != AccountType.{kind})\n    {{\n        throw new IllegalStateException(\"Account type mismatch\");\n    }}\n\n    return value;\n}});")])
 

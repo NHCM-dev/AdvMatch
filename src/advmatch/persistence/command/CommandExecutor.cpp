@@ -280,12 +280,37 @@ namespace advmatch
             {
                 return contractResult(this->contracts().updateReference(command.symbolId, command.prices, command.timestamp));
             }
+
+            CommandResult conditionalResult(const ConditionalOrderResult& value)
+            {
+                auto result = businessResult(CommandResultType::Conditional, value);
+                result.entityId = value.conditionalOrderId;
+                return result;
+            }
+
+            CommandResult operator()(const commands::PlaceConditionalOrder& command)
+            {
+                return this->conditionalResult(this->state.matching.getConditionalOrderEngine().place(command.request));
+            }
+
+            CommandResult operator()(const commands::ModifyConditionalOrder& command)
+            {
+                return this->conditionalResult(this->state.matching.getConditionalOrderEngine().modify(command.userId, command.conditionalOrderId, command.triggerPrice, command.price, command.quantity, command.timestamp));
+            }
+
+            CommandResult operator()(const commands::CancelConditionalOrder& command)
+            {
+                return this->conditionalResult(this->state.matching.getConditionalOrderEngine().cancel(command.userId, command.conditionalOrderId, command.timestamp));
+            }
         };
     }
 
     CommandResult executeTradingCommand(TradingState& state, const TradingCommand& command, TradeBuffer& trades)
     {
         trades.clear();
-        return std::visit(Executor(state, trades), command);
+        auto result = std::visit(Executor(state, trades), command);
+        state.matching.getConditionalOrderEngine().process();
+        state.matching.getConditionalOrderEngine().collectTrades(trades);
+        return result;
     }
 }

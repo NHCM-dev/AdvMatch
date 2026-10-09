@@ -13,7 +13,8 @@ namespace advmatch
         Modify,
         Cancel,
         Contract,
-        Archive
+        Archive,
+        Conditional
     };
 
     enum class ManagementState : std::uint8_t
@@ -26,7 +27,8 @@ namespace advmatch
     {
         CommandResultType type = CommandResultType::Management;
         // State belongs to type: ManagementState, BalanceOpResult,
-        // PlaceOrderState, ModifyOrderState, CancelOrderState, ContractState.
+        // PlaceOrderState, ModifyOrderState, CancelOrderState, ContractState,
+        // ConditionalOrderState.
         std::uint8_t state = 0;
         bool accepted = false;
         std::uint64_t entityId = 0;

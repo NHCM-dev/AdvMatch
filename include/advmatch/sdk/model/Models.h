@@ -19,6 +19,13 @@ namespace advmatch::sdk
     using advmatch::AssetId;
     using advmatch::SymbolId;
     using advmatch::OrderId;
+    using advmatch::ConditionalOrderId;
+    using advmatch::ConditionalOrderKind;
+    using advmatch::TriggerPriceSource;
+    using advmatch::ConditionalOrderStatus;
+    using advmatch::ConditionalOrderState;
+    using advmatch::ConditionalOrderRequest;
+    using advmatch::ConditionalOrderView;
     using advmatch::PositionId;
     using advmatch::Price;
     using advmatch::Quantity;

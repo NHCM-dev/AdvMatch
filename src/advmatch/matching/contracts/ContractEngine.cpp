@@ -401,7 +401,14 @@ namespace advmatch
             return {ContractState::InvalidPrice};
         }
 
-        return this->applyMarkPrice(*market, price, timestamp, true);
+        const auto result = this->applyMarkPrice(*market, price, timestamp, true);
+        if (result || result.state == ContractState::PendingLiquidation)
+        {
+            this->matching.getConditionalOrderEngine().price(symbolId, TriggerPriceSource::Mark, price, timestamp);
+            this->matching.getConditionalOrderEngine().process();
+        }
+
+        return result;
     }
 
     ContractResult ContractEngine::applyMarkPrice(ContractMarket& value, Price price, Timestamp timestamp, bool processLiquidations)
@@ -578,6 +585,7 @@ namespace advmatch
 
         market->status = ContractStatus::Expired;
         market->commandTimestamp = timestamp;
+        this->matching.getConditionalOrderEngine().cancelSymbol(symbolId, timestamp);
         while (!market->orderParticipants.empty())
         {
             ContractParticipant& participant = *market->orderParticipants.begin()->second;

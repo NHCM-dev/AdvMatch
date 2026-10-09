@@ -168,6 +168,53 @@ public final class Wire
         return new ContractSchedule(reader.u64(), reader.u64(), reader.u32(), reader.u64());
     }
 
+    public static void writeConditionalOrderRequest(WireWriter writer, ConditionalOrderRequest value)
+    {
+        writer.u64(value.userId());
+        writer.u32(value.symbolId());
+        writer.u8(value.side().code());
+        writer.u8(value.type().code());
+        writer.u8(value.timeInForce().code());
+        writer.u64(value.price());
+        writer.u64(value.quantity());
+        writer.u64(value.timestamp());
+        writer.u8(value.kind().code());
+        writer.u8(value.source().code());
+        writer.u64(value.triggerPrice());
+        writer.bool(value.contractOptions() != null);
+        if (value.contractOptions() != null)
+        {
+            Wire.writeContractOrderOptions(writer, value.contractOptions());
+        }
+        writer.u64(value.ocoOrderId());
+    }
+
+    public static ConditionalOrderRequest readConditionalOrderRequest(WireReader reader)
+    {
+        return new ConditionalOrderRequest(reader.u64(), reader.u32(), OrderSide.fromCode(reader.u8()), OrderType.fromCode(reader.u8()), TimeInForce.fromCode(reader.u8()), reader.u64(), reader.u64(), reader.u64(), ConditionalOrderKind.fromCode(reader.u8()), TriggerPriceSource.fromCode(reader.u8()), reader.u64(), (reader.bool() ? Wire.readContractOrderOptions(reader) : null), reader.u64());
+    }
+
+    public static void writeConditionalOrderView(WireWriter writer, ConditionalOrderView value)
+    {
+        writer.u64(value.conditionalOrderId());
+        Wire.writeConditionalOrderRequest(writer, value.request());
+        writer.u8(value.status().code());
+        writer.u64(value.orderId());
+        writer.u64(value.positionId());
+        writer.u64(value.updatedTimestamp());
+        writer.u64(value.triggeredPrice());
+        writer.bool(value.rejectReason() != null);
+        if (value.rejectReason() != null)
+        {
+            writer.u8(value.rejectReason().code());
+        }
+    }
+
+    public static ConditionalOrderView readConditionalOrderView(WireReader reader)
+    {
+        return new ConditionalOrderView(reader.u64(), Wire.readConditionalOrderRequest(reader), ConditionalOrderStatus.fromCode(reader.u8()), reader.u64(), reader.u64(), reader.u64(), reader.u64(), (reader.bool() ? PlaceOrderState.fromCode(reader.u8()) : null));
+    }
+
     public static void writeQuote(WireWriter writer, Quote value)
     {
         writer.u64(value.price());

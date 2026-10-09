@@ -4,6 +4,7 @@
 #include "advmatch/matching/orderbooks/OrderBookTypes.h"
 #include "advmatch/trading/futures/Contract.h"
 #include "advmatch/trading/futures/ReferencePrice.h"
+#include "advmatch/trading/conditional/ConditionalOrder.h"
 
 #include "../../model/CommandResult.h"
 
@@ -226,6 +227,28 @@ namespace advmatch
             ReferencePrices prices;
             Timestamp timestamp;
         };
+
+        struct PlaceConditionalOrder
+        {
+            ConditionalOrderRequest request;
+        };
+
+        struct ModifyConditionalOrder
+        {
+            UserId userId;
+            ConditionalOrderId conditionalOrderId;
+            Price triggerPrice;
+            Price price;
+            Quantity quantity;
+            Timestamp timestamp;
+        };
+
+        struct CancelConditionalOrder
+        {
+            UserId userId;
+            ConditionalOrderId conditionalOrderId;
+            Timestamp timestamp;
+        };
     }
 
     // Indexes are on-disk operation codes. Only append new alternatives; changing
@@ -237,7 +260,8 @@ namespace advmatch
         commands::AddMargin, commands::UpdateMarkPrice, commands::FundInsurance, commands::SettleFunding,
         commands::Expire, commands::Deliver, commands::Liquidate, commands::ProcessLiquidations,
         commands::SetAutomaticLiquidationBudget, commands::ArchiveHistory, commands::ConfigureReferencePrice,
-        commands::ConfigureContractSchedule, commands::PublishExternalPrice, commands::RefreshReferencePrice, commands::UpdateReferencePrice>;
+        commands::ConfigureContractSchedule, commands::PublishExternalPrice, commands::RefreshReferencePrice, commands::UpdateReferencePrice,
+        commands::PlaceConditionalOrder, commands::ModifyConditionalOrder, commands::CancelConditionalOrder>;
 
 }
 
