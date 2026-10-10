@@ -24,7 +24,9 @@ Spot fees are deducted from the received asset (base for buyers, quote for selle
 
 Self-trade protection compares exchange **UserId**, using the incoming order's policy: Allow, CancelTaker, CancelMaker or CancelBoth. Default is Allow; contracts also forbid matching the same account. PostOnly rejects immediate execution. FOK simulates execution first; failure neither fills nor cancels makers.
 
-Market orders need liquidity and valid price protection. A contract maker outside the mark-based band may be cancelled during matching. `tickAwarePriceBand` is off by default; enable it to include at least one tick around the mark. It does not change the mark or require consecutive trades to move by one tick.
+Market orders need liquidity; contract market orders require an explicit positive price cap. A contract maker outside the mark-based band may be cancelled during matching. `tickAwarePriceBand` is off by default; enable it to include at least one tick around the mark. It does not change the mark or require consecutive trades to move by one tick.
+
+Use `contracts().configureProtection(symbol, rate)` to set the execution band in millionths (10% = `100000`, disabled = `0`, maximum exclusive = `1000000`). Changes are permitted with open orders and positions. Disabling the band keeps collateral checks, explicit order caps and bounded liquidation prices. Reservations retain a bounded 10% mark estimate when protection is disabled.
 
 ## Contract reference prices
 

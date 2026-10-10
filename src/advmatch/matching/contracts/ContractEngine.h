@@ -120,6 +120,7 @@ namespace advmatch
         ContractResult addMargin(PositionId positionId, UserId userId, SymbolId symbolId, BalanceChange amount);
         ContractResult updateMarkPrice(SymbolId symbolId, Price price, Timestamp timestamp);
         ContractResult configureReference(SymbolId symbolId, const ReferencePriceConfig& config);
+        ContractResult configureProtection(SymbolId symbolId, MMRRate priceBandRate);
         ContractResult configureSchedule(SymbolId symbolId, const ContractSchedule& schedule, Timestamp timestamp);
         ContractResult publishPrice(SymbolId symbolId, const ExternalPrice& price);
         ContractResult refreshReference(SymbolId symbolId, Timestamp timestamp);

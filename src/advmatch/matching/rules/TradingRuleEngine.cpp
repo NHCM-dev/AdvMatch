@@ -132,7 +132,7 @@ namespace advmatch
 
         if (node.contractMarket)
         {
-            return ContractMath::notional(std::max(price, node.contractMarket->priceBand().second), quantity, node.contractMarket->spec.contractMultiplier);
+            return ContractMath::notional(std::max(price, node.contractMarket->reservationPriceBand().second), quantity, node.contractMarket->spec.contractMultiplier);
         }
 
         return ContractMath::balance(static_cast<WideBalance>(price) * quantity);

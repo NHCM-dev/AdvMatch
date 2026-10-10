@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(AdvMatch VERSION 1.1.0 LANGUAGES C CXX)
+project(AdvMatch VERSION 1.2.0 LANGUAGES C CXX)
 
 if(POLICY CMP0167)
     cmake_policy(SET CMP0167 NEW)

@@ -81,18 +81,30 @@ namespace advmatch
 
         std::pair<Price, Price> priceBand() const noexcept
         {
+            if (this->spec.priceBandRate == 0)
+            {
+                return {1, static_cast<Price>(std::numeric_limits<Balance>::max())};
+            }
+            return this->reservationPriceBand();
+        }
+
+        // Keep a bounded mark estimate when execution protection is disabled.
+        // Limit prices and settlement still require their actual notional.
+        std::pair<Price, Price> reservationPriceBand() const noexcept
+        {
+            const MMRRate rate = this->spec.priceBandRate == 0 ? 100000 : this->spec.priceBandRate;
             const Price tick = this->symbol && this->symbol->tradingRules.tickAwarePriceBand ? this->symbol->tradingRules.priceTick : 0;
-            if (this->bandMarkPrice != this->markPrice || this->bandRate != this->spec.priceBandRate || this->bandTick != tick)
+            if (this->bandMarkPrice != this->markPrice || this->bandRate != rate || this->bandTick != tick)
             {
                 const WideBalance mark = this->markPrice;
-                const WideBalance lower = mark * (RATE_SCALE - this->spec.priceBandRate);
+                const WideBalance lower = mark * (RATE_SCALE - rate);
                 this->cachedLiquidationFloor = static_cast<Price>(lower / RATE_SCALE);
                 this->cachedPriceBand = {
                     static_cast<Price>((lower + RATE_SCALE - 1) / RATE_SCALE),
-                    static_cast<Price>(mark * (RATE_SCALE + this->spec.priceBandRate) / RATE_SCALE)};
+                    static_cast<Price>(mark * (RATE_SCALE + rate) / RATE_SCALE)};
                 // A nonzero percentage band must permit at least one price tick
                 // on either side, even when integer rounding collapses it.
-                if (tick != 0 && this->spec.priceBandRate != 0)
+                if (tick != 0 && rate != 0)
                 {
                     const WideBalance floor = std::max<WideBalance>(1, mark - tick);
                     const WideBalance ceiling = std::min<WideBalance>(std::numeric_limits<Balance>::max(), mark + tick);
@@ -101,7 +113,7 @@ namespace advmatch
                     this->cachedLiquidationFloor = std::max<Price>(1, std::min(this->cachedLiquidationFloor, static_cast<Price>(floor)));
                 }
                 this->bandMarkPrice = this->markPrice;
-                this->bandRate = this->spec.priceBandRate;
+                this->bandRate = rate;
                 this->bandTick = tick;
             }
 
@@ -110,7 +122,7 @@ namespace advmatch
 
         Price liquidationPriceLimit(bool buy) const noexcept
         {
-            const auto band = this->priceBand();
+            const auto band = this->reservationPriceBand();
             // Sell IOC limits historically round down, while the execution
             // band's lower endpoint rounds up. Preserve both conventions.
             return buy ? band.second : this->cachedLiquidationFloor;

@@ -159,6 +159,21 @@ namespace advmatch
         return this->reference.configure(*market, config, this->matching.symbolManager);
     }
 
+    ContractResult ContractEngine::configureProtection(SymbolId symbolId, MMRRate priceBandRate)
+    {
+        ContractMarket* market = this->findMarket(symbolId);
+        if (!market || market->status != ContractStatus::Trading)
+        {
+            return {ContractState::InvalidSymbol};
+        }
+        if (priceBandRate >= RATE_SCALE)
+        {
+            return {ContractState::InvalidConfiguration};
+        }
+        market->spec.priceBandRate = priceBandRate;
+        return {};
+    }
+
     ContractResult ContractEngine::configureSchedule(SymbolId symbolId, const ContractSchedule& schedule, Timestamp timestamp)
     {
         ContractMarket* market = this->findMarket(symbolId);

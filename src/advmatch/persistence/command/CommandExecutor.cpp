@@ -282,6 +282,11 @@ namespace advmatch
                 return contractResult(this->contracts().configureReference(command.symbolId, command.config));
             }
 
+            CommandResult operator()(const commands::ConfigureContractProtection& command)
+            {
+                return contractResult(this->contracts().configureProtection(command.symbolId, command.priceBandRate));
+            }
+
             CommandResult operator()(const commands::ConfigureContractSchedule& command)
             {
                 return contractResult(this->contracts().configureSchedule(command.symbolId, command.schedule, command.timestamp));

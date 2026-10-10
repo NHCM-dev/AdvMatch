@@ -42,6 +42,12 @@ public final class ContractManager extends Manager
         return this.exchange.submit(new ConfigureReferencePrice(symbol.id(), config)).thenApply(ApiResults::accepted);
     }
 
+    public CompletableFuture<CommandReceipt> configureProtection(Symbol symbol, long priceBandRate)
+    {
+        symbol.requireOwner(this.exchange);
+        return this.exchange.submit(new ConfigureContractProtection(symbol.id(), priceBandRate)).thenApply(ApiResults::accepted);
+    }
+
     public CompletableFuture<CommandReceipt> configureSchedule(Symbol symbol, ContractSchedule schedule, long timestamp)
     {
         symbol.requireOwner(this.exchange);

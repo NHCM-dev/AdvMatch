@@ -1,4 +1,4 @@
-# AdvMatch 1.1.0
+# AdvMatch 1.2.0
 
 [English](README.md) · 简体中文
 
@@ -29,7 +29,7 @@ Linux / macOS 使用 `./build.sh release`。脚本执行构建与测试，releas
 .\java\gradlew.bat -p java :advmatch:build :advmatch:runExample
 ```
 
-产物为 `java/advmatch/build/libs/advmatch-1.1.0.jar`，包含构建平台的原生库。已有兼容原生库时可加 `-PskipNativeBuild`。
+产物为 `java/advmatch/build/libs/advmatch-1.2.0.jar`，包含构建平台的原生库。已有兼容原生库时可加 `-PskipNativeBuild`。
 
 ## 快速接入
 
@@ -59,10 +59,12 @@ try (var exchange = new MatchingExchange(config)) {
 
 指南包含交易规则、合约价格、条件单、原子转账、恢复与压测。
 
-## 升级到 1.1.0
+## 兼容性
 
-Java SDK 与原生库须配套更新。新命令使用 schema 2，仍支持读取 schema 1 并保持历史重放行为。旧引擎不能读取新增 schema 2 记录，降级需完整的升级前备份。
+Java SDK 与原生库须配套更新。命令使用 schema 2，支持读取 schema 1 并保持历史重放行为。不具备相同命令集的旧引擎无法读取较新的操作；降级需使用完整兼容备份。
 
 `TradingRules.tickAwarePriceBand` 默认关闭。启用后，合约保护带至少覆盖标记价上下各一个价格步长。仅切换此项可保留挂单、持仓和手续费配置。
+
+`contracts().configureProtection(symbol, rate)` 以百万分比设置成交保护：`100000` 表示 10%，`0` 关闭。市价单独立保护价、资金风控与有界强平仍生效。
 
 开发协助：GPT-5.6、GPT-6.1。

@@ -80,6 +80,12 @@ namespace advmatch::sdk
             });
         }
 
+        // Zero disables exchange execution protection, not collateral checks.
+        CompletableFuture<CommandReceipt> configureProtection(const Symbol& symbol, MMRRate priceBandRate, std::uint64_t requestId = 0) const
+        {
+            return this->update(symbol, commands::ConfigureContractProtection{symbol.id(), priceBandRate}, requestId);
+        }
+
         CompletableFuture<CommandReceipt> configureSchedule(const Symbol& symbol, ContractSchedule schedule, Timestamp timestamp, std::uint64_t requestId = 0) const
         {
             return this->update(symbol, commands::ConfigureContractSchedule{symbol.id(), schedule, timestamp}, requestId);

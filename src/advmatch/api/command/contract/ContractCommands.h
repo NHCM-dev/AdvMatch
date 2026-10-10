@@ -17,6 +17,7 @@ namespace advmatch::api::command
     using ProcessLiquidations = TradingOperation<advmatch::commands::ProcessLiquidations>;
     using SetAutomaticLiquidationBudget = TradingOperation<advmatch::commands::SetAutomaticLiquidationBudget>;
     using ConfigureReferencePrice = TradingOperation<advmatch::commands::ConfigureReferencePrice>;
+    using ConfigureContractProtection = TradingOperation<advmatch::commands::ConfigureContractProtection>;
     using ConfigureContractSchedule = TradingOperation<advmatch::commands::ConfigureContractSchedule>;
     using PublishExternalPrice = TradingOperation<advmatch::commands::PublishExternalPrice>;
     using RefreshReferencePrice = TradingOperation<advmatch::commands::RefreshReferencePrice>;

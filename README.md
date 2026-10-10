@@ -1,4 +1,4 @@
-# AdvMatch 1.1.0
+# AdvMatch 1.2.0
 
 English · [简体中文](README.zh-CN.md)
 
@@ -29,7 +29,7 @@ For the Java SDK:
 .\java\gradlew.bat -p java :advmatch:build :advmatch:runExample
 ```
 
-The SDK is `java/advmatch/build/libs/advmatch-1.1.0.jar`, including native libraries for the build platform. Use `-PskipNativeBuild` when compatible native libraries are already built.
+The SDK is `java/advmatch/build/libs/advmatch-1.2.0.jar`, including native libraries for the build platform. Use `-PskipNativeBuild` when compatible native libraries are already built.
 
 ## Quick start
 
@@ -59,10 +59,12 @@ To install the C++ SDK, run `cmake --install build/release --prefix build/sdk`, 
 
 The guide covers trading rules, contract prices, conditional orders, atomic transfers, recovery and benchmarks.
 
-## Upgrading to 1.1.0
+## Compatibility
 
-Update the Java SDK and native libraries together. New command records use schema 2; this version also reads schema 1 and preserves historical replay behavior. Older engines cannot read new schema 2 records, so downgrades require a complete pre-upgrade backup.
+Update the Java SDK and native libraries together. Command records use schema 2; schema 1 records retain their historical replay behavior. Engines without the same command set cannot read newer operations; use a complete compatible backup for downgrades.
 
 `TradingRules.tickAwarePriceBand` is opt-in. It lets the contract protection band cover at least one price tick on either side of the mark. Changing only this flag preserves open orders, positions and fee settings.
+
+`contracts().configureProtection(symbol, rate)` sets the execution band in millionths: `100000` is 10%, `0` disables it. Explicit market caps, collateral checks and bounded liquidation execution remain active.
 
 Development assistance: GPT-5.6 and GPT-6.1.

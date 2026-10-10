@@ -249,6 +249,57 @@ namespace
         audit(fixture.exchange);
     }
 
+    void contractProtection()
+    {
+        const auto directory = std::filesystem::temp_directory_path() / ("advmatch-protection-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+        sdk::ExchangeConfig config;
+        config.persistence.directory = directory;
+        sdk::SymbolId symbolId = 0;
+        {
+            Fixture fixture(config);
+            auto symbol = fixture.exchange.symbols().create("PROTECTION", sdk::SymbolType::Perpetual, fixture.base, fixture.quote).get();
+            symbolId = symbol.id();
+            sdk::ContractSpec spec;
+            spec.firstFundingTimestamp = 100;
+            auto book = fixture.exchange.books().addContract(symbol, spec, 100, 0).get();
+            auto maker = book.place(fixture.seller, sdk::OrderSide::Ask, sdk::OrderType::Limit, sdk::TimeInForce::GTC, 150, 10, 1, sdk::ContractOrderOptions{}).get();
+            sdk::ContractOrderOptions marketOptions;
+            marketOptions.priceLimit = 200;
+            marketOptions.leverage = 1;
+            auto blocked = book.place(fixture.buyer, sdk::OrderSide::Bid, sdk::OrderType::Market, sdk::TimeInForce::IOC, 0, 10, 2, marketOptions).get();
+            check(blocked.snapshot().get().filling.filled == 0, "enabled band blocks far-price execution");
+            if (maker.snapshot().get().resting)
+                maker.cancel(3).get();
+
+            fixture.exchange.contracts().configureProtection(symbol, 0).get();
+            check(fixture.exchange.contracts().market(symbol).get().spec.priceBandRate == 0, "zero disables protection");
+            maker = book.place(fixture.seller, sdk::OrderSide::Ask, sdk::OrderType::Limit, sdk::TimeInForce::GTC, 150, 10, 4, sdk::ContractOrderOptions{}).get();
+            marketOptions.priceLimit = 140;
+            auto capped = book.place(fixture.buyer, sdk::OrderSide::Bid, sdk::OrderType::Market, sdk::TimeInForce::IOC, 0, 10, 5, marketOptions).get();
+            check(capped.snapshot().get().filling.filled == 0 && maker.snapshot().get().resting, "explicit market cap survives disabled exchange band");
+            marketOptions.priceLimit = 200;
+            auto filled = book.place(fixture.buyer, sdk::OrderSide::Bid, sdk::OrderType::Market, sdk::TimeInForce::IOC, 0, 10, 6, marketOptions).get();
+            check(filled.snapshot().get().filling.filled == 10, "disabled band allows funded far-price trade");
+            rejected([&] { fixture.exchange.contracts().configureProtection(symbol, 1'000'000).get(); }, sdk::ContractState::InvalidConfiguration);
+            check(fixture.exchange.contracts().market(symbol).get().spec.priceBandRate == 0, "invalid rate preserves setting");
+            auto empty = fixture.exchange.users().create().get();
+            rejected([&] { book.place(empty, sdk::OrderSide::Bid, sdk::OrderType::Limit, sdk::TimeInForce::GTC, 150, 1, 7, sdk::ContractOrderOptions{}).get(); }, sdk::PlaceOrderState::InsufficientBalance);
+            fixture.exchange.persistence().checkpoint().get();
+            fixture.exchange.contracts().configureProtection(symbol, 250000).get();
+            fixture.exchange.contracts().configureProtection(symbol, 0).get();
+            audit(fixture.exchange);
+        }
+        {
+            sdk::MatchingExchange exchange(config);
+            auto symbol = exchange.symbols().get(symbolId);
+            check(exchange.contracts().market(symbol).get().spec.priceBandRate == 0, "protection survives checkpoint and WAL recovery");
+            exchange.contracts().configureProtection(symbol, 250000).get();
+            check(exchange.contracts().market(symbol).get().spec.priceBandRate == 250000, "protection can be re-enabled at a new rate");
+            audit(exchange);
+        }
+        std::filesystem::remove_all(directory);
+    }
+
     void contractLifecycleRecovery()
     {
         const auto directory = std::filesystem::temp_directory_path() / ("advmatch-risk-lifecycle-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
@@ -392,6 +443,7 @@ int main()
         overflow();
         contracts(sdk::MarginMode::Isolated);
         contracts(sdk::MarginMode::Cross);
+        contractProtection();
         contractLifecycleRecovery();
         recovery();
         std::cout << "Trading rules: fees, quotas, STP, precision, post-only, FOK, conservation and recovery passed\n";

@@ -293,6 +293,7 @@ contracts = [checked("setAutomaticLiquidationBudget(long maxCandidates)", "new S
 for jd, jc in [
     ("updateMark(Symbol symbol, long price, long timestamp)", "new UpdateMarkPrice(symbol.id(), price, timestamp)"),
     ("configureReference(Symbol symbol, ReferencePriceConfig config)", "new ConfigureReferencePrice(symbol.id(), config)"),
+    ("configureProtection(Symbol symbol, long priceBandRate)", "new ConfigureContractProtection(symbol.id(), priceBandRate)"),
     ("configureSchedule(Symbol symbol, ContractSchedule schedule, long timestamp)", "new ConfigureContractSchedule(symbol.id(), schedule, timestamp)"),
     ("publishPrice(Symbol symbol, long sourceId, long price, long timestamp)", "new PublishExternalPrice(symbol.id(), new ExternalPrice(sourceId, price, timestamp))"),
     ("refresh(Symbol symbol, long timestamp)", "new RefreshReferencePrice(symbol.id(), timestamp)"),

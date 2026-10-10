@@ -291,6 +291,12 @@ namespace advmatch
                 ReferencePriceCodec::write(writer, value.config);
             }
 
+            void operator()(const commands::ConfigureContractProtection& value)
+            {
+                writer.number(value.symbolId);
+                writer.number(value.priceBandRate);
+            }
+
             void operator()(const commands::ConfigureContractSchedule& value)
             {
                 writer.number(value.symbolId);
@@ -447,6 +453,8 @@ namespace advmatch
                     value.conserve = reader.boolean();
                     return value;
                 }
+                case 37:
+                    return commands::ConfigureContractProtection{reader.number<SymbolId>(), reader.number<MMRRate>()};
                 default: throw PersistenceError(PersistenceFailure::UnsupportedVersion, "unknown trading operation");
             }
         }

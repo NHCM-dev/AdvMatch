@@ -119,7 +119,7 @@ namespace advmatch
                 spec.defaultLeverage <= spec.maxLeverage && spec.maintenanceMarginRate > 0 &&
                 static_cast<std::uint64_t>(spec.maintenanceMarginRate) + spec.liquidationFeeRate < RATE_SCALE / spec.maxLeverage && spec.maxPositionNotional > 0 &&
                 spec.makerFeeRate <= RATE_SCALE && spec.takerFeeRate <= RATE_SCALE &&
-                spec.liquidationFeeRate <= RATE_SCALE && spec.priceBandRate > 0 && spec.priceBandRate < RATE_SCALE &&
+                spec.liquidationFeeRate <= RATE_SCALE && spec.priceBandRate < RATE_SCALE &&
                 spec.maxFundingRate <= RATE_SCALE;
         }
     };

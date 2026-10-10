@@ -210,6 +210,13 @@ namespace advmatch
             Timestamp timestamp;
         };
 
+        // Zero disables the execution band; funds and margin checks stay active.
+        struct ConfigureContractProtection
+        {
+            SymbolId symbolId;
+            MMRRate priceBandRate;
+        };
+
         struct PublishExternalPrice
         {
             SymbolId symbolId;
@@ -293,7 +300,7 @@ namespace advmatch
         commands::ConfigureContractSchedule, commands::PublishExternalPrice, commands::RefreshReferencePrice, commands::UpdateReferencePrice,
         commands::PlaceConditionalOrder, commands::ModifyConditionalOrder, commands::CancelConditionalOrder,
         commands::ConfigureTradingRules, commands::WithdrawSpotFees, commands::SetTradingHalt,
-        commands::BalanceTransaction>;
+        commands::BalanceTransaction, commands::ConfigureContractProtection>;
 
 }
 

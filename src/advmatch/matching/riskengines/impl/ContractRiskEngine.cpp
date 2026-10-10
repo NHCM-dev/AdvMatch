@@ -43,7 +43,7 @@ namespace advmatch
         }
 
         const ContractMarket& market = *node.contractMarket;
-        const Price upper = market.priceBand().second;
+        const Price upper = market.reservationPriceBand().second;
         if (upper > static_cast<Price>(std::numeric_limits<Balance>::max()))
         {
             return std::nullopt;

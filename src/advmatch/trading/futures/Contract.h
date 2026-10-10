@@ -95,6 +95,7 @@ namespace advmatch
         MMRRate makerFeeRate = 0;
         MMRRate takerFeeRate = 500;
         MMRRate liquidationFeeRate = 1'000;
+        // Zero disables execution protection; funds and margin checks remain active.
         MMRRate priceBandRate = 100'000;
         MMRRate maxFundingRate = 10'000;
         Balance maxPositionNotional = 1'000'000'000'000'000;
