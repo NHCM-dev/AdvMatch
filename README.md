@@ -1,183 +1,68 @@
 # AdvMatch 1.1.0
 
-(Credit to GPT-5.6, GPT-6.1)
+English · [简体中文](README.zh-CN.md)
 
-C++20 交易引擎，支持现货、线性期货和永续合约，提供 C++ 对象 SDK 和 Java SDK。
+A C++20 exchange engine with C++ and Java SDKs for **spot, linear futures and perpetual contracts**.
 
-- 单线程撮合，多线程提交命令，异步返回结果。
-- 独立仓位、全仓 / 逐仓、杠杆、强平、资金费和现金交割。
-- 账户与结算、盘口与数据快照、WAL 持久化与恢复。
+## Features
 
-## 构建
+- Single-threaded matching, concurrent command submission and asynchronous results.
+- Accounts, balances, reservations, orders, trades and immutable snapshots.
+- Cross / isolated margin, leverage, liquidation, funding and cash settlement.
+- Stop-loss, take-profit and OCO orders; fees, risk limits and self-trade protection.
+- Atomic balance transactions, market halts, conservation audits and WAL recovery.
+- Integer monetary units with asset and symbol scales.
 
-需要 C++20 编译器、CMake 3.20+、Ninja 和 Git；首次构建需要网络下载依赖，Disruptor 已内置。
+## Build
+
+Requires a C++20 compiler, **CMake 3.20+**, Ninja and Git. Java integration requires **JDK 21**. The first build downloads dependencies.
 
 ```powershell
 .\build.cmd release
 ```
 
-Linux / macOS 使用 `./build.sh release`。脚本完成构建、测试和 ZIP 打包；调试版本将 `release` 换成 `debug`。
+On Linux / macOS, use `./build.sh release`. Both scripts build and test; release builds also create a ZIP in `build/release/`.
 
-产物在 `build/release/`。单独执行构建、测试或安装：
-
-```powershell
-cmake --preset release
-cmake --build --preset release
-ctest --preset release
-cmake --install build/release --prefix build/sdk
-```
-
-## C++ 接入
-
-外部项目配置时指定 `-DCMAKE_PREFIX_PATH=SDK安装目录`：
-
-```cmake
-find_package(AdvMatch CONFIG REQUIRED)
-target_link_libraries(your_app PRIVATE AdvMatch::sdk)
-```
-
-```cpp
-#include <advmatch/sdk/AdvMatch.h>
-namespace sdk = advmatch::sdk;
-
-sdk::ExchangeConfig config;
-config.persistence.enabled = false;
-sdk::MatchingExchange exchange(config);
-auto user = exchange.users().create().get();
-auto account = user.spotAccount().get();
-auto snapshot = user.snapshot().get();
-exchange.close();
-```
-
-通过 `assets()`、`users()`、`accounts()`、`symbols()`、`books()`、`orders()`、`positions()` 等 Manager 操作实体；通过 `submit()` 提交命令。结果为 `CompletableFuture<T>`，创建实体返回真实 ID，读取返回独立快照。
-
-持久化默认开启，使用 `config.persistence.directory` 指定实例目录；纯内存运行如上关闭持久化。完整交易示例：[C++ SDK](examples/cpp-sdk/main.cpp)。
-
-Windows 将 `advmatch_sdk.dll` 放在应用旁边。C++ 应用与 SDK 需要使用兼容的编译器和运行库。
-
-## Java 接入
-
-需要 JDK 21。Gradle Wrapper 自动构建 JNI 并将当前平台的原生库打入 JAR：
+For the Java SDK:
 
 ```powershell
 .\java\gradlew.bat -p java :advmatch:build :advmatch:runExample
-java -jar java/advmatch/build/libs/advmatch-1.1.0-tests.jar
 ```
 
-SDK JAR 位于 `java/advmatch/build/libs/`；测试 JAR 包含集成测试和全部 benchmark。已有原生构建可加 `-PskipNativeBuild`。Java 使用 `nhcm.advmatch.MatchingExchange` 和 `CompletableFuture`，用 try-with-resources 关闭会话；JAR 需要匹配运行平台和架构。
+The SDK is `java/advmatch/build/libs/advmatch-1.1.0.jar`, including native libraries for the build platform. Use `-PskipNativeBuild` when compatible native libraries are already built.
 
-## 合约价格与结算
-
-```cpp
-auto contracts = exchange.contracts();
-contracts.bindSpot(perpetual, spot).get();
-contracts.refresh(perpetual, timestamp).get();
-auto market = contracts.market(perpetual).get();
-```
-
-默认绑定同 base/quote 的现货双边盘口；指数取加权均价并剔除过期数据与中位数异常值，标记价限制盘口溢价。资金费为 `premium + clamp(interest - premium)`，再限制到合约上限；默认使用当前溢价，费率单位为百万分之一。
-
-`configureReference` 配置最多 32 个现货 / 外部价格源、权重、单位换算、有效期和自动结算；`publishPrice` 输入外部行情。`configureSchedule` 调整资金费间隔、下次结算时间、上限和期货到期日。Java ContractManager 提供同名接口。
-
-由调用方定时提交 `refresh`：到期自动结算资金费，期货按指数现金交割。延迟调用仅用仍有效的历史参考数据补结算，超过补结算预算或数据失效会拒绝；不会用当前报价补造过去的价格。失败可能发生在价格更新之后，应读取状态再处理。
-
-手动 `updateMark` / `settleFunding` / `deliver` 仍可使用；关闭自动交割后，到期只停止交易。C++ 可继承 `ReferencePriceAlgorithm` 或默认实现，计算后通过 `updateReference` 提交，持久化记录计算结果。完整示例：[合约价格管理](examples/contract-reference/main.cpp)。JNI ABI 为 4，JAR 和原生库需一同更新。
-
-## 止盈止损
-
-通过 `exchange.conditionalOrders()` 创建、查询、修改和取消条件单；`ConditionalOrderRequest` 指定止盈 / 止损、触发价、成交价 / 标记价 / 指数价，以及市价 IOC / FOK 或限价子单。现货只支持成交价，合约支持三种价格源。
-
-```cpp
-sdk::ConditionalOrderRequest stop;
-stop.quantity = 1;
-stop.triggerPrice = 90'000;
-stop.timestamp = timestamp;
-auto pending = exchange.conditionalOrders().place(user, spot, stop).get();
-auto state = pending.snapshot().get();
-```
-
-买入止损 / 卖出止盈在 `price >= triggerPrice` 时触发，卖出止损 / 买入止盈在 `price <= triggerPrice` 时触发。已有价格满足条件时立即触发；没有对应价格时等待首次更新。每张条件单只激活一次，`orderId` 指向实际订单。
-
-等待期间不冻结资金；触发时重新风控，失败记录 `Rejected` 和 `rejectReason`。合约平仓传入 `positionId`、`reduceOnly` 和市价保护 `priceLimit`。`ocoOrderId` 关联同用户、同交易对的另一张等待单，任一子单被接受后取消另一张；风控拒绝保留另一张，手动取消只取消指定单。OCO 不保证成交，市价单受流动性和价格保护限制；期货到期会取消未触发单。条件单与触发结果随 WAL / checkpoint 恢复，C++ 和 Java 均使用同一命令接口。
-
-## 手续费与交易规则
-
-```cpp
-sdk::TradingRules rules;
-rules.priceTick = 5;
-rules.quantityStep = 10;
-rules.minQuantity = 10;
-rules.fees = {100, 500}; // maker / taker，百万分之一
-rules.risk.maxActiveOrders = 100;
-rules.risk.maxAccountNotional = 1'000'000;
-rules.selfTradePrevention = sdk::SelfTradePrevention::CancelTaker;
-exchange.rules().configure(symbol, rules).get();
-auto risk = exchange.rules().userRisk(symbol, user).get();
-auto report = exchange.audit().report().get();
-```
-
-规则通过 `rules()` 配置，要求交易对没有挂单或未平仓仓位。支持单笔数量 / 名义金额、单仓与单用户交易对总敞口、活动订单数和杠杆上限；额外限额为 0 表示关闭，原有合约风控仍生效。总敞口采用持仓入场名义金额加待成交开仓单的保守估值，双向仓位不互相抵消。
-
-金额与价格使用整数单位，不使用浮点数。价格和触发价必须是 `priceTick` 的整数倍；数量必须满足 `quantityStep`、`minQuantity` 和最小名义金额。修改订单、条件单激活也执行校验。`PostOnly` 拒绝会立即成交的下单或改价。
-
-现货按实际获得的资产扣费：买方扣 base，卖方扣 quote，逐笔向下取整；合约在 quote 扣费，逐笔向上取整。费率范围 0–100%，暂不支持负费率返佣。`OrderView` / `TradeView` 返回费用；现货费用归入独立金库，可通过 `spotFees` 查询及 `withdrawSpotFees` 转入账户。
-
-自成交以 `UserId` 判断，支持允许、取消 taker、取消 maker、双方取消。为兼容历史日志，默认 `Allow`，新交易对建议显式开启保护；合约仍保留原有的同账户禁止成交约束。FOK 先模拟余额、手续费和自成交处理，失败不成交也不取消 maker。
-
-## 守恒与恢复校验
-
-`audit().report()` 检查各资产外部净流入与账户余额、冻结资金、手续费、保险金、清算及资金费舍入余额之和，并校验订单 / 保证金冻结、盘口聚合和风控缓存。报告包含问题列表和经济状态指纹；总额使用宽整数并以十进制字符串返回。
-
-校验在所属交易线程执行，会遍历并排序保留数据，适合维护和测试；不要每笔交易调用。`persistence.verifyRecovery` 默认开启，WAL / checkpoint 恢复完成后执行校验，异常阻止启动。外部存取款必须通过 `UpdateBalance` 或 `conserve=false` 的 `BalanceTransaction` 命令，直接修改底层账户会绕过净流入记账。Java 提供同名 Manager 与读取接口。
-
-## 停牌与恢复交易
-
-```cpp
-exchange.trading().halt(symbol, "market maintenance", timestamp).get();
-auto status = exchange.trading().status(symbol).get();
-exchange.trading().resume(symbol, timestamp + 1).get();
-// 全所停牌 / 恢复，Java 使用相同方法和 .join()
-exchange.trading().halt("exchange maintenance", timestamp + 2).get();
-exchange.trading().resume(timestamp + 3).get();
-```
-
-全所与交易对停牌相互独立，任一生效即停止撮合。停牌拒绝新单、改单和新建 / 修改条件单，暂停条件单触发与强平成交；停牌操作自身不撤单、不释放冻结，撤单和读取继续可用。标记价 / 指数价更新、补保证金、资金费结算和现金交割仍可执行，相关维护操作仍遵循原有风控规则。
-
-恢复时按各价格源最新值重新评估等待条件单，不补触发停牌期间已经回撤的历史价格；恢复可能直接产生子单与成交。待强平仓位可通过 `processLiquidations` 处理，后续行情 / 流动性更新也会继续处理。恢复不会重新开放已到期或已交割的期货。状态、原因和时间戳通过 `trading().status()` 查询，并随 WAL / checkpoint 恢复；各停牌范围的时间戳不能倒退，原因最多 256 个 UTF-8 字节。
-
-## 压测
-
-```powershell
-.\build\release\advmatch_tps_benchmark.exe --orders 100000 --producers 4 --ring-size 32
-.\java\gradlew.bat -p java :advmatch:benchmarkTps -PskipNativeBuild "-PbenchmarkArgs=--orders 100000 --producers 4 --ring-size 32"
-```
-
-其他 Java 压测任务：`benchmarkScale`、`benchmarkPerpetual`、`benchmarkLiquidation`、`benchmarkObserve`、`benchmarkBigAllocs`。对应 C++ 程序位于 `build/release/`。
-
-
-## 原子多账户 / 多资产余额事务
-
-`BalanceTransaction`（追加命令号 36）一次处理 1–256 个不同的 `(accountId, assetId)` 变更；同一账户资产组合不能重复。整数单位沿用各资产和价格尺度。命令预先校验账户/资产存在、账户活动状态、可用余额、可用加冻结余额溢出、原生合约提款风控以及完整内存准备，然后一次提交全部余额。
+## Quick start
 
 ```java
-var changes = java.util.List.of(
-    new nhcm.advmatch.model.BalanceDelta(senderAccount, assetId, -amount),
-    new nhcm.advmatch.model.BalanceDelta(recipientAccount, assetId, amount));
-var command = new nhcm.advmatch.command.account.BalanceTransaction(changes, true, requestId);
-exchange.submit(command).thenCompose(receipt -> {
-    if (!receipt.result().accepted()) throw new nhcm.advmatch.BusinessException(receipt);
-    return exchange.submit(new nhcm.advmatch.command.persistence.Flush());
-});
+import nhcm.advmatch.MatchingExchange;
+import nhcm.advmatch.model.ExchangeConfig;
+import nhcm.advmatch.model.PersistenceConfig;
+
+var config = new ExchangeConfig()
+    .withPersistence(new PersistenceConfig().withEnabled(false));
+try (var exchange = new MatchingExchange(config)) {
+    var user = exchange.users().create().join();
+    var account = user.spotAccount().join();
+    System.out.println(account.id());
+}
 ```
 
-`conserve=true` 要求每个资产的变动总和为零，可跨用户、账户类型和资产执行转账或储备兑换。`conserve=false` 用于受信应用的外部存取款，非零净流入同时计入原生审计；它本身不是权限边界，宿主必须限制调用方。不能通过冻结余额满足提款，也不会在中间腿失败后留下前面的变更。
+This example runs in memory. Persistence is enabled by default; set its directory for a durable exchange. Entity managers return futures, and `submit()` accepts commands. Create an order book after creating a symbol to enable matching.
 
-C++ SDK 同样提供 `sdk::BalanceDelta` 和 `sdk::command::BalanceTransaction`。每次事务是一个 WAL 命令，恢复与请求去重作用于整个事务。现有命令编号和快照格式保持兼容；旧版引擎不能读取新增命令 36 的日志。普通 `Transfer` 的原有业务限制保留。
+[C++ trading example](examples/cpp-sdk/main.cpp) · [Java trading example](java/advmatch/src/main/nhcm/advmatch/example/SpotExample.java) · [Contract references](examples/contract-reference/main.cpp)
 
-余额原子性限于交易引擎；物品交付、外部数据库或应用日志需要各自的持久化与恢复设计。`accepted` 和已经刷盘是不同阶段，应检查 Flush 的 fault/enabled/durableThrough。请求去重受 `retainedRequests` 保留窗口限制。
+To install the C++ SDK, run `cmake --install build/release --prefix build/sdk`, then link `AdvMatch::sdk` with `find_package(AdvMatch CONFIG REQUIRED)`. Use compatible compiler/runtime settings and deploy the SDK's shared library with your application.
 
-## 1.1.0 升级说明
+## Integration guide
 
-新增原子多资产余额事务，以及可配置的合约最小一档价格保护带（TradingRules.tickAwarePriceBand）。原始 SDK 默认关闭该规则，应用可以在恢复完成后持久化启用；单独切换此规则支持保留已有挂单、仓位及手续费配置。
+[English guide](documentation/guide.en.md) · [中文接入说明](documentation/guide.zh-CN.md)
 
-命令持久化编码升级为 schema 2，新版本仍读取 schema 1 并按旧规则重放历史命令。新字段要求 Java SDK 与原生库配套更新；旧版本不能读取新增 schema 2 日志，降级需要完整的升级前备份。
+The guide covers trading rules, contract prices, conditional orders, atomic transfers, recovery and benchmarks.
+
+## Upgrading to 1.1.0
+
+Update the Java SDK and native libraries together. New command records use schema 2; this version also reads schema 1 and preserves historical replay behavior. Older engines cannot read new schema 2 records, so downgrades require a complete pre-upgrade backup.
+
+`TradingRules.tickAwarePriceBand` is opt-in. It lets the contract protection band cover at least one price tick on either side of the mark. Changing only this flag preserves open orders, positions and fee settings.
+
+Development assistance: GPT-5.6 and GPT-6.1.
