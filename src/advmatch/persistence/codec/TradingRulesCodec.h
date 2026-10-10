@@ -21,9 +21,10 @@ namespace advmatch::TradingRulesCodec
         writer.number(rules.risk.maxActiveOrders);
         writer.number(rules.risk.maxLeverage);
         writer.enumeration(rules.selfTradePrevention);
+        writer.boolean(rules.tickAwarePriceBand);
     }
 
-    inline TradingRules read(BinaryReader& reader)
+    inline TradingRules read(BinaryReader& reader, bool extended = true)
     {
         TradingRules rules;
         rules.priceTick = reader.number<Price>();
@@ -33,6 +34,7 @@ namespace advmatch::TradingRulesCodec
         rules.fees = {reader.number<MMRRate>(), reader.number<MMRRate>()};
         rules.risk = {reader.number<Quantity>(), reader.number<Balance>(), reader.number<Balance>(), reader.number<Balance>(), reader.number<std::uint32_t>(), reader.number<LeverageMultiplier>()};
         rules.selfTradePrevention = reader.enumeration(SelfTradePrevention::CancelBoth);
+        rules.tickAwarePriceBand = extended ? reader.boolean() : false;
         return rules;
     }
 }

@@ -25,7 +25,7 @@ public record SetLeverage(long positionId, long userId, long symbolId, int lever
     public void encodeTo(WireWriter writer)
     {
         writer.requestHeader(0);
-        writer.u16(1);
+        writer.u16(2);
         writer.u64(this.requestId);
         writer.u16(14);
         writer.u64(this.positionId);

@@ -25,7 +25,7 @@ public record PublishExternalPrice(long symbolId, ExternalPrice price, long requ
     public void encodeTo(WireWriter writer)
     {
         writer.requestHeader(0);
-        writer.u16(1);
+        writer.u16(2);
         writer.u64(this.requestId);
         writer.u16(27);
         writer.u32(this.symbolId);

@@ -25,7 +25,7 @@ public record ModifyQuantity(long userId, long orderId, long change, long timest
     public void encodeTo(WireWriter writer)
     {
         writer.requestHeader(0);
-        writer.u16(1);
+        writer.u16(2);
         writer.u64(this.requestId);
         writer.u16(12);
         writer.u64(this.userId);

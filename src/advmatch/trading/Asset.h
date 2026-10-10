@@ -44,6 +44,14 @@ namespace advmatch
         AssetBalance balance;
     };
 
+    // Unique (accountId, assetId) legs in one owner-thread ledger transaction.
+    struct BalanceDelta
+    {
+        AccountId accountId;
+        AssetId assetId;
+        BalanceChange change;
+    };
+
     enum class BalanceOpResult : std::uint8_t
     {
         Success,

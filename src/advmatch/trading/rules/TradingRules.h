@@ -53,6 +53,8 @@ namespace advmatch
         // Preserve legacy journal behavior; explicitly enable protection for
         // new markets. Identity is UserId, including independent positions.
         SelfTradePrevention selfTradePrevention = SelfTradePrevention::Allow;
+        // Opt in through a durable rule update; legacy journal replay stays exact.
+        bool tickAwarePriceBand = false;
     };
 
     struct UserRiskView

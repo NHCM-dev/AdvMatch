@@ -29,12 +29,27 @@ namespace advmatch
             return {TradingRuleState::InvalidConfiguration};
         }
 
+        const auto& previous = symbol->tradingRules;
+        const bool onlyBandChange = rules.priceTick == previous.priceTick && rules.quantityStep == previous.quantityStep &&
+            rules.minQuantity == previous.minQuantity && rules.minOrderNotional == previous.minOrderNotional &&
+            rules.fees.makerRate == previous.fees.makerRate && rules.fees.takerRate == previous.fees.takerRate &&
+            rules.risk.maxOrderQuantity == previous.risk.maxOrderQuantity && rules.risk.maxOrderNotional == previous.risk.maxOrderNotional &&
+            rules.risk.maxPositionNotional == previous.risk.maxPositionNotional && rules.risk.maxAccountNotional == previous.risk.maxAccountNotional &&
+            rules.risk.maxActiveOrders == previous.risk.maxActiveOrders && rules.risk.maxLeverage == previous.risk.maxLeverage &&
+            rules.selfTradePrevention == previous.selfTradePrevention && rules.tickAwarePriceBand != previous.tickAwarePriceBand;
+        auto* market = this->matching.getContractEngine().findMarket(symbolId);
+        if (onlyBandChange && market && market->status == ContractStatus::Trading)
+        {
+            symbol->tradingRules.tickAwarePriceBand = rules.tickAwarePriceBand;
+            ++market->liquidityRevision;
+            return {};
+        }
+
         if (book->bestBid() || book->bestAsk())
         {
             return {TradingRuleState::OpenExposure};
         }
 
-        auto* market = this->matching.getContractEngine().findMarket(symbolId);
         if (market && (market->status != ContractStatus::Trading || !market->activePositions.empty() || !market->orderParticipants.empty()))
         {
             return {TradingRuleState::OpenExposure};

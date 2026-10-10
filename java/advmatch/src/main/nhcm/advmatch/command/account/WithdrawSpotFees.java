@@ -25,7 +25,7 @@ public record WithdrawSpotFees(long accountId, long assetId, long amount, long r
     public void encodeTo(WireWriter writer)
     {
         writer.requestHeader(0);
-        writer.u16(1);
+        writer.u16(2);
         writer.u64(this.requestId);
         writer.u16(34);
         writer.u64(this.accountId);

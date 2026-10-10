@@ -2,6 +2,7 @@
 #define ADVMATCH_TRADING_COMMAND_H
 
 #include "advmatch/matching/orderbooks/OrderBookTypes.h"
+#include "advmatch/trading/Asset.h"
 #include "advmatch/trading/futures/Contract.h"
 #include "advmatch/trading/futures/ReferencePrice.h"
 #include "advmatch/trading/conditional/ConditionalOrder.h"
@@ -270,6 +271,14 @@ namespace advmatch
             Timestamp timestamp = 0;
             std::string reason;
         };
+
+        struct BalanceTransaction
+        {
+            std::vector<BalanceDelta> changes;
+            // Transfers/exchanges must conserve each asset. External custody
+            // and issuance explicitly opt out and are recorded as external flow.
+            bool conserve = true;
+        };
     }
 
     // Indexes are on-disk operation codes. Only append new alternatives; changing
@@ -283,7 +292,8 @@ namespace advmatch
         commands::SetAutomaticLiquidationBudget, commands::ArchiveHistory, commands::ConfigureReferencePrice,
         commands::ConfigureContractSchedule, commands::PublishExternalPrice, commands::RefreshReferencePrice, commands::UpdateReferencePrice,
         commands::PlaceConditionalOrder, commands::ModifyConditionalOrder, commands::CancelConditionalOrder,
-        commands::ConfigureTradingRules, commands::WithdrawSpotFees, commands::SetTradingHalt>;
+        commands::ConfigureTradingRules, commands::WithdrawSpotFees, commands::SetTradingHalt,
+        commands::BalanceTransaction>;
 
 }
 

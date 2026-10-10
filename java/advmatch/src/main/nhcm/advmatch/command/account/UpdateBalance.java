@@ -25,7 +25,7 @@ public record UpdateBalance(long accountId, long assetId, long change, long requ
     public void encodeTo(WireWriter writer)
     {
         writer.requestHeader(0);
-        writer.u16(1);
+        writer.u16(2);
         writer.u64(this.requestId);
         writer.u16(6);
         writer.u64(this.accountId);

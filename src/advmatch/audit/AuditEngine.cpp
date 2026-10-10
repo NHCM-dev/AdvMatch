@@ -264,6 +264,11 @@ namespace advmatch::audit
             const auto& rules = symbol->tradingRules;
             hash.add(symbol->tradingHalt.halted, symbol->tradingHalt.updatedTimestamp);
             hash.text(symbol->tradingHalt.reason);
+            if (rules.tickAwarePriceBand)
+            {
+                // Preserve legacy digests when the opt-in policy is absent.
+                hash.text("tick-aware-price-band");
+            }
             hash.add(symbol->symbolId, symbol->symbolType, symbol->baseAssetId, symbol->quoteAssetId, symbol->isActive(), rules.priceTick, rules.quantityStep, rules.minQuantity, rules.minOrderNotional, rules.fees.makerRate, rules.fees.takerRate, rules.risk.maxOrderQuantity, rules.risk.maxOrderNotional, rules.risk.maxPositionNotional, rules.risk.maxAccountNotional, rules.risk.maxActiveOrders, rules.risk.maxLeverage, rules.selfTradePrevention);
             hash.text(symbol->name);
             if (const auto* market = contracts.findMarket(symbol->symbolId))

@@ -25,7 +25,7 @@ public record Deliver(long symbolId, long price, long timestamp, long requestId)
     public void encodeTo(WireWriter writer)
     {
         writer.requestHeader(0);
-        writer.u16(1);
+        writer.u16(2);
         writer.u64(this.requestId);
         writer.u16(20);
         writer.u32(this.symbolId);

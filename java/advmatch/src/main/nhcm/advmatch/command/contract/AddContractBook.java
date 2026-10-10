@@ -30,7 +30,7 @@ public record AddContractBook(long symbolId, ContractSpec spec, long markPrice, 
     public void encodeTo(WireWriter writer)
     {
         writer.requestHeader(0);
-        writer.u16(1);
+        writer.u16(2);
         writer.u64(this.requestId);
         writer.u16(9);
         writer.u32(this.symbolId);

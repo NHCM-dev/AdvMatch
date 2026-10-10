@@ -25,7 +25,7 @@ public record UpdateMarkPrice(long symbolId, long price, long timestamp, long re
     public void encodeTo(WireWriter writer)
     {
         writer.requestHeader(0);
-        writer.u16(1);
+        writer.u16(2);
         writer.u64(this.requestId);
         writer.u16(16);
         writer.u32(this.symbolId);

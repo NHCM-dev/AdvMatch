@@ -125,6 +125,7 @@ def add(file, names, prefix=""):
 
 
 add("src/advmatch/trading/OrderTypes.h", "OrderFillingStatus")
+add("src/advmatch/trading/Asset.h", "BalanceDelta")
 add("src/advmatch/trading/futures/Contract.h", "ContractSpec ContractOrderOptions ContractEvent")
 add("src/advmatch/trading/futures/ReferencePrice.h", "PriceSource ReferencePriceConfig ExternalPrice WeightedPrice ReferencePrices ContractSchedule")
 add("src/advmatch/trading/conditional/ConditionalOrder.h", "ConditionalOrderRequest ConditionalOrderView")
@@ -376,7 +377,7 @@ emit(ROOT / "src/advmatch/api/binding/WireModels.h", "\n".join(cpp))
 
 groups = {
     "CreateAsset": "management", "RemoveAsset": "management", "CreateUser": "management", "RemoveUser": "management", "CreateSymbol": "management", "RemoveSymbol": "management",
-    "UpdateBalance": "account", "Transfer": "account", "AddSpotBook": "order", "PlaceOrder": "order", "ModifyPrice": "order", "ModifyQuantity": "order", "CancelOrder": "order", "ArchiveHistory": "maintenance",
+    "UpdateBalance": "account", "Transfer": "account", "BalanceTransaction": "account", "AddSpotBook": "order", "PlaceOrder": "order", "ModifyPrice": "order", "ModifyQuantity": "order", "CancelOrder": "order", "ArchiveHistory": "maintenance",
     "PlaceConditionalOrder": "order", "ModifyConditionalOrder": "order", "CancelConditionalOrder": "order",
     "ConfigureTradingRules": "management", "WithdrawSpotFees": "account", "SetTradingHalt": "management",
 }
@@ -399,7 +400,7 @@ for operation, (name, fs) in enumerate(commands.items()):
     arrays = [n for t, n, _ in fs if t.startswith("std::vector<")]
     if arrays:
         lines += [f"    public {name}", "    {"] + [f"        {n} = List.copyOf({n});" for n in arrays] + ["    }", ""]
-    lines += ["    @Override", "    public byte[] encode()", "    {", "        var writer = WireWriter.request(0);", "        writer.u16(1);", "        writer.u64(this.requestId);", f"        writer.u16({operation});"]
+    lines += ["    @Override", "    public byte[] encode()", "    {", "        var writer = WireWriter.request(0);", "        writer.u16(2);", "        writer.u64(this.requestId);", f"        writer.u16({operation});"]
     lines += ["        " + jwrite(t, "this." + n) for t, n, _ in fs]
     result_expr = "new CreationResult(value)" if result_type == "CreationResult" else "value"
     lines += ["        return writer.bytes();", "    }", "", "    @Override", f"    public {result_type} decode(byte[] response)", "    {", "        var reader = WireReader.response(response, 1);", "        var value = Wire.readCommandReceipt(reader);", "        reader.finish();", f"        return {result_expr};", "    }", "}"]

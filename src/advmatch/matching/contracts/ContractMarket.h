@@ -6,7 +6,9 @@
 #include "advmatch/trading/futures/Contract.h"
 #include "LiquidationQueue.h"
 #include "advmatch/trading/futures/ReferencePrice.h"
+#include "advmatch/trading/Symbol.h"
 
+#include <algorithm>
 #include <limits>
 #include <utility>
 
@@ -62,6 +64,7 @@ namespace advmatch
         std::uint64_t lastLiquidationRevision = std::numeric_limits<std::uint64_t>::max();
         mutable Price bandMarkPrice = 0;
         mutable MMRRate bandRate = 0;
+        mutable Price bandTick = 0;
         mutable std::pair<Price, Price> cachedPriceBand{};
         mutable Price cachedLiquidationFloor = 0;
         BigAllocs<ContractParticipant>* participantPool = nullptr;
@@ -78,7 +81,8 @@ namespace advmatch
 
         std::pair<Price, Price> priceBand() const noexcept
         {
-            if (this->bandMarkPrice != this->markPrice || this->bandRate != this->spec.priceBandRate)
+            const Price tick = this->symbol && this->symbol->tradingRules.tickAwarePriceBand ? this->symbol->tradingRules.priceTick : 0;
+            if (this->bandMarkPrice != this->markPrice || this->bandRate != this->spec.priceBandRate || this->bandTick != tick)
             {
                 const WideBalance mark = this->markPrice;
                 const WideBalance lower = mark * (RATE_SCALE - this->spec.priceBandRate);
@@ -86,8 +90,19 @@ namespace advmatch
                 this->cachedPriceBand = {
                     static_cast<Price>((lower + RATE_SCALE - 1) / RATE_SCALE),
                     static_cast<Price>(mark * (RATE_SCALE + this->spec.priceBandRate) / RATE_SCALE)};
+                // A nonzero percentage band must permit at least one price tick
+                // on either side, even when integer rounding collapses it.
+                if (tick != 0 && this->spec.priceBandRate != 0)
+                {
+                    const WideBalance floor = std::max<WideBalance>(1, mark - tick);
+                    const WideBalance ceiling = std::min<WideBalance>(std::numeric_limits<Balance>::max(), mark + tick);
+                    this->cachedPriceBand.first = std::min(this->cachedPriceBand.first, static_cast<Price>(floor));
+                    this->cachedPriceBand.second = std::max(this->cachedPriceBand.second, static_cast<Price>(ceiling));
+                    this->cachedLiquidationFloor = std::max<Price>(1, std::min(this->cachedLiquidationFloor, static_cast<Price>(floor)));
+                }
                 this->bandMarkPrice = this->markPrice;
                 this->bandRate = this->spec.priceBandRate;
+                this->bandTick = tick;
             }
 
             return this->cachedPriceBand;

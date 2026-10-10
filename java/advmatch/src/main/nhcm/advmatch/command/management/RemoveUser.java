@@ -25,7 +25,7 @@ public record RemoveUser(long userId, long requestId) implements Command<Command
     public void encodeTo(WireWriter writer)
     {
         writer.requestHeader(0);
-        writer.u16(1);
+        writer.u16(2);
         writer.u64(this.requestId);
         writer.u16(3);
         writer.u64(this.userId);

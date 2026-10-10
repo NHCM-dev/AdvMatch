@@ -25,7 +25,7 @@ public record SetAutomaticLiquidationBudget(long maxCandidates, long requestId) 
     public void encodeTo(WireWriter writer)
     {
         writer.requestHeader(0);
-        writer.u16(1);
+        writer.u16(2);
         writer.u64(this.requestId);
         writer.u16(23);
         writer.u64(this.maxCandidates);

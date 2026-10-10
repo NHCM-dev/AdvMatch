@@ -35,7 +35,7 @@ public record ProcessLiquidations(long symbolId, long timestamp, boolean force, 
     public void encodeTo(WireWriter writer)
     {
         writer.requestHeader(0);
-        writer.u16(1);
+        writer.u16(2);
         writer.u64(this.requestId);
         writer.u16(22);
         writer.u32(this.symbolId);

@@ -25,7 +25,7 @@ public record AddMargin(long positionId, long userId, long symbolId, long amount
     public void encodeTo(WireWriter writer)
     {
         writer.requestHeader(0);
-        writer.u16(1);
+        writer.u16(2);
         writer.u64(this.requestId);
         writer.u16(15);
         writer.u64(this.positionId);

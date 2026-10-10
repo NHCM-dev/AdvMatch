@@ -25,7 +25,7 @@ public record SettleFunding(long symbolId, int rate, long timestamp, long reques
     public void encodeTo(WireWriter writer)
     {
         writer.requestHeader(0);
-        writer.u16(1);
+        writer.u16(2);
         writer.u64(this.requestId);
         writer.u16(18);
         writer.u32(this.symbolId);

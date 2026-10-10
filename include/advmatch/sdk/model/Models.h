@@ -69,6 +69,7 @@ namespace advmatch::sdk
     using advmatch::BalanceResult;
     using advmatch::AssetBalance;
     using advmatch::AssetBalanceEntry;
+    using advmatch::BalanceDelta;
     using advmatch::AccountType;
     using advmatch::SymbolType;
     using advmatch::PositionSide;

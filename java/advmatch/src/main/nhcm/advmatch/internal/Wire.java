@@ -21,6 +21,18 @@ public final class Wire
         return new OrderFillingStatus(OrderStatus.fromCode(reader.u8()), reader.u64(), reader.u64());
     }
 
+    public static void writeBalanceDelta(WireWriter writer, BalanceDelta value)
+    {
+        writer.u64(value.accountId());
+        writer.u32(value.assetId());
+        writer.i64(value.change());
+    }
+
+    public static BalanceDelta readBalanceDelta(WireReader reader)
+    {
+        return new BalanceDelta(reader.u64(), reader.u32(), reader.i64());
+    }
+
     public static void writeContractSpec(WireWriter writer, ContractSpec value)
     {
         writer.u64(value.contractMultiplier());
@@ -250,11 +262,12 @@ public final class Wire
         Wire.writeFeeSchedule(writer, value.fees());
         Wire.writeRiskLimits(writer, value.risk());
         writer.u8(value.selfTradePrevention().code());
+        writer.bool(value.tickAwarePriceBand());
     }
 
     public static TradingRules readTradingRules(WireReader reader)
     {
-        return new TradingRules(reader.u64(), reader.u64(), reader.u64(), reader.i64(), Wire.readFeeSchedule(reader), Wire.readRiskLimits(reader), SelfTradePrevention.fromCode(reader.u8()));
+        return new TradingRules(reader.u64(), reader.u64(), reader.u64(), reader.i64(), Wire.readFeeSchedule(reader), Wire.readRiskLimits(reader), SelfTradePrevention.fromCode(reader.u8()), reader.bool());
     }
 
     public static void writeUserRiskView(WireWriter writer, UserRiskView value)

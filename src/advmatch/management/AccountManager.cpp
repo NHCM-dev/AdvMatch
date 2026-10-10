@@ -3,6 +3,7 @@
 #include "../util/Utils.h"
 
 #include <limits>
+#include <algorithm>
 #include <stdexcept>
 
 namespace advmatch
@@ -203,6 +204,62 @@ namespace advmatch
             return creditResult;
         }
 
+        return {BalanceOpResult::Success};
+    }
+
+    BalanceResult AccountManager::transact(const std::vector<BalanceDelta>& changes, bool conserve)
+    {
+        if (changes.empty() || changes.size() > 256)
+            return {BalanceOpResult::Unknown, "Transaction requires 1..256 unique legs"};
+
+        struct Prepared
+        {
+            Account* account;
+            std::unique_ptr<DenseMap<AssetId, AssetBalance>> balances;
+        };
+        std::vector<Prepared> prepared;
+        DenseMap<AssetId, WideBalance> totals;
+        // Allocate and validate everything before publishing any financial value.
+        for (std::size_t i = 0; i < changes.size(); ++i)
+        {
+            const auto& leg = changes[i];
+            for (std::size_t j = 0; j < i; ++j)
+                if (changes[j].accountId == leg.accountId && changes[j].assetId == leg.assetId)
+                    return {BalanceOpResult::Unknown, "Duplicate transaction leg"};
+            Account* account = this->getAccount(leg.accountId);
+            if (!account) return {BalanceOpResult::InvalidAccount};
+            const WideBalance after = static_cast<WideBalance>(account->queryActiveBalance(leg.assetId).value_or(0)) + leg.change;
+            if (after < 0) return {BalanceOpResult::Insufficient};
+            if (after + account->queryReservedBalance(leg.assetId).value_or(0) > std::numeric_limits<Balance>::max())
+                return {BalanceOpResult::Overflow};
+            if (leg.change < 0 && !account->canWithdraw(leg.assetId, static_cast<PositiveBalanceChange>(-(leg.change + 1)) + 1))
+                return {BalanceOpResult::Insufficient};
+            totals[leg.assetId] += leg.change;
+            auto found = std::find_if(prepared.begin(), prepared.end(), [account](const Prepared& item) { return item.account == account; });
+            if (found == prepared.end())
+            {
+                auto balances = std::make_unique<DenseMap<AssetId, AssetBalance>>();
+                balances->reserve(account->getAssetBalanceCount() + changes.size());
+                account->forEachBalance([&](AssetId id, AssetBalance balance) { balances->emplace(id, balance); });
+                prepared.push_back({account, std::move(balances)});
+                found = std::prev(prepared.end());
+            }
+            auto& balance = (*found->balances)[leg.assetId];
+            balance.active = static_cast<Balance>(after);
+            if (balance.active == 0 && balance.reserved == 0) found->balances->erase(leg.assetId);
+        }
+        if (conserve)
+            for (const auto& [asset, total] : totals)
+                if (total != 0) return {BalanceOpResult::Unknown, "Transfer must conserve each asset"};
+
+        // Only no-throw pointer swaps and inline destruction remain. No borrowed
+        // balance pointers survive this commit; invalidate every snapshot token.
+        for (auto& item : prepared)
+        {
+            item.account->overflowBalances.swap(item.balances);
+            item.account->inlineBalances.clear();
+            ++item.account->balanceGeneration;
+        }
         return {BalanceOpResult::Success};
     }
 

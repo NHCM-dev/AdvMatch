@@ -126,6 +126,18 @@ namespace advmatch
                 writer.number(value.amount);
             }
 
+            void operator()(const commands::BalanceTransaction& value)
+            {
+                writer.number<std::uint64_t>(value.changes.size());
+                for (const auto& leg : value.changes)
+                {
+                    writer.number(leg.accountId);
+                    writer.number(leg.assetId);
+                    writer.number(leg.change);
+                }
+                writer.boolean(value.conserve);
+            }
+
             void operator()(const commands::AddSpotBook& value)
             {
                 writer.number(value.symbolId);
@@ -325,7 +337,7 @@ namespace advmatch
             return value;
         }
 
-        TradingCommand readCommand(BinaryReader& reader, std::uint16_t operation)
+        TradingCommand readCommand(BinaryReader& reader, std::uint16_t operation, std::uint16_t schema)
         {
             switch (operation)
             {
@@ -419,11 +431,22 @@ namespace advmatch
                 case 32:
                     return commands::CancelConditionalOrder{reader.number<UserId>(), reader.number<ConditionalOrderId>(), reader.number<Timestamp>()};
                 case 33:
-                    return commands::ConfigureTradingRules{reader.number<SymbolId>(), TradingRulesCodec::read(reader)};
+                    return commands::ConfigureTradingRules{reader.number<SymbolId>(), TradingRulesCodec::read(reader, schema >= 2)};
                 case 34:
                     return commands::WithdrawSpotFees{reader.number<AccountId>(), reader.number<AssetId>(), reader.number<PositiveBalanceChange>()};
                 case 35:
                     return commands::SetTradingHalt{reader.number<SymbolId>(), reader.boolean(), reader.number<Timestamp>(), reader.string()};
+                case 36:
+                {
+                    commands::BalanceTransaction value;
+                    const auto count = reader.count();
+                    persistenceCheck(count <= 256, "too many balance transaction legs");
+                    value.changes.reserve(count);
+                    for (std::size_t i = 0; i < count; ++i)
+                        value.changes.push_back({reader.number<AccountId>(), reader.number<AssetId>(), reader.number<BalanceChange>()});
+                    value.conserve = reader.boolean();
+                    return value;
+                }
                 default: throw PersistenceError(PersistenceFailure::UnsupportedVersion, "unknown trading operation");
             }
         }
@@ -432,7 +455,7 @@ namespace advmatch
     std::vector<std::byte> encodeCommand(const TradingCommand& command, std::uint64_t requestId)
     {
         BinaryWriter writer;
-        writer.number<std::uint16_t>(1);
+        writer.number<std::uint16_t>(2);
         writer.number(requestId);
         writer.number<std::uint16_t>(static_cast<std::uint16_t>(command.index()));
         std::visit(Encoder(writer), command);
@@ -442,9 +465,10 @@ namespace advmatch
     CommandEnvelope decodeCommand(std::span<const std::byte> bytes)
     {
         BinaryReader reader(bytes);
-        persistenceCheck(reader.number<std::uint16_t>() == 1, "unsupported command schema", PersistenceFailure::UnsupportedVersion);
+        const auto schema = reader.number<std::uint16_t>();
+        persistenceCheck(schema == 1 || schema == 2, "unsupported command schema", PersistenceFailure::UnsupportedVersion);
         const auto requestId = reader.number<std::uint64_t>();
-        auto command = readCommand(reader, reader.number<std::uint16_t>());
+        auto command = readCommand(reader, reader.number<std::uint16_t>(), schema);
         reader.finish();
         return {requestId, std::move(command)};
     }

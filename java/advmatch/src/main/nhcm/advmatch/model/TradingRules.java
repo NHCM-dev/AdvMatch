@@ -3,46 +3,51 @@ package nhcm.advmatch.model;
 
 import java.util.List;
 
-public record TradingRules(long priceTick, long quantityStep, long minQuantity, long minOrderNotional, FeeSchedule fees, RiskLimits risk, SelfTradePrevention selfTradePrevention)
+public record TradingRules(long priceTick, long quantityStep, long minQuantity, long minOrderNotional, FeeSchedule fees, RiskLimits risk, SelfTradePrevention selfTradePrevention, boolean tickAwarePriceBand)
 {
     public TradingRules()
     {
-        this(1L, 1L, 1L, 0L, new FeeSchedule(), new RiskLimits(), SelfTradePrevention.Allow);
+        this(1L, 1L, 1L, 0L, new FeeSchedule(), new RiskLimits(), SelfTradePrevention.Allow, false);
     }
 
     public TradingRules withPriceTick(long value)
     {
-        return new TradingRules(value, this.quantityStep, this.minQuantity, this.minOrderNotional, this.fees, this.risk, this.selfTradePrevention);
+        return new TradingRules(value, this.quantityStep, this.minQuantity, this.minOrderNotional, this.fees, this.risk, this.selfTradePrevention, this.tickAwarePriceBand);
     }
 
     public TradingRules withQuantityStep(long value)
     {
-        return new TradingRules(this.priceTick, value, this.minQuantity, this.minOrderNotional, this.fees, this.risk, this.selfTradePrevention);
+        return new TradingRules(this.priceTick, value, this.minQuantity, this.minOrderNotional, this.fees, this.risk, this.selfTradePrevention, this.tickAwarePriceBand);
     }
 
     public TradingRules withMinQuantity(long value)
     {
-        return new TradingRules(this.priceTick, this.quantityStep, value, this.minOrderNotional, this.fees, this.risk, this.selfTradePrevention);
+        return new TradingRules(this.priceTick, this.quantityStep, value, this.minOrderNotional, this.fees, this.risk, this.selfTradePrevention, this.tickAwarePriceBand);
     }
 
     public TradingRules withMinOrderNotional(long value)
     {
-        return new TradingRules(this.priceTick, this.quantityStep, this.minQuantity, value, this.fees, this.risk, this.selfTradePrevention);
+        return new TradingRules(this.priceTick, this.quantityStep, this.minQuantity, value, this.fees, this.risk, this.selfTradePrevention, this.tickAwarePriceBand);
     }
 
     public TradingRules withFees(FeeSchedule value)
     {
-        return new TradingRules(this.priceTick, this.quantityStep, this.minQuantity, this.minOrderNotional, value, this.risk, this.selfTradePrevention);
+        return new TradingRules(this.priceTick, this.quantityStep, this.minQuantity, this.minOrderNotional, value, this.risk, this.selfTradePrevention, this.tickAwarePriceBand);
     }
 
     public TradingRules withRisk(RiskLimits value)
     {
-        return new TradingRules(this.priceTick, this.quantityStep, this.minQuantity, this.minOrderNotional, this.fees, value, this.selfTradePrevention);
+        return new TradingRules(this.priceTick, this.quantityStep, this.minQuantity, this.minOrderNotional, this.fees, value, this.selfTradePrevention, this.tickAwarePriceBand);
     }
 
     public TradingRules withSelfTradePrevention(SelfTradePrevention value)
     {
-        return new TradingRules(this.priceTick, this.quantityStep, this.minQuantity, this.minOrderNotional, this.fees, this.risk, value);
+        return new TradingRules(this.priceTick, this.quantityStep, this.minQuantity, this.minOrderNotional, this.fees, this.risk, value, this.tickAwarePriceBand);
+    }
+
+    public TradingRules withTickAwarePriceBand(boolean value)
+    {
+        return new TradingRules(this.priceTick, this.quantityStep, this.minQuantity, this.minOrderNotional, this.fees, this.risk, this.selfTradePrevention, value);
     }
 
 }

@@ -25,7 +25,7 @@ public record CreateAsset(String displayName, String assetName, int scale, long 
     public void encodeTo(WireWriter writer)
     {
         writer.requestHeader(0);
-        writer.u16(1);
+        writer.u16(2);
         writer.u64(this.requestId);
         writer.u16(0);
         writer.string(this.displayName);

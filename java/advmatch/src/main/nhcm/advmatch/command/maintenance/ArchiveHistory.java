@@ -31,7 +31,7 @@ public record ArchiveHistory(long scanBudget, List<Long> orders, List<Long> posi
     public void encodeTo(WireWriter writer)
     {
         writer.requestHeader(0);
-        writer.u16(1);
+        writer.u16(2);
         writer.u64(this.requestId);
         writer.u16(24);
         writer.u64(this.scanBudget);

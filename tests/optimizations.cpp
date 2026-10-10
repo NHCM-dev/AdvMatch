@@ -390,6 +390,18 @@ namespace
 
         bandMarket.spec.priceBandRate = 10'001;
         CHECK(bandMarket.liquidationPriceLimit(false) == static_cast<WideBalance>(maximum) * (RATE_SCALE - 10'001) / RATE_SCALE);
+        Symbol tickSymbol("tick band", 1, SymbolType::Perpetual, 1, 2);
+        ContractMarket tickMarket;
+        tickMarket.symbol = &tickSymbol;
+        tickMarket.markPrice = 1;
+        CHECK(tickMarket.priceBand() == std::make_pair(Price(1), Price(1)));
+        tickSymbol.tradingRules.tickAwarePriceBand = true;
+        CHECK(tickMarket.priceBand() == std::make_pair(Price(1), Price(2)));
+        CHECK(tickMarket.liquidationPriceLimit(false) == 1);
+        tickSymbol.tradingRules.priceTick = 5;
+        CHECK(tickMarket.priceBand() == std::make_pair(Price(1), Price(6)));
+        tickSymbol.tradingRules.tickAwarePriceBand = false;
+        CHECK(tickMarket.priceBand() == std::make_pair(Price(1), Price(1)));
         commands::PlaceOrder invalid{1, 1, OrderSide::Bid, OrderType::Limit, static_cast<TimeInForce>(255), 100, 1, 1};
         bool caught = false;
         try

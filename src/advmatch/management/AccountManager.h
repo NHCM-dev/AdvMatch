@@ -73,6 +73,9 @@ namespace advmatch
                                PositiveBalanceChange amount);
 
         [[nodiscard]]
+        BalanceResult transact(const std::vector<BalanceDelta>& changes, bool conserve);
+
+        [[nodiscard]]
         std::size_t getAccountCount() const noexcept;
         // Run on the owning thread. The callback must not mutate this manager.
         template <typename Visitor>

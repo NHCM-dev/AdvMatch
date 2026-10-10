@@ -8,6 +8,8 @@ namespace advmatch::binding
 {
     inline void write(BinaryWriter& writer, const OrderFillingStatus& value);
     inline OrderFillingStatus readOrderFillingStatus(BinaryReader& reader);
+    inline void write(BinaryWriter& writer, const BalanceDelta& value);
+    inline BalanceDelta readBalanceDelta(BinaryReader& reader);
     inline void write(BinaryWriter& writer, const ContractSpec& value);
     inline ContractSpec readContractSpec(BinaryReader& reader);
     inline void write(BinaryWriter& writer, const ContractOrderOptions& value);
@@ -135,6 +137,22 @@ namespace advmatch::binding
         value.status = reader.enumeration(static_cast<OrderStatus>(4));
         value.filled = reader.number<Quantity>();
         value.unfilled = reader.number<Quantity>();
+        return value;
+    }
+
+    inline void write(BinaryWriter& writer, const BalanceDelta& value)
+    {
+        writer.number(value.accountId);
+        writer.number(value.assetId);
+        writer.number(value.change);
+    }
+
+    inline BalanceDelta readBalanceDelta(BinaryReader& reader)
+    {
+        BalanceDelta value{};
+        value.accountId = reader.number<AccountId>();
+        value.assetId = reader.number<AssetId>();
+        value.change = reader.number<BalanceChange>();
         return value;
     }
 
@@ -482,6 +500,7 @@ namespace advmatch::binding
         write(writer, value.fees);
         write(writer, value.risk);
         writer.enumeration(value.selfTradePrevention);
+        writer.boolean(value.tickAwarePriceBand);
     }
 
     inline TradingRules readTradingRules(BinaryReader& reader)
@@ -494,6 +513,7 @@ namespace advmatch::binding
         value.fees = readFeeSchedule(reader);
         value.risk = readRiskLimits(reader);
         value.selfTradePrevention = reader.enumeration(static_cast<SelfTradePrevention>(3));
+        value.tickAwarePriceBand = reader.boolean();
         return value;
     }
 

@@ -503,7 +503,7 @@ namespace
         {
             FilePersistenceStore store(config);
             auto payload = encodeCommand(commands::CreateUser{}, 0);
-            payload[0] = std::byte{2};
+            payload[0] = std::byte{3};
             store.append({JournalRecordType::Intent, 1, std::move(payload)});
             store.sync();
         }
@@ -772,6 +772,20 @@ namespace
 
 int main(int argc, char** argv)
 {
+    {
+        using namespace advmatch;
+        TradingRules rules;
+        rules.tickAwarePriceBand = true;
+        auto current = encodeCommand(commands::ConfigureTradingRules{1, rules}, 17);
+        const auto upgraded = decodeCommand(current);
+        CHECK(std::get<commands::ConfigureTradingRules>(upgraded.command).rules.tickAwarePriceBand);
+        // Schema 1 has the same rule payload except the appended policy byte.
+        current[0] = std::byte{1};
+        current.pop_back();
+        const auto legacy = decodeCommand(current);
+        CHECK(!std::get<commands::ConfigureTradingRules>(legacy.command).rules.tickAwarePriceBand);
+        CHECK(legacy.requestId == 17);
+    }
     if (argc == 3 && std::string(argv[1]) == "--crash")
     {
         abruptExit(std::filesystem::path(argv[2]));

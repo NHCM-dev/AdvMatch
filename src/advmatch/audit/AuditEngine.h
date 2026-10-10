@@ -3,6 +3,8 @@
 
 #include "model/AuditReport.h"
 #include "advmatch/util/Types.h"
+#include "advmatch/trading/Asset.h"
+#include <vector>
 
 namespace advmatch
 {
@@ -26,6 +28,18 @@ namespace advmatch::audit
         void recordExternalFlow(AssetId assetId, BalanceChange change)
         {
             this->externalFlows[assetId] += change;
+        }
+
+        auto prepareExternalFlows(const std::vector<BalanceDelta>& changes) const
+        {
+            auto next = this->externalFlows;
+            for (const auto& leg : changes) next[leg.assetId] += leg.change;
+            return next;
+        }
+
+        void commitExternalFlows(DenseMap<AssetId, WideBalance>& prepared) noexcept
+        {
+            this->externalFlows.swap(prepared);
         }
 
         // Full owner-thread validation scans and sorts retained state, kept

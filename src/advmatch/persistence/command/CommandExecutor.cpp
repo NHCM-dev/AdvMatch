@@ -158,6 +158,20 @@ namespace advmatch
                 return businessResult(CommandResultType::Balance, this->state.users.getAccountManager().transfer(command.sourceAccountId, command.targetAccountId, command.assetId, command.amount));
             }
 
+            CommandResult operator()(const commands::BalanceTransaction& command)
+            {
+                for (const auto& leg : command.changes)
+                    if (!this->state.assets.containsAsset(leg.assetId))
+                        return businessResult(CommandResultType::Balance, BalanceResult(BalanceOpResult::NoSuchAsset));
+                auto& audit = this->state.matching.getAuditEngine();
+                auto flows = command.conserve ? DenseMap<AssetId, WideBalance>{} : audit.prepareExternalFlows(command.changes);
+                const auto value = this->state.users.getAccountManager().transact(command.changes, command.conserve);
+                if (value && !command.conserve) audit.commitExternalFlows(flows);
+                auto result = businessResult(CommandResultType::Balance, value);
+                if (value) result.affected = command.changes.size();
+                return result;
+            }
+
             CommandResult operator()(const commands::AddSpotBook& command)
             {
                 return managementResult(this->state.matching.addSpotBook(command.symbolId, command.implementation));

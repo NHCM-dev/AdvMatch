@@ -1,4 +1,4 @@
-# AdvMatch 1.0.0
+# AdvMatch 1.1.0
 
 (Credit to GPT-5.6, GPT-6.1)
 
@@ -61,7 +61,7 @@ Windows 将 `advmatch_sdk.dll` 放在应用旁边。C++ 应用与 SDK 需要使�
 
 ```powershell
 .\java\gradlew.bat -p java :advmatch:build :advmatch:runExample
-java -jar java/advmatch/build/libs/advmatch-1.0.0-tests.jar
+java -jar java/advmatch/build/libs/advmatch-1.1.0-tests.jar
 ```
 
 SDK JAR 位于 `java/advmatch/build/libs/`；测试 JAR 包含集成测试和全部 benchmark。已有原生构建可加 `-PskipNativeBuild`。Java 使用 `nhcm.advmatch.MatchingExchange` 和 `CompletableFuture`，用 try-with-resources 关闭会话；JAR 需要匹配运行平台和架构。
@@ -128,7 +128,7 @@ auto report = exchange.audit().report().get();
 
 `audit().report()` 检查各资产外部净流入与账户余额、冻结资金、手续费、保险金、清算及资金费舍入余额之和，并校验订单 / 保证金冻结、盘口聚合和风控缓存。报告包含问题列表和经济状态指纹；总额使用宽整数并以十进制字符串返回。
 
-校验在所属交易线程执行，会遍历并排序保留数据，适合维护和测试；不要每笔交易调用。`persistence.verifyRecovery` 默认开启，WAL / checkpoint 恢复完成后执行校验，异常阻止启动。外部存取款必须通过 `UpdateBalance` 命令，直接修改底层账户会绕过净流入记账。Java 提供同名 Manager 与读取接口。
+校验在所属交易线程执行，会遍历并排序保留数据，适合维护和测试；不要每笔交易调用。`persistence.verifyRecovery` 默认开启，WAL / checkpoint 恢复完成后执行校验，异常阻止启动。外部存取款必须通过 `UpdateBalance` 或 `conserve=false` 的 `BalanceTransaction` 命令，直接修改底层账户会绕过净流入记账。Java 提供同名 Manager 与读取接口。
 
 ## 停牌与恢复交易
 
@@ -153,3 +153,31 @@ exchange.trading().resume(timestamp + 3).get();
 ```
 
 其他 Java 压测任务：`benchmarkScale`、`benchmarkPerpetual`、`benchmarkLiquidation`、`benchmarkObserve`、`benchmarkBigAllocs`。对应 C++ 程序位于 `build/release/`。
+
+
+## 原子多账户 / 多资产余额事务
+
+`BalanceTransaction`（追加命令号 36）一次处理 1–256 个不同的 `(accountId, assetId)` 变更；同一账户资产组合不能重复。整数单位沿用各资产和价格尺度。命令预先校验账户/资产存在、账户活动状态、可用余额、可用加冻结余额溢出、原生合约提款风控以及完整内存准备，然后一次提交全部余额。
+
+```java
+var changes = java.util.List.of(
+    new nhcm.advmatch.model.BalanceDelta(senderAccount, assetId, -amount),
+    new nhcm.advmatch.model.BalanceDelta(recipientAccount, assetId, amount));
+var command = new nhcm.advmatch.command.account.BalanceTransaction(changes, true, requestId);
+exchange.submit(command).thenCompose(receipt -> {
+    if (!receipt.result().accepted()) throw new nhcm.advmatch.BusinessException(receipt);
+    return exchange.submit(new nhcm.advmatch.command.persistence.Flush());
+});
+```
+
+`conserve=true` 要求每个资产的变动总和为零，可跨用户、账户类型和资产执行转账或储备兑换。`conserve=false` 用于受信应用的外部存取款，非零净流入同时计入原生审计；它本身不是权限边界，宿主必须限制调用方。不能通过冻结余额满足提款，也不会在中间腿失败后留下前面的变更。
+
+C++ SDK 同样提供 `sdk::BalanceDelta` 和 `sdk::command::BalanceTransaction`。每次事务是一个 WAL 命令，恢复与请求去重作用于整个事务。现有命令编号和快照格式保持兼容；旧版引擎不能读取新增命令 36 的日志。普通 `Transfer` 的原有业务限制保留。
+
+余额原子性限于交易引擎；物品交付、外部数据库或应用日志需要各自的持久化与恢复设计。`accepted` 和已经刷盘是不同阶段，应检查 Flush 的 fault/enabled/durableThrough。请求去重受 `retainedRequests` 保留窗口限制。
+
+## 1.1.0 升级说明
+
+新增原子多资产余额事务，以及可配置的合约最小一档价格保护带（TradingRules.tickAwarePriceBand）。原始 SDK 默认关闭该规则，应用可以在恢复完成后持久化启用；单独切换此规则支持保留已有挂单、仓位及手续费配置。
+
+命令持久化编码升级为 schema 2，新版本仍读取 schema 1 并按旧规则重放历史命令。新字段要求 Java SDK 与原生库配套更新；旧版本不能读取新增 schema 2 日志，降级需要完整的升级前备份。
