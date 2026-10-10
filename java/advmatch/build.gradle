@@ -22,18 +22,32 @@ sourceSets {
 }
 
 def osName = System.getProperty('os.name').toLowerCase(Locale.ROOT)
-def os = osName.contains('win') ? 'windows' : osName.contains('mac') ? 'macos' : 'linux'
+def os = osName.startsWith('windows') ? 'windows' : (osName.contains('mac') || osName == 'darwin') ? 'macos' : 'linux'
 def archName = System.getProperty('os.arch').toLowerCase(Locale.ROOT)
 def arch = archName == 'x86_64' ? 'amd64' : archName == 'aarch64' ? 'arm64' : archName
 def libraries = [System.mapLibraryName('advmatch'), System.mapLibraryName('advmatch_jni')]
 
 tasks.named('processResources') {
     dependsOn rootProject.tasks.named('buildNative')
+    if (rootProject.withLinux) { dependsOn rootProject.tasks.named('buildLinuxNative') }
     from(rootProject.nativeDir) {
         include libraries
         into "native/${os}-${arch}"
     }
+    if (rootProject.withLinux && os != 'linux') {
+        from(rootProject.nativeBundles) {
+            include 'linux-amd64/libadvmatch.so', 'linux-amd64/libadvmatch_jni.so'
+            into 'native'
+        }
+    }
     doFirst {
+        if (rootProject.withLinux && os != 'linux') {
+            ['libadvmatch.so', 'libadvmatch_jni.so'].each {
+                if (!new File(rootProject.nativeBundles, "linux-amd64/${it}").isFile()) {
+                    throw new GradleException("Missing Linux bundle library: ${it}")
+                }
+            }
+        }
         libraries.each {
             if (!new File(rootProject.nativeDir, it).isFile()) {
                 throw new GradleException("Missing ${it} in ${rootProject.nativeDir}")
@@ -99,3 +113,10 @@ tasks.named('test') {
 }
 
 tasks.named('check') { dependsOn 'benchmarkSmoke' }
+
+tasks.register('nativeLoaderTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'nhcm.advmatch.internal.NativeLoaderTest'
+}
+tasks.named('check') { dependsOn 'nativeLoaderTest' }

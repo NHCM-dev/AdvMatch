@@ -15,7 +15,7 @@ C++20 交易引擎，提供 C++ 和 Java SDK，支持**现货、线性交割合�
 
 ## 构建
 
-需要 C++20 编译器、**CMake 3.20+**、Ninja 和 Git；Java 接入需要 **JDK 21**。首次构建会下载依赖。
+需要 C++20 编译器、**CMake 3.24+**、Ninja 和 Git；Java 接入需要 **JDK 21**。首次构建会下载依赖。
 
 ```powershell
 .\build.cmd release
@@ -30,6 +30,14 @@ Linux / macOS 使用 `./build.sh release`。脚本执行构建与测试，releas
 ```
 
 产物为 `java/advmatch/build/libs/advmatch-1.2.0.jar`，包含构建平台的原生库。已有兼容原生库时可加 `-PskipNativeBuild`。
+
+同时构建并测试 Windows 与 Linux amd64，将两个平台原生库打入同一个 Java SDK JAR：
+
+```powershell
+.\java\gradlew.bat -p java buildMultiplatform
+```
+
+Windows 下使用 WSL Ubuntu，可通过 `-PwslDistribution=名称` 指定发行版。Linux 环境需要 GCC、CMake、Ninja、Git 和无图形界面的 JDK 21+。单独构建 Linux 使用 `bash tools/build_linux.sh`，动态库及原生 SDK ZIP 在 `build/linux-release/`，打包暂存目录为 `build/native-bundles/linux-amd64/`。加载器自动选择 `native/windows-amd64` 或 `native/linux-amd64`。当前 Linux amd64 产物要求 glibc **2.38+**，不支持 musl/Alpine；如需兼容较旧 glibc，请在目标最低版本环境重建。不包含 ARM64 动态库。
 
 ## 快速接入
 

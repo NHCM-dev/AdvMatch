@@ -2,7 +2,7 @@
   "version": 3,
   "cmakeMinimumRequired": {
     "major": 3,
-    "minor": 20,
+    "minor": 24,
     "patch": 0
   },
   "configurePresets": [
@@ -43,6 +43,20 @@
       "cacheVariables": {
         "ADVMATCH_ENABLE_IPO": "ON"
       }
+    },
+    {
+      "name": "linux-release",
+      "displayName": "Linux Release with JNI",
+      "inherits": "release",
+      "binaryDir": "${sourceDir}/build/linux-release",
+      "cacheVariables": {
+        "ADVMATCH_BUILD_JNI": "ON"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
     }
   ],
   "buildPresets": [
@@ -57,6 +71,10 @@
     {
       "name": "performance",
       "configurePreset": "performance"
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release"
     }
   ],
   "testPresets": [
@@ -77,6 +95,13 @@
     {
       "name": "performance",
       "configurePreset": "performance",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release",
       "output": {
         "outputOnFailure": true
       }

@@ -14,7 +14,7 @@ if /I not "%ADVMATCH_PRESET%"=="debug" if /I not "%ADVMATCH_PRESET%"=="release" 
 
 where cmake >nul 2>nul
 if errorlevel 1 (
-    echo CMake 3.20 or newer is required and must be available on PATH.
+    echo CMake 3.24 or newer is required and must be available on PATH.
     exit /b 1
 )
 

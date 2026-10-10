@@ -3,7 +3,8 @@ plugins {
 }
 
 ext.repoRoot = file('..')
-ext.nativeDir = providers.gradleProperty('nativeDir').map { file(it) }.getOrElse(new File(repoRoot, 'build/release'))
+def hostLinux = System.getProperty('os.name').equalsIgnoreCase('Linux')
+ext.nativeDir = providers.gradleProperty('nativeDir').map { file(it) }.getOrElse(new File(repoRoot, hostLinux ? 'build/linux-release' : 'build/release'))
 
 tasks.register('configureNative', Exec) {
     onlyIf { !providers.gradleProperty('skipNativeBuild').isPresent() }
@@ -17,4 +18,51 @@ tasks.register('buildNative', Exec) {
     onlyIf { !providers.gradleProperty('skipNativeBuild').isPresent() }
     workingDir repoRoot
     commandLine 'cmake', '--build', nativeDir.absolutePath, '--target', 'advmatch_jni', '--parallel'
+}
+
+// One SDK JAR can contain the host libraries and the Linux amd64 bundle.
+ext.withLinux = providers.gradleProperty('withLinux').isPresent() ||
+        gradle.startParameter.taskNames.any { it.tokenize(':').last() in ['buildMultiplatform', 'verifyLinuxJar'] }
+ext.nativeBundles = new File(repoRoot, 'build/native-bundles')
+
+tasks.register('buildLinuxNative', Exec) {
+    group = 'build'
+    description = 'Build and test Linux amd64 shared libraries, using WSL on Windows'
+    workingDir repoRoot
+    if (System.getProperty('os.name').toLowerCase(Locale.ROOT).startsWith('windows')) {
+        def windowsPath = repoRoot.absolutePath.replace('\\', '/')
+        def linuxPath = '/mnt/' + windowsPath.substring(0, 1).toLowerCase(Locale.ROOT) + windowsPath.substring(2)
+        commandLine 'wsl', '--distribution', providers.gradleProperty('wslDistribution').getOrElse('Ubuntu'),
+                '--', 'bash', linuxPath + '/tools/build_linux.sh'
+    } else {
+        commandLine 'bash', new File(repoRoot, 'tools/build_linux.sh').absolutePath
+    }
+}
+
+tasks.register('buildMultiplatform') {
+    group = 'build'
+    description = 'Build the host SDK and bundle Linux amd64 libraries in the same Java JAR'
+    dependsOn ':advmatch:build', 'verifyLinuxJar'
+}
+
+tasks.register('verifyLinuxJar', Exec) {
+    group = 'verification'
+    description = 'Run Java integration tests on Linux using the packaged SDK JAR'
+    dependsOn ':advmatch:jar', ':advmatch:testJar'
+    workingDir repoRoot
+    doFirst {
+        def sdk = project(':advmatch')
+        def jarFiles = ['jar', 'testJar'].collect { sdk.tasks.named(it).get().archiveFile.get().asFile }
+        if (System.getProperty('os.name').toLowerCase(Locale.ROOT).startsWith('windows')) {
+            def linuxFiles = jarFiles.collect {
+                def path = it.absolutePath.replace('\\', '/')
+                '/mnt/' + path.substring(0, 1).toLowerCase(Locale.ROOT) + path.substring(2)
+            }
+            commandLine 'wsl', '--distribution', providers.gradleProperty('wslDistribution').getOrElse('Ubuntu'),
+                    '--', 'java', '-cp', linuxFiles.join(':'), 'nhcm.advmatch.BindingIntegrationTest'
+        } else {
+            commandLine new File(System.getProperty('java.home'), 'bin/java').absolutePath,
+                    '-cp', jarFiles.join(File.pathSeparator), 'nhcm.advmatch.BindingIntegrationTest'
+        }
+    }
 }

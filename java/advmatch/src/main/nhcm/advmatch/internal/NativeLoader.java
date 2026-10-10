@@ -20,11 +20,8 @@ final class NativeLoader
             return;
         }
 
-        var osName = System.getProperty("os.name").toLowerCase(Locale.ROOT);
-        var os = osName.contains("win") ? "windows" : osName.contains("mac") ? "macos" : "linux";
-        var archName = System.getProperty("os.arch").toLowerCase(Locale.ROOT);
-        var arch = archName.equals("x86_64") ? "amd64" : archName.equals("aarch64") ? "arm64" : archName;
-        var prefix = "/native/" + os + "-" + arch + "/";
+        var platform = platform(System.getProperty("os.name"), System.getProperty("os.arch"));
+        var prefix = "/native/" + platform + "/";
         try
         {
             var extracted = Files.createTempDirectory("advmatch-native-");
@@ -36,7 +33,7 @@ final class NativeLoader
                 {
                     if (input == null)
                     {
-                        throw new UnsatisfiedLinkError("No native library for " + os + "-" + arch + "; set advmatch.nativeDir or ADVMATCH_NATIVE_DIR");
+                        throw new UnsatisfiedLinkError("No native library for " + platform + "; set advmatch.nativeDir or ADVMATCH_NATIVE_DIR");
                     }
 
                     var file = extracted.resolve(filename);
@@ -53,9 +50,38 @@ final class NativeLoader
         }
     }
 
+    static String platform(String osName, String archName)
+    {
+        var os = osName.toLowerCase(Locale.ROOT);
+        String system;
+        if (os.startsWith("windows"))
+        {
+            system = "windows";
+        }
+        else if (os.equals("linux"))
+        {
+            system = "linux";
+        }
+        else if (os.contains("mac") || os.equals("darwin"))
+        {
+            system = "macos";
+        }
+        else
+        {
+            throw new UnsatisfiedLinkError("Unsupported AdvMatch operating system: " + osName);
+        }
+        var arch = switch (archName.toLowerCase(Locale.ROOT))
+        {
+            case "amd64", "x86_64", "x64" -> "amd64";
+            case "aarch64", "arm64" -> "arm64";
+            default -> throw new UnsatisfiedLinkError("Unsupported AdvMatch architecture: " + archName);
+        };
+        return system + "-" + arch;
+    }
+
     private static void loadDirectory(Path directory)
     {
-        // Load C ABI first so the JNI DLL's dependency is already resolved.
+        // Load the C ABI first; Linux JNI also resolves sibling dependencies through $ORIGIN.
         System.load(directory.resolve(System.mapLibraryName("advmatch")).toString());
         System.load(directory.resolve(System.mapLibraryName("advmatch_jni")).toString());
     }

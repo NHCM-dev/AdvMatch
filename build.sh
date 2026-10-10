@@ -16,7 +16,7 @@ case "$preset" in
 esac
 
 if ! command -v cmake >/dev/null 2>&1; then
-    echo "CMake 3.20 or newer is required and must be available on PATH." >&2
+    echo "CMake 3.24 or newer is required and must be available on PATH." >&2
     exit 1
 fi
 

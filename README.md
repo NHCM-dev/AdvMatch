@@ -15,7 +15,7 @@ A C++20 exchange engine with C++ and Java SDKs for **spot, linear futures and pe
 
 ## Build
 
-Requires a C++20 compiler, **CMake 3.20+**, Ninja and Git. Java integration requires **JDK 21**. The first build downloads dependencies.
+Requires a C++20 compiler, **CMake 3.24+**, Ninja and Git. Java integration requires **JDK 21**. The first build downloads dependencies.
 
 ```powershell
 .\build.cmd release
@@ -30,6 +30,14 @@ For the Java SDK:
 ```
 
 The SDK is `java/advmatch/build/libs/advmatch-1.2.0.jar`, including native libraries for the build platform. Use `-PskipNativeBuild` when compatible native libraries are already built.
+
+To build and test Linux amd64 libraries alongside Windows and bundle both in one Java SDK JAR:
+
+```powershell
+.\java\gradlew.bat -p java buildMultiplatform
+```
+
+On Windows this uses WSL Ubuntu (override with `-PwslDistribution=NAME`). The Linux environment needs GCC, CMake, Ninja, Git and a headless JDK 21+. `bash tools/build_linux.sh` builds Linux alone. Linux outputs and the native SDK ZIP are in `build/linux-release/`; bundle staging uses `build/native-bundles/linux-amd64/`. The loader selects `native/windows-amd64` or `native/linux-amd64` automatically. The current Linux amd64 bundle requires glibc **2.38+**, not musl/Alpine; rebuild on the oldest glibc environment you need to support. No ARM64 libraries are included.
 
 ## Quick start
 
