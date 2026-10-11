@@ -15,6 +15,7 @@ namespace advmatch::observe
         virtual ~ObservationService() = default;
         virtual ObservationResult read(const ObservationQuery& query) const = 0;
         virtual ObservationBatch readBatch(std::span<const ObservationQuery> queries) const = 0;
+        virtual ObservationBatch readChanged(std::span<const ObservationQuery> queries, std::span<const ReadStamp> known) const = 0;
         virtual std::shared_ptr<const ObservationResult> refresh(const std::shared_ptr<ObservationSlot>& slot) const = 0;
         virtual std::shared_ptr<ObservationSlot> createSlot(ObservationQuery query) = 0;
         virtual void rebuildOpenOrderIndex() = 0;

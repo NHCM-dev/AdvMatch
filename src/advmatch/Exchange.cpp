@@ -156,8 +156,18 @@ namespace advmatch
 
         CommandReceipt execute(const TradingCommand& command, std::uint64_t requestId) override
         {
-            this->runtime->observer.notifyChanged();
-            return this->runtime->engine.execute(command, requestId);
+            this->runtime->observer.notifyCommand(command);
+            try
+            {
+                auto receipt = this->runtime->engine.execute(command, requestId);
+                this->runtime->observer.endCommand();
+                return receipt;
+            }
+            catch (...)
+            {
+                this->runtime->observer.endCommand();
+                throw;
+            }
         }
 
         void dispatch(std::unique_ptr<api::detail::CommandTask> task) noexcept

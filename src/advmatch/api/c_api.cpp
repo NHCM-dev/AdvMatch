@@ -68,6 +68,7 @@ namespace advmatch::binding
             std::optional<CommandEnvelope> trading;
             observe::ObservationQuery query;
             std::vector<observe::ObservationQuery> queries;
+            std::vector<observe::ReadStamp> known;
             persistence::CommittedQuery history;
             std::uint64_t slotId = 0;
             std::shared_ptr<Slots> slots;
@@ -89,6 +90,7 @@ namespace advmatch::binding
                         this->query = readObservationQuery(reader);
                         break;
                     case 2:
+                    case 11:
                     {
                         const auto count = reader.count();
                         persistenceCheck(count <= maxBatchQueries, "too many batch queries");
@@ -96,6 +98,10 @@ namespace advmatch::binding
                         for (std::size_t index = 0; index < count; ++index)
                         {
                             this->queries.push_back(readObservationQuery(reader));
+                            if (this->operation == 11)
+                            {
+                                this->known.push_back(readReadStamp(reader));
+                            }
                         }
                         break;
                     }
@@ -128,6 +134,8 @@ namespace advmatch::binding
                         return context.observation().read(this->query);
                     case 2:
                         return context.observation().readBatch(this->queries);
+                    case 11:
+                        return context.observation().readChanged(this->queries, this->known);
                     case 3:
                         return context.persistence().flush();
                     case 4:

@@ -26,8 +26,12 @@ namespace advmatch
         PersistentTradingEngine(const PersistentTradingEngine&) = delete;
         PersistentTradingEngine& operator=(const PersistentTradingEngine&) = delete;
 
-        // requestId=0 disables retry deduplication. Nonzero IDs must increase
-        // globally in execution order; expired IDs are rejected, never replayed.
+        // requestId=0 disables retry deduplication. IDs without the high bit must
+        // increase globally. High-bit IDs use a 15-bit gateway namespace and a
+        // 48-bit counter; out-of-order arrivals are accepted within the retained
+        // window. Eviction advances that namespace's retirement watermark;
+        // expired IDs are rejected, never executed again. WAL/checkpoint replay
+        // reconstructs both the cache and watermarks.
         CommandReceipt execute(const TradingCommand& command, std::uint64_t requestId = 0);
         void flush();
         void tick();

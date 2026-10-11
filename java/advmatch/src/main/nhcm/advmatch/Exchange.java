@@ -115,6 +115,8 @@ public class Exchange implements AutoCloseable
     private final Thread responses;
     private final CommandChannel channel;
     private SubscriptionHub subscriptions;
+    private final int subscriptionBatchQueries;
+    private final long subscriptionBatchScan;
     private long session;
     private volatile long closeTicket;
     private CompletableFuture<Void> closeFuture;
@@ -211,6 +213,8 @@ public class Exchange implements AutoCloseable
     public Exchange(ExchangeConfig config, Executor callbacks, TransportOptions transport)
     {
         this.channel = null;
+        this.subscriptionBatchQueries = Math.toIntExact(config.observation().maxBatchQueries());
+        this.subscriptionBatchScan = config.observation().maxBatchScan();
         this.transport = Objects.requireNonNull(transport);
         this.callbacks = Objects.requireNonNull(callbacks);
         var writer = new WireWriter();
@@ -234,6 +238,8 @@ public class Exchange implements AutoCloseable
     public Exchange(CommandChannel channel, Executor callbacks)
     {
         this.channel = Objects.requireNonNull(channel);
+        this.subscriptionBatchQueries = 16;
+        this.subscriptionBatchScan = 65536;
         this.callbacks = Objects.requireNonNull(callbacks);
         this.transport = new TransportOptions(256, 0, 1000, 1024);
         this.responses = null;
@@ -411,7 +417,8 @@ public class Exchange implements AutoCloseable
     {
         if (subscriptions == null)
         {
-            subscriptions = new SubscriptionHub(this, channel instanceof SubscriptionChannel source ? source : null, callbacks);
+            subscriptions = new SubscriptionHub(this, channel instanceof SubscriptionChannel source ? source : null, callbacks,
+                                                subscriptionBatchQueries, subscriptionBatchScan);
         }
         return subscriptions;
     }

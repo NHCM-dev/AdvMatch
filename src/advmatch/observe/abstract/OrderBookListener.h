@@ -1,6 +1,8 @@
 #ifndef ADVMATCH_OBSERVE_ORDER_BOOK_LISTENER_H
 #define ADVMATCH_OBSERVE_ORDER_BOOK_LISTENER_H
 
+#include "advmatch/util/ValueTypes.h"
+
 namespace advmatch
 {
     struct OrderNode;
@@ -15,6 +17,7 @@ namespace advmatch
             virtual ~OrderBookListener() = default;
             virtual void onRested(const OrderNode& order) noexcept = 0;
             virtual void onRemoved(const OrderNode& order) noexcept = 0;
+            virtual void onUserChanged(UserId userId) noexcept {}
         };
     }
 }

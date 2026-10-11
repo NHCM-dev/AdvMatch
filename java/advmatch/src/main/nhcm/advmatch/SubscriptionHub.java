@@ -1,13 +1,17 @@
 package nhcm.advmatch;
 
-import nhcm.advmatch.command.read.Read;
+import nhcm.advmatch.command.read.ReadChanges;
 import nhcm.advmatch.internal.ResponseCodec;
+import nhcm.advmatch.internal.Wire;
+import nhcm.advmatch.internal.WireReader;
 import nhcm.advmatch.model.*;
 
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Consumer;
 
 /** Demand-driven shared snapshots. One source per query and at most one queued notification per listener. */
@@ -17,16 +21,37 @@ public class SubscriptionHub implements AutoCloseable
     private final SubscriptionChannel remote;
     private final Executor callbacks;
     private final ScheduledExecutorService scheduler;
-    private final Map<ObservationQuery, Feed> feeds = new HashMap<>();
+    private final Map<ObservationQuery, Feed> feeds = new LinkedHashMap<>();
+    private final int batchQueries;
+    private final long batchScan;
+    private final AtomicInteger batches = new AtomicInteger();
+    private final LongAdder checks = new LongAdder(), snapshots = new LongAdder(), failures = new LongAdder(), deferred = new LongAdder();
+    private int cursor;
+    private long reservedRows;
     private boolean closed;
 
+    public record Metrics(int activeQueries, int pendingBatches, long reservedRows, long conditionalChecks, long changedSnapshots,
+                          long failedBatches, long deferredTicks) {}
+
+    public synchronized Metrics metrics()
+    {
+        return new Metrics(feeds.size(), batches.get(), reservedRows, checks.sum(), snapshots.sum(), failures.sum(), deferred.sum());
+    }
+
     public SubscriptionHub(Exchange exchange, SubscriptionChannel remote, Executor callbacks)
+    {
+        this(exchange, remote, callbacks, 16, 65536);
+    }
+
+    public SubscriptionHub(Exchange exchange, SubscriptionChannel remote, Executor callbacks, int batchQueries, long batchScan)
     {
         this.exchange = exchange;
         this.remote = remote;
         this.callbacks = callbacks;
+        this.batchQueries = Math.max(1, Math.min(256, batchQueries));
+        this.batchScan = batchScan;
         scheduler = Executors.newSingleThreadScheduledExecutor(Thread.ofPlatform().daemon().name("advmatch-subscriptions").factory());
-        scheduler.scheduleWithFixedDelay(this::tick, 0, 50, TimeUnit.MILLISECONDS);
+        scheduler.scheduleWithFixedDelay(this::tick, 0, 25, TimeUnit.MILLISECONDS);
     }
 
     public synchronized ObservationSubscription subscribe(ObservationQuery query, Duration interval,
@@ -46,12 +71,13 @@ public class SubscriptionHub implements AutoCloseable
         var feed = feeds.get(query);
         if (feed == null)
         {
-            if (feeds.size() >= 4096)
+            if (feeds.size() >= 16384 || reservedRows + query.limit() > 1048576)
             {
                 throw new IllegalStateException("Subscription query limit reached");
             }
             feed = new Feed(query, millis);
             feeds.put(query, feed);
+            reservedRows += query.limit();
             if (remote != null)
             {
                 var target = feed;
@@ -62,6 +88,7 @@ public class SubscriptionHub implements AutoCloseable
                 catch (RuntimeException error)
                 {
                     feeds.remove(query);
+                    reservedRows -= query.limit();
                     throw error;
                 }
             }
@@ -93,43 +120,97 @@ public class SubscriptionHub implements AutoCloseable
             active = List.copyOf(feeds.values());
         }
         long now = System.nanoTime();
-        for (var feed : active)
+        if (active.isEmpty()) return;
+        // Background reads may occupy only a small part of native admission.
+        // Rotate admission so a busy market cannot starve a quiet account.
+        if (exchange.outstandingRequests() >= 128 || batches.get() >= 8)
         {
-            if (now - feed.queried < feed.interval * 1_000_000L || !feed.pending.compareAndSet(false, true))
+            deferred.increment();
+            return;
+        }
+        var selected = new ArrayList<Feed>();
+        long scan = 0;
+        int visited = 0;
+        while (visited++ < active.size() && batches.get() < 8)
+        {
+            var feed = active.get(Math.floorMod(cursor++, active.size()));
+            if (now < feed.retryAfter || now - feed.queried < feed.interval * 1_000_000L || feed.pending.get())
             {
                 continue;
             }
+            if (!selected.isEmpty() && (selected.size() >= batchQueries || scan + feed.query.scanBudget() > batchScan))
+            {
+                readChanges(selected);
+                selected = new ArrayList<>();
+                scan = 0;
+                if (batches.get() >= 8) break;
+            }
+            if (!feed.pending.compareAndSet(false, true)) continue;
             feed.queried = now;
-            exchange.submit(new RawCommand(new Read(feed.query).encode())).whenComplete((bytes, error) -> {
-                try
+            selected.add(feed);
+            scan += feed.query.scanBudget();
+        }
+        if (!selected.isEmpty()) readChanges(selected);
+    }
+
+    private void readChanges(List<Feed> selected)
+    {
+        var batch = List.copyOf(selected);
+        batches.incrementAndGet();
+        checks.add(batch.size());
+        var queries = batch.stream().map(feed -> feed.query).toList();
+        var known = batch.stream().map(feed -> feed.known).toList();
+        exchange.submit(new RawCommand(new ReadChanges(queries, known).encode())).whenComplete((bytes, error) -> {
+            try
+            {
+                if (error != null) throw new CompletionException(error);
+                var reader = WireReader.response(bytes, 3);
+                var state = ReadState.fromCode(reader.u8());
+                var stamp = Wire.readReadStamp(reader);
+                if (state != ReadState.Success) throw new IllegalStateException("Conditional snapshot read failed: " + state);
+                var images = new HashMap<ObservationQuery, SubscriptionSnapshot>();
+                reader.list(() -> {
+                    int start = reader.offset();
+                    var image = ResponseCodec.observation(reader);
+                    byte[] wire = new byte[reader.offset() - start + 3];
+                    wire[0] = 1;
+                    wire[2] = 2;
+                    System.arraycopy(bytes, start, wire, 3, wire.length - 3);
+                    images.put(image.query(), new SubscriptionSnapshot(SubscriptionSnapshot.State.LIVE, image, null,
+                                                                        System.currentTimeMillis(), wire));
+                    return image;
+                });
+                reader.finish();
+                for (var feed : batch)
                 {
-                    if (error != null)
+                    feed.known = stamp;
+                    feed.retryAfter = 0;
+                    var image = images.get(feed.query);
+                    if (image != null)
                     {
-                        feed.publish(new SubscriptionSnapshot(SubscriptionSnapshot.State.STALE,
-                                                               feed.snapshot == null ? null : feed.snapshot.result(), error,
-                                                               System.currentTimeMillis(), null));
-                        return;
+                        snapshots.increment();
+                        feed.publish(image);
                     }
-                    var result = ResponseCodec.read(bytes);
-                    if (result.page().state() != ReadState.Success && result.page().state() != ReadState.NotFound)
-                    {
-                        throw new BusinessException(result.page());
-                    }
-                    feed.publish(new SubscriptionSnapshot(SubscriptionSnapshot.State.LIVE, result, null,
-                                                           System.currentTimeMillis(), bytes));
                 }
-                catch (RuntimeException failure)
+            }
+            catch (RuntimeException failure)
+            {
+                failures.increment();
+                for (var feed : batch)
                 {
+                    feed.known = new ReadStamp();
+                    feed.retryAfter = System.nanoTime() + 1_000_000_000L;
                     feed.publish(new SubscriptionSnapshot(SubscriptionSnapshot.State.STALE,
                                                            feed.snapshot == null ? null : feed.snapshot.result(), failure,
                                                            System.currentTimeMillis(), null));
                 }
-                finally
-                {
-                    feed.pending.set(false);
-                }
-            });
-        }
+            }
+            finally
+            {
+                batch.forEach(feed -> feed.pending.set(false));
+                batches.decrementAndGet();
+            }
+        });
     }
 
     private class Feed
@@ -139,6 +220,8 @@ public class SubscriptionHub implements AutoCloseable
         private final AtomicBoolean pending = new AtomicBoolean();
         private volatile SubscriptionSnapshot snapshot;
         private volatile long queried, interval;
+        private volatile long retryAfter;
+        private volatile ReadStamp known = new ReadStamp();
         private AutoCloseable upstream;
 
         Feed(ObservationQuery query, long interval)
@@ -261,6 +344,7 @@ public class SubscriptionHub implements AutoCloseable
                 if (feed.listeners.isEmpty())
                 {
                     feeds.remove(feed.query);
+                    reservedRows -= feed.query.limit();
                     if (feed.upstream != null)
                     {
                         try { feed.upstream.close(); }

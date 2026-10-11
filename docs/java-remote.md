@@ -13,7 +13,7 @@ var remote = new Exchange(channel, callbackExecutor);
 
 Imports: `nhcm.advmatch.Exchange`, `nhcm.advmatch.remote.*`. `token` needs at least 32 characters. Gateway instance IDs must be unique and stable; duplicate connected IDs are rejected. `stableExchangeId` identifies the persistent ledger, not a process start. Use `RemoteOptions.expectedExchangeId` to pin it across client restarts; once connected, a channel pins the observed ID for subsequent reconnects.
 
-The SDK preserves native command/response codecs and wire order when admitting commands from a connection. Responses are correlated and may complete in a different order. Commands are bounded by frame and outstanding-request limits. Remote batches are ordered individual admissions, not atomic transactions. Authentication is for trusted application servers: a gateway token grants access to the exchange API, including privileged commands.
+The SDK preserves native command/response codecs and mutation order when admitting commands from a gateway. Reads may be reordered to preserve trading capacity. Responses are correlated and may complete in a different order. Commands are bounded by frame and outstanding-request limits. Remote batches are individual admissions, not atomic transactions. Authentication is for trusted application servers: a gateway token grants access to the exchange API, including privileged commands.
 
 Non-loopback plaintext is rejected by default. Supply an `SSLContext` to the endpoint and enable TLS in `RemoteOptions`, or explicitly allow plaintext on a trusted private network. TLS clients validate the certificate and hostname using the default Java trust store. `Options.toString()` and `RemoteOptions.toString()` do not print tokens; authentication/payloads are not logged by the endpoint.
 
@@ -32,7 +32,7 @@ try (var subscription = remote.subscriptions().subscribe(query,
 
 Imports include `nhcm.advmatch.model.*` and `java.time.Duration`. Snapshots are immutable and carry LIVE/STALE/CLOSED state, read page metadata and a reception timestamp. Check state before treating data as current. A NotFound read is a live empty result. Query cursors must be fresh, row limits 1–1024 and requested intervals 100–60000 ms. `hasMore` is preserved; a bounded snapshot is not automatically a complete list.
 
-Identical queries share an owner-side source. Native reads are scheduled on demand, with one query in flight at a time; changes coalesce into at most one queued notification per listener. Sequence-only changes do not resend identical rows. Closing the last listener releases its source. There are at most 4096 source queries per hub and 1024 subscriptions per connection. Consumers must return promptly and marshal game work to the game thread.
+Identical queries share an owner-side source. Native revision checks are batched, with one check in flight per query; unchanged snapshots are retained and notifications coalesce per listener. Closing the last listener releases its source. There are at most 16,384 source queries and 1,048,576 reserved rows per hub, and 1,024 subscriptions per connection. Consumers must return promptly and marshal game work to the game thread. See [scheduling, limits and durable request IDs](subscriptions-performance.md).
 
 This is a sampled state subscription, not a durable event stream. It does not deliver every intermediate execution and cannot replace the financial WAL, retained history or reconciliation reads.
 

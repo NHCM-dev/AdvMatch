@@ -27,6 +27,11 @@ namespace advmatch::observe
             return this->observer.readBatch(queries);
         }
 
+        ObservationBatch readChanged(std::span<const ObservationQuery> queries, std::span<const ReadStamp> known) const override
+        {
+            return this->observer.readChanged(queries, known);
+        }
+
         std::shared_ptr<const ObservationResult> refresh(const std::shared_ptr<ObservationSlot>& slot) const override
         {
             if (slot == nullptr)

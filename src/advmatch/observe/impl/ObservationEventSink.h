@@ -21,7 +21,6 @@ namespace advmatch::observe
 
         void onCommitted(const CommandReceipt& receipt, std::span<const Trade> trades, std::span<const ContractEvent> events) noexcept override
         {
-            this->observer.notifyChanged();
             this->observer.recordBatch(receipt.sequence, trades, events);
             if (this->downstream != nullptr)
             {

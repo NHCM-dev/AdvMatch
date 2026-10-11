@@ -121,9 +121,16 @@ namespace advmatch::observe
                 }
 
                 auto& output = detail::rows<ConditionalOrderView>(result);
-                detail::scanSlots(engine.size(), query, page, [&](std::size_t index)
+                UserId scopedUser = query.userId;
+                if (query.accountId != 0)
                 {
-                    auto value = engine.query(index + 1);
+                    const auto* account = this->retainedAccount(query.accountId);
+                    if (account) scopedUser = account->userId;
+                }
+                const auto ids = engine.userOrderIds(scopedUser, query.includeTerminal);
+                detail::scanSlots(scopedUser == 0 ? engine.size() : ids.size(), query, page, [&](std::size_t index)
+                {
+                    auto value = engine.query(scopedUser == 0 ? index + 1 : ids[index]);
                     if (value && matches(*value))
                     {
                         output.push_back(std::move(*value));

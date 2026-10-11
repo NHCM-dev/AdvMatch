@@ -67,6 +67,19 @@ public class ExchangeServer implements AutoCloseable
     private volatile Consumer<ClientContext> disconnected = ignored -> {};
     private volatile BiConsumer<ClientContext, byte[]> validator = (context, packet) -> {};
     private final Set<String> reservedInstances = ConcurrentHashMap.newKeySet();
+    private final FairRequestScheduler admission = new FairRequestScheduler();
+    private final AtomicLong closedCoalesced = new AtomicLong();
+
+    public record Metrics(int connections, int queuedCommands, int runningCommands, int runningReads,
+                          long admittedCommands, long rejectedCommands, long coalescedUpdates) {}
+
+    public Metrics metrics()
+    {
+        var state = admission.metrics();
+        long coalesced = closedCoalesced.get() + connections.stream().mapToLong(connection -> connection.outbound.coalesced()).sum();
+        return new Metrics(connections.size(), state.queued(), state.running(), state.runningReads(),
+                           state.admitted(), state.rejected(), coalesced);
+    }
 
     public ExchangeServer(Exchange exchange, Options options, SSLContext tls) throws IOException
     {
@@ -140,8 +153,7 @@ public class ExchangeServer implements AutoCloseable
     private class Connection implements AutoCloseable
     {
         private final Socket socket;
-        private final ArrayBlockingQueue<NetworkFrames.Frame> outbound = new ArrayBlockingQueue<>(256);
-        private final AtomicLong queuedBytes = new AtomicLong();
+        private final OutboundMailbox outbound = new OutboundMailbox();
         private final Semaphore inFlight = new Semaphore(options.maxInFlight());
         private final Map<Long, ObservationSubscription> subscriptions = new ConcurrentHashMap<>();
         private final Set<Long> slots = ConcurrentHashMap.newKeySet();
@@ -231,7 +243,12 @@ public class ExchangeServer implements AutoCloseable
                                 throw new IllegalArgumentException("Observation slot belongs to another connection");
                             }
                         }
-                        result = exchange.submit(new RawCommand(frame.payload()));
+                        boolean readOnly = operation == 1 || operation == 2 || operation == 9 || operation == 10 || operation == 11;
+                        result = admission.submit(context.connectionId(), readOnly, () -> {
+                            if (!context.active().get()) return CompletableFuture.failedFuture(new IllegalStateException("Gateway disconnected before admission"));
+                            validator.accept(context, frame.payload());
+                            return exchange.submit(new RawCommand(frame.payload()));
+                        });
                         if (operation == 6)
                         {
                             result = result.thenApply(bytes -> {
@@ -361,10 +378,8 @@ public class ExchangeServer implements AutoCloseable
         private void send(NetworkFrames.Frame frame)
         {
             if (ended) return;
-            long bytes = frame.payload().length + 13L;
-            if (queuedBytes.addAndGet(bytes) > 16777216 || frame.payload().length + 9 > options.maxFrameBytes() || !outbound.offer(frame))
+            if (frame.payload().length + 9 > options.maxFrameBytes() || !outbound.offer(frame))
             {
-                queuedBytes.addAndGet(-bytes);
                 close(); // A slow reader loses its connection, never unbounded memory.
             }
         }
@@ -375,10 +390,9 @@ public class ExchangeServer implements AutoCloseable
             {
                 while (!ended)
                 {
-                    var frame = outbound.poll(1, TimeUnit.SECONDS);
+                    var frame = outbound.poll(1000);
                     if (frame != null)
                     {
-                        queuedBytes.addAndGet(-(frame.payload().length + 13L));
                         NetworkFrames.write(output, frame, options.maxFrameBytes());
                     }
                 }
@@ -397,6 +411,8 @@ public class ExchangeServer implements AutoCloseable
                 return;
             }
             ended = true;
+            closedCoalesced.addAndGet(outbound.coalesced());
+            outbound.close();
             try { socket.close(); }
             catch (IOException ignored) {}
             subscriptions.values().forEach(ObservationSubscription::close);
@@ -422,5 +438,6 @@ public class ExchangeServer implements AutoCloseable
         try { listener.close(); }
         catch (IOException ignored) {}
         List.copyOf(connections).forEach(Connection::close);
+        admission.close();
     }
 }

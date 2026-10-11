@@ -59,6 +59,8 @@ namespace advmatch
         MatchingEngine& matching;
         BigAllocs<Node> pool;
         std::vector<Node*> orders;
+        DenseMap<UserId, std::vector<ConditionalOrderId>> userHistory;
+        DenseMap<UserId, DenseSet<ConditionalOrderId>> userWaiting;
         std::vector<std::unique_ptr<Market>> markets;
         std::vector<std::array<Point, 3>> prices;
         std::deque<PriceEvent> events;
@@ -90,6 +92,26 @@ namespace advmatch
         void process();
         void collectTrades(TradeBuffer& output);
         std::optional<ConditionalOrderView> query(ConditionalOrderId id) const;
+
+        // Owner-thread borrowed IDs; copy immutable views before leaving the boundary.
+        std::span<const ConditionalOrderId> userOrderIds(UserId userId, bool includeTerminal) const noexcept
+        {
+            if (includeTerminal)
+            {
+                const auto found = this->userHistory.find(userId);
+                return found == this->userHistory.end() ? std::span<const ConditionalOrderId>{} : found->second;
+            }
+            const auto found = this->userWaiting.find(userId);
+            return found == this->userWaiting.end() ? std::span<const ConditionalOrderId>{} : std::span<const ConditionalOrderId>(found->second.values());
+        }
+
+        Timestamp commandTimestamp(SymbolId symbolId) const noexcept
+        {
+            if (symbolId == 0 || symbolId > this->markets.size()) return 0;
+            Timestamp timestamp = this->markets[symbolId - 1] ? this->markets[symbolId - 1]->commandTimestamp : 0;
+            for (const auto& point : this->prices[symbolId - 1]) timestamp = std::max(timestamp, point.timestamp);
+            return timestamp;
+        }
 
         std::size_t size() const noexcept
         {

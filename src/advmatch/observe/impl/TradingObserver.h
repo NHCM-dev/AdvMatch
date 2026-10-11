@@ -6,6 +6,7 @@
 #include "../model/ObservationTypes.h"
 #include "../abstract/OrderBookListener.h"
 #include "advmatch/management/AssetManager.h"
+#include "advmatch/api/command/model/TradingCommand.h"
 
 #include <functional>
 #include <memory>
@@ -27,6 +28,10 @@ namespace advmatch::observe
         std::function<ReadStamp()> versionProvider;
         std::uint64_t session;
         std::uint64_t revision = 0;
+        std::uint64_t globalRevision = 0;
+        DenseMap<UserId, std::uint64_t> userRevisions;
+        DenseMap<SymbolId, std::uint64_t> symbolRevisions;
+        bool inCommand = false;
         DenseMap<UserId, DenseSet<OrderId>> userOrders;
         std::size_t restingOrderCount = 0;
         bool indexHealthy = false;
@@ -38,6 +43,7 @@ namespace advmatch::observe
 
         void onRested(const OrderNode& node) noexcept override;
         void onRemoved(const OrderNode& node) noexcept override;
+        void onUserChanged(UserId userId) noexcept override;
         void subscribe();
         const Account* retainedAccount(AccountId accountId) const noexcept;
         OrderView copyOrder(const OrderNode& node) const noexcept;
@@ -59,6 +65,10 @@ namespace advmatch::observe
         TradingObserver& operator=(const TradingObserver&) = delete;
 
         void notifyChanged() noexcept;
+        void notifyCommand(const TradingCommand& command) noexcept;
+        void endCommand() noexcept { this->inCommand = false; }
+        bool changed(const ObservationQuery& query, const ReadStamp& known) const;
+        ObservationBatch readChanged(std::span<const ObservationQuery> queries, std::span<const ReadStamp> known) const;
         void rebuildOpenOrderIndex();
         ReadStamp stamp() const;
         OverviewView overview() const noexcept;

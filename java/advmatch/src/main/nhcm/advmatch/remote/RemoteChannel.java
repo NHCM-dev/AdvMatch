@@ -28,6 +28,8 @@ public class RemoteChannel implements CommandChannel, SubscriptionChannel, Remot
     private final Map<Long, ObservationResult> slots = new ConcurrentHashMap<>();
     private final AtomicLong nextId = new AtomicLong();
     private final Semaphore capacity;
+    private final Semaphore controlCapacity = new Semaphore(32);
+    private final Map<Long, ArrayDeque<Connection>> controlPending = new HashMap<>();
     private final ScheduledExecutorService timer;
     private volatile Connection connection;
     private volatile String exchangeId;
@@ -203,7 +205,7 @@ public class RemoteChannel implements CommandChannel, SubscriptionChannel, Remot
             Thread.ofPlatform().daemon().name("advmatch-remote-reader").start(() -> read(accepted));
             for (var subscriber : subscribers.values())
             {
-                NetworkFrames.write(output, new NetworkFrames.Frame(NetworkFrames.SUBSCRIBE, subscriber.id, subscriber.packet), options.maxFrameBytes());
+                writeControl(current, new NetworkFrames.Frame(NetworkFrames.SUBSCRIBE, subscriber.id, subscriber.packet));
                 subscriber.registered = current;
             }
             return current;
@@ -251,7 +253,9 @@ public class RemoteChannel implements CommandChannel, SubscriptionChannel, Remot
                         entry.written = true;
                     }
                 }
-                NetworkFrames.write(current.output(), frame, options.maxFrameBytes());
+                if (frame.type() == NetworkFrames.SUBSCRIBE || frame.type() == NetworkFrames.UNSUBSCRIBE || frame.type() == NetworkFrames.RELEASE_SLOT)
+                    writeControl(current, frame);
+                else NetworkFrames.write(current.output(), frame, options.maxFrameBytes());
             }
             catch (IOException | RuntimeException error)
             {
@@ -282,9 +286,13 @@ public class RemoteChannel implements CommandChannel, SubscriptionChannel, Remot
                 var frame = NetworkFrames.read(current.input(), options.maxFrameBytes());
                 switch (frame.type())
                 {
-                    case NetworkFrames.RESPONSE -> finish(frame.id(), frame.payload(), null);
+                    case NetworkFrames.RESPONSE -> {
+                        acknowledgeControl(current, frame.id());
+                        finish(frame.id(), frame.payload(), null);
+                    }
                     case NetworkFrames.ERROR ->
                     {
+                        acknowledgeControl(current, frame.id());
                         var reader = NetworkFrames.input(frame.payload());
                         var error = new NativeException(reader.readInt(), NetworkFrames.string(reader, 4096));
                         var subscriber = subscribers.get(frame.id());
@@ -340,6 +348,41 @@ public class RemoteChannel implements CommandChannel, SubscriptionChannel, Remot
         });
     }
 
+    private void writeControl(Connection current, NetworkFrames.Frame frame) throws IOException
+    {
+        try
+        {
+            if (!controlCapacity.tryAcquire(options.requestTimeoutMillis(), TimeUnit.MILLISECONDS))
+                throw new IOException("Subscription control deadline exceeded");
+        }
+        catch (InterruptedException failure)
+        {
+            Thread.currentThread().interrupt();
+            throw new InterruptedIOException("Subscription control interrupted");
+        }
+        synchronized (this)
+        {
+            if (closed || connection != current)
+            {
+                controlCapacity.release();
+                throw new IOException("Connection changed before subscription control admission");
+            }
+            controlPending.computeIfAbsent(frame.id(), ignored -> new ArrayDeque<>()).addLast(current);
+        }
+        NetworkFrames.write(current.output(), frame, options.maxFrameBytes());
+    }
+
+    private synchronized void acknowledgeControl(Connection current, long id)
+    {
+        var queue = controlPending.get(id);
+        if (queue != null && queue.peekFirst() == current)
+        {
+            queue.removeFirst();
+            if (queue.isEmpty()) controlPending.remove(id);
+            controlCapacity.release();
+        }
+    }
+
     private void complete(Pending entry, byte[] bytes, Throwable error)
     {
         if (error != null)
@@ -378,6 +421,9 @@ public class RemoteChannel implements CommandChannel, SubscriptionChannel, Remot
             try { existing.socket().close(); }
             catch (IOException ignored) {}
         }
+        int controls = controlPending.values().stream().mapToInt(ArrayDeque::size).sum();
+        controlPending.clear();
+        controlCapacity.release(controls);
         slots.clear();
         for (var request : List.copyOf(pending.entrySet()))
         {
@@ -418,7 +464,8 @@ public class RemoteChannel implements CommandChannel, SubscriptionChannel, Remot
         }
         return () -> {
             subscribers.remove(id);
-            outbound.offer(new NetworkFrames.Frame(NetworkFrames.UNSUBSCRIBE, id, new byte[0]));
+            if (!outbound.offer(new NetworkFrames.Frame(NetworkFrames.UNSUBSCRIBE, id, new byte[0])))
+                disconnect(connection, new IOException("Subscription cleanup queue is full"));
         };
     }
 

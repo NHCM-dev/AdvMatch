@@ -3,7 +3,7 @@ plugins {
 }
 
 group = 'nhcm'
-version = '1.3.0'
+version = '1.4.0'
 
 tasks.withType(Jar).configureEach {
     manifest {
@@ -147,3 +147,13 @@ tasks.register('nativeLoaderTest', JavaExec) {
     mainClass = 'nhcm.advmatch.internal.NativeLoaderTest'
 }
 tasks.named('check') { dependsOn 'nativeLoaderTest' }
+
+['subscriptionIntegrationTest': 'nhcm.advmatch.SubscriptionIntegrationTest',
+ 'admissionTest': 'nhcm.advmatch.remote.AdmissionTest'].each { taskName, entry ->
+    tasks.register(taskName, JavaExec) {
+        dependsOn testClasses
+        classpath = sourceSets.test.runtimeClasspath
+        mainClass = entry
+    }
+    tasks.named('check') { dependsOn taskName }
+}

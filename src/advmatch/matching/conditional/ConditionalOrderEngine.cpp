@@ -184,14 +184,21 @@ namespace advmatch
 
         auto& index = rising(request) ? market->rising[static_cast<std::size_t>(request.source)] : market->falling[static_cast<std::size_t>(request.source)];
         auto& entry = index.getOrCreate(request.triggerPrice);
-        Node* node = this->pool.emplace();
+        const auto id = this->orders.size() + 1;
+        auto& history = this->userHistory[request.userId];
+        if (history.size() == history.capacity()) history.reserve(std::max<std::size_t>(8, history.size() * 2));
+        auto& waiting = this->userWaiting[request.userId];
+        waiting.insert(id);
+        Node* node = nullptr;
         try
         {
+            node = this->pool.emplace();
             this->orders.push_back(node);
         }
         catch (...)
         {
-            this->pool.release(node);
+            if (node) this->pool.release(node);
+            waiting.erase(id);
             if (!entry.value.head)
             {
                 index.erase(entry);
@@ -203,6 +210,7 @@ namespace advmatch
         node->view.conditionalOrderId = this->orders.size();
         node->view.request = request;
         node->view.updatedTimestamp = request.timestamp;
+        history.push_back(id);
         this->attach(*node, index, entry);
         if (sibling)
         {
@@ -279,6 +287,8 @@ namespace advmatch
 
     void ConditionalOrderEngine::cancel(Node& node, Timestamp timestamp) noexcept
     {
+        if (this->matching.observationListener) this->matching.observationListener->onUserChanged(node.view.request.userId);
+        this->userWaiting.find(node.view.request.userId)->second.erase(node.view.conditionalOrderId);
         this->detach(node);
         node.view.status = ConditionalOrderStatus::Cancelled;
         node.view.updatedTimestamp = timestamp;
@@ -391,6 +401,8 @@ namespace advmatch
 
     void ConditionalOrderEngine::activate(Node& node, const PriceEvent& event)
     {
+        if (this->matching.observationListener) this->matching.observationListener->onUserChanged(node.view.request.userId);
+        this->userWaiting.find(node.view.request.userId)->second.erase(node.view.conditionalOrderId);
         this->detach(node);
         const auto& request = node.view.request;
         node.view.triggeredPrice = event.point.price;

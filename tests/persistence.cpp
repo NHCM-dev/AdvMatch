@@ -351,6 +351,7 @@ namespace
         JournalRecordType failAppend = static_cast<JournalRecordType>(0);
         bool failSync = false;
         bool failReset = false;
+        unsigned syncCount = 0;
     };
 
     class MemoryStore : public PersistenceStore
@@ -388,6 +389,7 @@ namespace
 
         void sync() override
         {
+            ++this->state->syncCount;
             if (this->state->failSync)
             {
                 throw PersistenceError(PersistenceFailure::Io, "injected sync failure");
@@ -409,6 +411,29 @@ namespace
             this->state->records.clear();
         }
     };
+
+    void duplicateDurabilityBarriers()
+    {
+        PersistenceConfig config;
+        config.flushPolicy = FlushPolicy::Manual;
+        auto memory = std::make_shared<MemoryState>();
+        PersistentTradingEngine engine(config, std::make_unique<MemoryStore>(memory));
+        const auto initial = memory->syncCount;
+        engine.flush();
+        CHECK(memory->syncCount == initial);
+        const auto receipt = engine.execute(commands::CreateUser{}, 1);
+        CHECK(!receipt.durable());
+        engine.flush();
+        CHECK(engine.durableThrough() == receipt.sequence);
+        CHECK(memory->syncCount == initial + 1);
+        for (int gateway = 0; gateway < 50; ++gateway) engine.flush();
+        CHECK(memory->syncCount == initial + 1);
+        CHECK(engine.execute(commands::CreateUser{}, 1).duplicate);
+        CHECK(!engine.execute(commands::CreateUser{}, 2).durable());
+        memory->failSync = true;
+        expectError(PersistenceFailure::Io, [&] { engine.flush(); });
+        CHECK(engine.isFaulted() && engine.durableThrough() == receipt.sequence);
+    }
 
     void failureRecovery()
     {
@@ -768,6 +793,77 @@ namespace
         CHECK(recovered.getMatchingEngine().getContractEngine().queryPosition(victim)->closed);
         recovered.close();
     }
+    void gatewayRequestRecovery()
+    {
+        TemporaryDirectory directory("gateway-requests");
+        auto config = directory.config();
+        config.retainedRequests = 3;
+        const std::uint64_t a = std::uint64_t{1} << 63;
+        const std::uint64_t b = a | (std::uint64_t{1} << 48);
+        const commands::CreateUser create;
+        {
+            PersistentTradingEngine engine(config);
+            CHECK(engine.execute(create, a + 3).result.entityId == 1);
+            CHECK(engine.execute(create, b + 1).result.entityId == 2);
+            CHECK(engine.execute(create, a + 1).result.entityId == 3);
+            CHECK(engine.execute(create, a + 3).duplicate);
+            expectError(PersistenceFailure::RequestConflict, [&] { engine.execute(commands::CreateAsset{"B", "B", 0}, a + 1); });
+            CHECK(engine.execute(create, a + 2).result.entityId == 4);
+            expectError(PersistenceFailure::RequestExpired, [&] { engine.execute(create, a + 3); });
+            engine.checkpoint();
+            engine.close();
+        }
+        {
+            PersistentTradingEngine engine(config);
+            CHECK(engine.lastSequence() == 4);
+            CHECK(engine.execute(create, a + 1).duplicate);
+            CHECK(engine.execute(create, b + 1).duplicate);
+            expectError(PersistenceFailure::RequestExpired, [&] { engine.execute(create, a + 3); });
+            CHECK(engine.execute(create, b + 2).result.entityId == 5);
+            CHECK(engine.execute(create, a + 4).result.entityId == 6);
+            engine.close();
+        }
+        PersistentTradingEngine engine(config);
+        CHECK(engine.execute(create, b + 2).duplicate);
+        expectError(PersistenceFailure::RequestExpired, [&] { engine.execute(create, b + 1); });
+        CHECK(engine.execute(create, a + 4).duplicate);
+        engine.close();
+    }
+
+    void reorderedGatewayTimestamps()
+    {
+        TemporaryDirectory directory("gateway-clock");
+        const auto config = directory.config();
+        const auto requestId = (std::uint64_t{1} << 63) + 100;
+        ConditionalOrderId id;
+        ConditionalOrderRequest request;
+        request.userId = 1;
+        request.symbolId = 1;
+        request.quantity = 1;
+        request.triggerPrice = 90;
+        request.timestamp = 1;
+        {
+            PersistentTradingEngine engine(config);
+            prepare(engine);
+            CHECK(engine.execute(commands::AddSpotBook{1}).result);
+            CHECK(engine.execute(commands::UpdateBalance{1, 1, 100}).result);
+            CHECK(engine.execute(commands::UpdateBalance{3, 2, 10000}).result);
+            CHECK(engine.execute(order(1, OrderSide::Ask, 100, 1, 1000)).result);
+            CHECK(engine.execute(order(2, OrderSide::Bid, 100, 1, 1001)).result);
+            CHECK(!engine.execute(commands::PlaceConditionalOrder{request}).result);
+            const auto placed = engine.execute(commands::PlaceConditionalOrder{request}, requestId);
+            CHECK(placed.result);
+            id = placed.result.entityId;
+            CHECK(engine.execute(commands::ModifyConditionalOrder{1, id, 80, 0, 1, 1}, requestId + 1).result);
+            engine.checkpoint();
+            engine.close();
+        }
+        PersistentTradingEngine engine(config);
+        CHECK(engine.execute(commands::PlaceConditionalOrder{request}, requestId).duplicate);
+        CHECK(engine.getMatchingEngine().getConditionalOrderEngine().query(id)->request.triggerPrice == 80);
+        CHECK(engine.execute(commands::CancelConditionalOrder{1, id, 1}, requestId + 2).result);
+        engine.close();
+    }
 }
 
 int main(int argc, char** argv)
@@ -792,10 +888,13 @@ int main(int argc, char** argv)
     }
 
     spotRecovery();
+    gatewayRequestRecovery();
+    reorderedGatewayTimestamps();
     contractRecovery(SymbolType::Perpetual, MarginMode::Isolated);
     contractRecovery(SymbolType::Perpetual, MarginMode::Cross);
     contractRecovery(SymbolType::Future, MarginMode::Isolated);
     flushPolicies();
+    duplicateDurabilityBarriers();
     tailAndCorruption();
     failureRecovery();
     corruptSnapshot();

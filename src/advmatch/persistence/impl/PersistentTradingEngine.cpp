@@ -125,6 +125,9 @@ namespace advmatch
         DenseMap<std::uint64_t, Request> requests;
         std::deque<std::uint64_t> requestOrder;
         std::uint64_t highestRequestId = 0;
+        // The high bit opts into gateway namespaces (15-bit namespace, 48-bit counter).
+        // Retirement watermarks never forget an evicted request, including after replay.
+        DenseMap<std::uint16_t, std::uint64_t> retiredRequests;
         CommandSequence sequence = 0;
         CommandSequence durable = 0;
         CommandSequence checkpointSequence = 0;
@@ -179,11 +182,50 @@ namespace advmatch
             persistenceCheck(*this->owner == current && !this->busy, "persistence requires one owner thread and no reentrancy", PersistenceFailure::InvalidConfiguration);
         }
 
-        CommandResult run(const TradingCommand& command)
+        TradingCommand gatewayCommand(const TradingCommand& command) const
+        {
+            return std::visit([&](const auto& original) -> TradingCommand
+            {
+                using T = std::decay_t<decltype(original)>;
+                auto value = original;
+                SymbolId symbolId = 0;
+                if constexpr (std::is_same_v<T, commands::PlaceOrder>) symbolId = value.symbolId;
+                else if constexpr (std::is_same_v<T, commands::PlaceConditionalOrder>) symbolId = value.request.symbolId;
+                else if constexpr (std::is_same_v<T, commands::ModifyPrice> || std::is_same_v<T, commands::ModifyQuantity>
+                                   || std::is_same_v<T, commands::CancelOrder>)
+                {
+                    const auto order = this->state.matching.queryOrder(value.orderId);
+                    if (order) symbolId = order->symbolId;
+                }
+                else if constexpr (std::is_same_v<T, commands::ModifyConditionalOrder> || std::is_same_v<T, commands::CancelConditionalOrder>)
+                {
+                    const auto order = this->state.matching.getConditionalOrderEngine().query(value.conditionalOrderId);
+                    if (order) symbolId = order->request.symbolId;
+                }
+                if (symbolId != 0)
+                {
+                    auto timestamp = std::max(this->state.matching.bookTimestamp(symbolId),
+                                              this->state.matching.getConditionalOrderEngine().commandTimestamp(symbolId));
+                    const auto* market = this->state.matching.getContractEngine().findMarket(symbolId);
+                    if (market) timestamp = std::max(timestamp, market->commandTimestamp);
+                    if constexpr (std::is_same_v<T, commands::PlaceConditionalOrder>)
+                        value.request.timestamp = std::max(value.request.timestamp, timestamp);
+                    else if constexpr (requires { value.timestamp; })
+                        value.timestamp = std::max(value.timestamp, timestamp);
+                }
+                return value;
+            }, command);
+        }
+
+        CommandResult run(const TradingCommand& command, std::uint64_t requestId)
         {
             this->events.clear();
             this->eventAllocationFailed = false;
-            auto result = executeTradingCommand(this->state, command, this->trades);
+            // Original intent stays in the WAL/idempotency cache. Derive the same
+            // execution timestamp from preceding ledger state during live execution
+            // and replay; network reordering must not make gateway orders stale.
+            auto result = (requestId >> 63) != 0 ? executeTradingCommand(this->state, this->gatewayCommand(command), this->trades)
+                                                : executeTradingCommand(this->state, command, this->trades);
             persistenceCheck(!this->eventAllocationFailed, "contract event buffer allocation failed", PersistenceFailure::Faulted);
             return result;
         }
@@ -195,10 +237,21 @@ namespace advmatch
                 return;
             }
 
-            persistenceCheck(requestId > this->highestRequestId, "non-monotonic request ID in journal");
-            this->highestRequestId = requestId;
+            const bool namespaced = (requestId >> 63) != 0;
+            const auto space = static_cast<std::uint16_t>(requestId >> 48);
+            if (namespaced)
+            {
+                persistenceCheck(!this->requests.contains(requestId) && requestId > this->retiredRequests[space],
+                                 "duplicate or retired namespaced request ID in journal");
+            }
+            else
+            {
+                persistenceCheck(requestId > this->highestRequestId, "non-monotonic request ID in journal");
+                this->highestRequestId = requestId;
+            }
             if (this->config.retainedRequests == 0)
             {
+                if (namespaced) this->retiredRequests[space] = requestId;
                 return;
             }
 
@@ -206,7 +259,13 @@ namespace advmatch
             this->requestOrder.push_back(requestId);
             while (this->requestOrder.size() > this->config.retainedRequests)
             {
-                this->requests.erase(this->requestOrder.front());
+                const auto retired = this->requestOrder.front();
+                if ((retired >> 63) != 0)
+                {
+                    auto& watermark = this->retiredRequests[static_cast<std::uint16_t>(retired >> 48)];
+                    watermark = std::max(watermark, retired);
+                }
+                this->requests.erase(retired);
                 this->requestOrder.pop_front();
             }
         }
@@ -215,7 +274,7 @@ namespace advmatch
         {
             persistenceCheck(this->sequence != std::numeric_limits<CommandSequence>::max() && sequence == this->sequence + 1, "journal sequence gap");
             const auto envelope = decodeCommand(intent);
-            const auto result = this->run(envelope.command);
+            const auto result = this->run(envelope.command, envelope.requestId);
             const auto actual = encodeCommit(result, this->trades, this->events);
             persistenceCheck(std::ranges::equal(actual, commit), "replayed result/trades/events differ; engine schema migration required", PersistenceFailure::ReplayMismatch);
             this->remember(envelope.requestId, sequence, intent, result);
@@ -291,7 +350,7 @@ namespace advmatch
             {
                 persistenceCheck(this->sequence != std::numeric_limits<CommandSequence>::max() && pending->sequence == this->sequence + 1, "unfinished intent sequence gap");
                 const auto envelope = decodeCommand(pending->payload);
-                const auto result = this->run(envelope.command);
+                const auto result = this->run(envelope.command, envelope.requestId);
                 auto commit = encodeCommit(result, this->trades, this->events);
                 persistenceCheck(commit.size() <= this->config.maxRecordBytes, "recovered commit exceeds configured limit", PersistenceFailure::InvalidConfiguration);
                 this->store->append({JournalRecordType::Commit, pending->sequence, std::move(commit)});
@@ -313,7 +372,9 @@ namespace advmatch
 
         void sync()
         {
-            if (this->store)
+            // A previous gateway may already have forced every committed record.
+            // Preserve the durability boundary without forcing the same WAL again.
+            if (this->store && this->durable != this->sequence)
             {
                 this->store->sync();
                 this->durable = this->sequence;
@@ -398,7 +459,17 @@ namespace advmatch
                 return {found->second.sequence, this->impl->durable, true, found->second.result};
             }
 
-            persistenceCheck(requestId > this->impl->highestRequestId, "request ID expired or out of order", PersistenceFailure::RequestExpired);
+            if ((requestId >> 63) != 0)
+            {
+                const auto space = static_cast<std::uint16_t>(requestId >> 48);
+                const auto retired = this->impl->retiredRequests.find(space);
+                persistenceCheck(retired == this->impl->retiredRequests.end() || requestId > retired->second,
+                                 "namespaced request ID expired", PersistenceFailure::RequestExpired);
+            }
+            else
+            {
+                persistenceCheck(requestId > this->impl->highestRequestId, "request ID expired or out of order", PersistenceFailure::RequestExpired);
+            }
         }
 
         persistenceCheck(this->impl->sequence != std::numeric_limits<CommandSequence>::max(), "command sequence exhausted", PersistenceFailure::InvalidConfiguration);
@@ -411,7 +482,7 @@ namespace advmatch
                 this->impl->store->append({JournalRecordType::Intent, sequence, intent});
             }
 
-            const auto result = this->impl->run(command);
+            const auto result = this->impl->run(command, requestId);
             if (this->impl->store)
             {
                 auto commit = encodeCommit(result, this->impl->trades, this->impl->events);

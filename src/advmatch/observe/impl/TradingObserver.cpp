@@ -120,6 +120,8 @@ namespace advmatch::observe
 
     void TradingObserver::onRested(const OrderNode& node) noexcept
     {
+        try { this->userRevisions[node.basicOrder.userId] = this->revision; }
+        catch (...) { this->globalRevision = this->revision; }
         if (!this->indexHealthy)
         {
             return;
@@ -139,6 +141,8 @@ namespace advmatch::observe
 
     void TradingObserver::onRemoved(const OrderNode& node) noexcept
     {
+        try { this->userRevisions[node.basicOrder.userId] = this->revision; }
+        catch (...) { this->globalRevision = this->revision; }
         if (!this->indexHealthy)
         {
             return;
@@ -161,6 +165,155 @@ namespace advmatch::observe
         {
             this->session = nextSession.fetch_add(1, std::memory_order_relaxed);
         }
+        this->globalRevision = this->revision;
+    }
+
+    void TradingObserver::onUserChanged(UserId userId) noexcept
+    {
+        try { this->userRevisions[userId] = this->revision; }
+        catch (...) { this->globalRevision = this->revision; }
+    }
+
+    void TradingObserver::notifyCommand(const TradingCommand& command) noexcept
+    {
+        this->inCommand = true;
+        if (++this->revision == 0)
+        {
+            this->session = nextSession.fetch_add(1, std::memory_order_relaxed);
+            this->userRevisions.clear();
+            this->symbolRevisions.clear();
+        }
+        try
+        {
+            if (!this->config.indexUserOpenOrders)
+            {
+                this->globalRevision = this->revision;
+                return;
+            }
+            std::visit([&](const auto& value)
+            {
+                using T = std::decay_t<decltype(value)>;
+                if constexpr (std::is_same_v<T, commands::PlaceOrder>)
+                {
+                    const auto market = this->symbol(value.symbolId);
+                    if (market)
+                    {
+                        this->userRevisions[value.userId] = this->revision;
+                        this->symbolRevisions[value.symbolId] = this->revision;
+                        return;
+                    }
+                }
+                else if constexpr (std::is_same_v<T, commands::CancelOrder> || std::is_same_v<T, commands::ModifyPrice>
+                                   || std::is_same_v<T, commands::ModifyQuantity>)
+                {
+                    const auto* node = this->matching.findNode(value.orderId);
+                    if (node)
+                    {
+                        this->userRevisions[value.userId] = this->revision;
+                        this->symbolRevisions[node->basicOrder.symbolId] = this->revision;
+                        return;
+                    }
+                }
+                else if constexpr (std::is_same_v<T, commands::PlaceConditionalOrder>)
+                {
+                    this->userRevisions[value.request.userId] = this->revision;
+                    return;
+                }
+                else if constexpr (std::is_same_v<T, commands::CancelConditionalOrder> || std::is_same_v<T, commands::ModifyConditionalOrder>)
+                {
+                    this->userRevisions[value.userId] = this->revision;
+                    return;
+                }
+                // Mark/reference changes, funding, configuration and unknown effects
+                // invalidate every dependency. Ordinary orders track affected users
+                // through fills, removals, conditional activation and contract events.
+                this->globalRevision = this->revision;
+            }, command);
+        }
+        catch (...)
+        {
+            this->globalRevision = this->revision;
+        }
+    }
+
+    bool TradingObserver::changed(const ObservationQuery& query, const ReadStamp& known) const
+    {
+        const auto current = this->stamp();
+        if (known.session != current.session || known.revision > current.revision || known.sourceFaulted != current.sourceFaulted)
+        {
+            return true;
+        }
+        auto version = this->globalRevision;
+        UserId userId = query.userId;
+        if (query.accountId != 0)
+        {
+            const auto* account = this->retainedAccount(query.accountId);
+            if (account) userId = account->userId;
+        }
+        switch (query.kind)
+        {
+            case ReadKind::Asset:
+            case ReadKind::Assets:
+            case ReadKind::Symbol:
+            case ReadKind::Symbols:
+                break;
+            case ReadKind::User:
+            case ReadKind::Account:
+            case ReadKind::Accounts:
+            case ReadKind::Balance:
+            case ReadKind::Balances:
+            case ReadKind::UserOpenOrders:
+            case ReadKind::Orders:
+            case ReadKind::Positions:
+            case ReadKind::AccountPositions:
+            case ReadKind::ConditionalOrders:
+                if (userId == 0) return known.revision != current.revision;
+                if (const auto found = this->userRevisions.find(userId); found != this->userRevisions.end())
+                    version = std::max(version, found->second);
+                break;
+            case ReadKind::Book:
+            case ReadKind::Depth:
+            case ReadKind::BookOrders:
+            case ReadKind::Level:
+                if (query.symbolId == 0) return known.revision != current.revision;
+                if (const auto found = this->symbolRevisions.find(query.symbolId); found != this->symbolRevisions.end())
+                    version = std::max(version, found->second);
+                break;
+            default:
+                return known.revision != current.revision || current.sourceFaulted;
+        }
+        return known.revision < version || current.sourceFaulted;
+    }
+
+    ObservationBatch TradingObserver::readChanged(std::span<const ObservationQuery> queries, std::span<const ReadStamp> known) const
+    {
+        ObservationBatch result;
+        result.stamp = this->stamp();
+        if (queries.empty() || queries.size() != known.size() || queries.size() > this->config.maxBatchQueries)
+        {
+            result.state = ReadState::InvalidQuery;
+            return result;
+        }
+        std::size_t remaining = this->config.maxBatchScan;
+        for (const auto& query : queries)
+        {
+            if (query.cursor.started || query.scanBudget > remaining || this->prepare(query).state == ReadState::InvalidQuery)
+            {
+                result.state = ReadState::InvalidQuery;
+                return result;
+            }
+            remaining -= query.scanBudget;
+        }
+        if (result.stamp.sourceFaulted)
+        {
+            result.state = ReadState::SourceFaulted;
+            return result;
+        }
+        for (std::size_t index = 0; index < queries.size(); ++index)
+        {
+            if (this->changed(queries[index], known[index])) result.results.push_back(this->read(queries[index]));
+        }
+        return result;
     }
 
     ReadStamp TradingObserver::stamp() const
@@ -490,6 +643,33 @@ namespace advmatch::observe
         if (sequence == 0 || sequence <= this->recordedThrough)
         {
             return;
+        }
+        if (!this->inCommand) this->notifyChanged();
+        try
+        {
+            for (const auto& trade : trades)
+            {
+                for (const auto id : {trade.makerOrderId, trade.takerOrderId})
+                {
+                    const auto* node = this->matching.findNode(id);
+                    if (node)
+                    {
+                        this->userRevisions[node->basicOrder.userId] = this->revision;
+                        this->symbolRevisions[node->basicOrder.symbolId] = this->revision;
+                    }
+                    else this->globalRevision = this->revision;
+                }
+            }
+            for (const auto& event : events)
+            {
+                if (event.userId == 0) this->globalRevision = this->revision;
+                else this->userRevisions[event.userId] = this->revision;
+                this->symbolRevisions[event.symbolId] = this->revision;
+            }
+        }
+        catch (...)
+        {
+            this->globalRevision = this->revision;
         }
 
         for (const auto& trade : trades)
