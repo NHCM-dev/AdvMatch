@@ -3,7 +3,7 @@ plugins {
 }
 
 group = 'nhcm'
-version = '1.2.0'
+version = '1.3.0'
 
 tasks.withType(Jar).configureEach {
     manifest {
@@ -113,6 +113,33 @@ tasks.named('test') {
 }
 
 tasks.named('check') { dependsOn 'benchmarkSmoke' }
+
+tasks.register('remoteIntegrationTest', JavaExec) {
+    dependsOn testClasses
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'nhcm.advmatch.RemoteIntegrationTest'
+}
+
+def tlsCertificate = layout.buildDirectory.file("test-tls/endpoint-${java.time.LocalDate.now()}.p12")
+tasks.register('testTlsCertificate', Exec) {
+    def launcher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(21) }.get()
+    def keytool = launcher.metadata.installationPath.file("bin/keytool${os == 'windows' ? '.exe' : ''}").asFile
+    onlyIf { !tlsCertificate.get().asFile.exists() }
+    doFirst { tlsCertificate.get().asFile.parentFile.mkdirs() }
+    commandLine keytool, '-genkeypair', '-alias', 'endpoint', '-keyalg', 'RSA', '-keysize', '2048',
+                '-validity', '2', '-dname', 'CN=localhost', '-ext', 'SAN=dns:localhost,ip:127.0.0.1',
+                '-storetype', 'PKCS12', '-keystore', tlsCertificate.get().asFile,
+                '-storepass', 'integration-password', '-keypass', 'integration-password', '-noprompt'
+}
+tasks.register('tlsRemoteIntegrationTest', JavaExec) {
+    dependsOn testClasses, testTlsCertificate
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'nhcm.advmatch.TlsRemoteIntegrationTest'
+    args tlsCertificate.get().asFile.absolutePath
+}
+tasks.named('check') { dependsOn tlsRemoteIntegrationTest }
+
+tasks.named('check') { dependsOn 'remoteIntegrationTest' }
 
 tasks.register('nativeLoaderTest', JavaExec) {
     dependsOn testClasses

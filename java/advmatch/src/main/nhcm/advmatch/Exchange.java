@@ -113,6 +113,8 @@ public class Exchange implements AutoCloseable
     private final AtomicInteger outstanding = new AtomicInteger();
     private final Executor callbacks;
     private final Thread responses;
+    private final CommandChannel channel;
+    private SubscriptionHub subscriptions;
     private long session;
     private volatile long closeTicket;
     private CompletableFuture<Void> closeFuture;
@@ -208,6 +210,7 @@ public class Exchange implements AutoCloseable
 
     public Exchange(ExchangeConfig config, Executor callbacks, TransportOptions transport)
     {
+        this.channel = null;
         this.transport = Objects.requireNonNull(transport);
         this.callbacks = Objects.requireNonNull(callbacks);
         var writer = new WireWriter();
@@ -227,8 +230,41 @@ public class Exchange implements AutoCloseable
         }
     }
 
+    /** Transport-only facade. Does not initialize or load the native library. */
+    public Exchange(CommandChannel channel, Executor callbacks)
+    {
+        this.channel = Objects.requireNonNull(channel);
+        this.callbacks = Objects.requireNonNull(callbacks);
+        this.transport = new TransportOptions(256, 0, 1000, 1024);
+        this.responses = null;
+    }
+
     public <T> CompletableFuture<T> submit(Command<T> command)
     {
+        if (this.channel != null)
+        {
+            try
+            {
+                var result = new CompletableFuture<T>()
+                {
+                    @Override
+                    public boolean cancel(boolean mayInterruptIfRunning)
+                    {
+                        return false;
+                    }
+                };
+                this.channel.request(Objects.requireNonNull(command).encode()).thenApplyAsync(command::decode, this.callbacks)
+                            .whenComplete((value, error) -> {
+                                if (error == null) result.complete(value);
+                                else result.completeExceptionally(error);
+                            });
+                return result;
+            }
+            catch (RuntimeException error)
+            {
+                return CompletableFuture.failedFuture(error);
+            }
+        }
         try
         {
             var packet = Objects.requireNonNull(command).encode();
@@ -269,6 +305,14 @@ public class Exchange implements AutoCloseable
     public <T> List<CompletableFuture<T>> submitBatch(List<? extends Command<T>> commands)
     {
         Objects.requireNonNull(commands);
+        if (this.channel != null)
+        {
+            if (commands.size() > 1024)
+            {
+                throw new IllegalArgumentException("A batch supports at most 1024 commands");
+            }
+            return commands.stream().map(this::submit).toList();
+        }
         if (commands.isEmpty())
         {
             return List.of();
@@ -339,12 +383,12 @@ public class Exchange implements AutoCloseable
 
     public int pendingRequests()
     {
-        return this.nativePending;
+        return this.channel == null ? this.nativePending : this.channel.outstandingRequests();
     }
 
     public int outstandingRequests()
     {
-        return this.outstanding.get();
+        return this.channel == null ? this.outstanding.get() : this.channel.outstandingRequests();
     }
 
     private void reserveOutstanding(int count)
@@ -363,8 +407,28 @@ public class Exchange implements AutoCloseable
         return this.submit(new CreateObservationSlot(query)).thenApply(id -> new ObservationSlot(this, id));
     }
 
+    public synchronized SubscriptionHub subscriptions()
+    {
+        if (subscriptions == null)
+        {
+            subscriptions = new SubscriptionHub(this, channel instanceof SubscriptionChannel source ? source : null, callbacks);
+        }
+        return subscriptions;
+    }
+
     public CompletableFuture<Void> closeAsync()
     {
+        synchronized (this)
+        {
+            if (subscriptions != null)
+            {
+                subscriptions.close();
+            }
+        }
+        if (this.channel != null)
+        {
+            return this.channel.closeAsync();
+        }
         synchronized (this.admission)
         {
             if (this.closeFuture != null)
@@ -402,6 +466,10 @@ public class Exchange implements AutoCloseable
 
     ObservationResult loadSlot(long id)
     {
+        if (this.channel != null)
+        {
+            return this.channel instanceof RemoteSlotAccess slots ? slots.load(id) : null;
+        }
         synchronized (this.admission)
         {
             if (this.session == 0)
@@ -414,8 +482,16 @@ public class Exchange implements AutoCloseable
         }
     }
 
-    void releaseSlot(long id)
+    public void releaseSlot(long id)
     {
+        if (this.channel != null)
+        {
+            if (this.channel instanceof RemoteSlotAccess slots)
+            {
+                slots.release(id);
+            }
+            return;
+        }
         synchronized (this.admission)
         {
             if (this.session != 0)

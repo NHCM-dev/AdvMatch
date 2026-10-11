@@ -1,4 +1,4 @@
-# AdvMatch 1.2.0
+# AdvMatch 1.3.0
 
 English · [简体中文](README.zh-CN.md)
 
@@ -12,6 +12,9 @@ A C++20 exchange engine with C++ and Java SDKs for **spot, linear futures and pe
 - Stop-loss, take-profit and OCO orders; fees, risk limits and self-trade protection.
 - Atomic balance transactions, market halts, conservation audits and WAL recovery.
 - Integer monetary units with asset and symbol scales.
+- Java shared state subscriptions and authenticated remote transport for one exchange serving multiple applications.
+
+[Remote transport and subscriptions](docs/java-remote.md)
 
 ## Build
 
@@ -29,7 +32,7 @@ For the Java SDK:
 .\java\gradlew.bat -p java :advmatch:build :advmatch:runExample
 ```
 
-The SDK is `java/advmatch/build/libs/advmatch-1.2.0.jar`, including native libraries for the build platform. Use `-PskipNativeBuild` when compatible native libraries are already built.
+The SDK is `java/advmatch/build/libs/advmatch-1.3.0.jar`, including native libraries for the build platform. Use `-PskipNativeBuild` when compatible native libraries are already built.
 
 To build and test Linux amd64 libraries alongside Windows and bundle both in one Java SDK JAR:
 

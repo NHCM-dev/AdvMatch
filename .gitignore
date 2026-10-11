@@ -14,8 +14,13 @@ build.ninja
 
 # Local exchange state and IDE configuration
 /data/
+/release-artifacts/
+/dist/
 /.idea/
 /.clangd
+.env
+.env.*
+!.env.example
 
 # Native build outputs
 *.exe
@@ -40,6 +45,9 @@ build.ninja
 !/java/gradle/wrapper/gradle-wrapper.jar
 hs_err_pid*.log
 replay_pid*.log
+*.log
+*.hprof
+*.jfr
 
 # Python tool caches
 __pycache__/

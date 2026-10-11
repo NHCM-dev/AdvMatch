@@ -1,4 +1,4 @@
-# AdvMatch 1.2.0
+# AdvMatch 1.3.0
 
 [English](README.md) · 简体中文
 
@@ -12,6 +12,8 @@ C++20 交易引擎，提供 C++ 和 Java SDK，支持**现货、线性交割合�
 - 止损、止盈、OCO、手续费、风险限额及自成交保护。
 - 原子余额事务、停牌、守恒审计与 WAL 恢复。
 - 按资产和交易对精度使用整数金额。
+
+Java SDK 支持共享状态订阅和认证网络传输，多个应用可连接同一个交易所。参见[网络与订阅 API](docs/java-remote.md)。订阅会合并状态更新，断线后自动恢复订阅；交易修改不会自动重发。
 
 ## 构建
 
@@ -29,7 +31,7 @@ Linux / macOS 使用 `./build.sh release`。脚本执行构建与测试，releas
 .\java\gradlew.bat -p java :advmatch:build :advmatch:runExample
 ```
 
-产物为 `java/advmatch/build/libs/advmatch-1.2.0.jar`，包含构建平台的原生库。已有兼容原生库时可加 `-PskipNativeBuild`。
+产物为 `java/advmatch/build/libs/advmatch-1.3.0.jar`，包含构建平台的原生库。已有兼容原生库时可加 `-PskipNativeBuild`。
 
 同时构建并测试 Windows 与 Linux amd64，将两个平台原生库打入同一个 Java SDK JAR：
 
