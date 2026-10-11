@@ -39,7 +39,11 @@ public enum ReadKind
     Audit(33),
     UserRisk(34),
     SpotFeeBalance(35),
-    TradingStatus(36);
+    TradingStatus(36),
+    OrdersNewest(37),
+    PositionsNewest(38),
+    ConditionalOrdersNewest(39),
+    TradesNewest(40);
 
     private final int code;
 

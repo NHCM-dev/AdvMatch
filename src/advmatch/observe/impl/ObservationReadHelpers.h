@@ -63,6 +63,42 @@ namespace advmatch::observe::detail
         page.hasMore = index < size;
     }
 
+    template <typename Values, typename Visit>
+    void scanHistoryIndex(const Values& values, const ObservationQuery& query, ReadPage& page, Visit&& visit)
+    {
+        const auto boundary = std::make_pair(static_cast<Timestamp>(query.cursor.anchor), query.cursor.secondary);
+        auto iterator = query.cursor.started ? std::lower_bound(values.begin(), values.end(), boundary) : values.end();
+        while (iterator != values.begin() && page.count < query.limit && page.examined < query.scanBudget)
+        {
+            const auto& [timestamp, id] = *--iterator;
+            ++page.examined;
+            page.count += visit(id);
+            page.next.anchor = timestamp;
+            page.next.secondary = id;
+        }
+        page.hasMore = iterator != values.begin();
+    }
+
+    // Descending immutable IDs: appends cannot shift the continuation boundary.
+    // A newer first page starts a new traversal; existing cursors exclude new rows.
+    template <typename Visit>
+    void scanNewest(std::uint64_t upper, const ObservationQuery& query, ReadPage& page, Visit&& visit)
+    {
+        auto id = query.cursor.started ? query.cursor.anchor : upper;
+        if (id > upper)
+        {
+            page.state = ReadState::CursorExpired;
+            return;
+        }
+        while (id != 0 && page.count < query.limit && page.examined < query.scanBudget)
+        {
+            ++page.examined;
+            page.count += visit(id--);
+        }
+        page.next.anchor = id;
+        page.hasMore = id != 0;
+    }
+
     template <typename Row, typename Visit>
     void scanTape(const std::vector<Row>& values, std::uint64_t nextId, const ObservationQuery& query, ReadPage& page, Visit&& visit)
     {
@@ -100,6 +136,7 @@ namespace advmatch::observe::detail
     inline bool matchesPosition(const PositionView& value, const ObservationQuery& query) noexcept
     {
         const bool exposure = query.positionFilter == PositionFilter::All ||
+            (query.positionFilter == PositionFilter::ClosedExecuted && value.closed) ||
             (query.positionFilter == PositionFilter::Open && value.size != 0) ||
             (query.positionFilter == PositionFilter::Trading && (value.size != 0 || value.openOrderCount != 0));
         return exposure && (query.userId == 0 || value.userId == query.userId) &&

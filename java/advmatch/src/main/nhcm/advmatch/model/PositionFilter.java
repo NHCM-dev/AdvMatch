@@ -5,7 +5,8 @@ public enum PositionFilter
 {
     All(0),
     Open(1),
-    Trading(2);
+    Trading(2),
+    ClosedExecuted(3);
 
     private final int code;
 

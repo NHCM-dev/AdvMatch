@@ -73,6 +73,10 @@ namespace advmatch::sdk::command
     using ReadUserRisk = ReadOperation<ReadKind::UserRisk, UserRiskView>;
     using ReadSpotFeeBalance = ReadOperation<ReadKind::SpotFeeBalance, FeeBalanceView>;
     using ReadTradingStatus = ReadOperation<ReadKind::TradingStatus, TradingStatusView>;
+    using ReadOrdersNewest = ReadOperation<ReadKind::OrdersNewest, OrderView>;
+    using ReadPositionsNewest = ReadOperation<ReadKind::PositionsNewest, PositionView>;
+    using ReadConditionalOrdersNewest = ReadOperation<ReadKind::ConditionalOrdersNewest, ConditionalOrderView>;
+    using ReadTradesNewest = ReadOperation<ReadKind::TradesNewest, TradeView>;
     using ReadMarket = ReadOperation<ReadKind::Market, MarketView>;
     using ReadMarkets = ReadOperation<ReadKind::Markets, MarketView>;
     using ReadPendingLiquidations = ReadOperation<ReadKind::PendingLiquidations, PositionView>;

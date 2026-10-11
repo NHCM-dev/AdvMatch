@@ -1,4 +1,4 @@
-# AdvMatch 2.0.0
+# AdvMatch 2.0.1
 
 [English](README.md) · 简体中文
 
@@ -35,7 +35,7 @@ Linux / macOS 使用 `./build.sh release`。脚本执行构建与测试，releas
 .\java\gradlew.bat -p java :advmatch:build :advmatch:runExample
 ```
 
-产物为 `java/advmatch/build/libs/advmatch-2.0.0.jar`，包含构建平台的原生库。已有兼容原生库时可加 `-PskipNativeBuild`。
+产物为 `java/advmatch/build/libs/advmatch-2.0.1.jar`，包含构建平台的原生库。已有兼容原生库时可加 `-PskipNativeBuild`。
 
 同时构建并测试 Windows 与 Linux amd64，将两个平台原生库打入同一个 Java SDK JAR：
 

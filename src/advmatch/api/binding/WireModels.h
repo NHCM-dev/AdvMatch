@@ -865,7 +865,7 @@ namespace advmatch::binding
     inline observe::ReadIdentity readReadIdentity(BinaryReader& reader)
     {
         observe::ReadIdentity value{};
-        value.kind = reader.enumeration(static_cast<observe::ReadKind>(36));
+        value.kind = reader.enumeration(static_cast<observe::ReadKind>(40));
         value.userId = reader.number<UserId>();
         value.accountId = reader.number<AccountId>();
         value.assetId = reader.number<AssetId>();
@@ -874,7 +874,7 @@ namespace advmatch::binding
         value.positionId = reader.number<PositionId>();
         value.price = reader.number<Price>();
         value.side = reader.enumeration(static_cast<OrderSide>(1));
-        value.positionFilter = reader.enumeration(static_cast<observe::PositionFilter>(2));
+        value.positionFilter = reader.enumeration(static_cast<observe::PositionFilter>(3));
         value.includeInactive = reader.boolean();
         value.includeTerminal = reader.boolean();
         return value;
@@ -926,7 +926,7 @@ namespace advmatch::binding
     inline observe::ObservationQuery readObservationQuery(BinaryReader& reader)
     {
         observe::ObservationQuery value{};
-        value.kind = reader.enumeration(static_cast<observe::ReadKind>(36));
+        value.kind = reader.enumeration(static_cast<observe::ReadKind>(40));
         value.userId = reader.number<UserId>();
         value.accountId = reader.number<AccountId>();
         value.assetId = reader.number<AssetId>();
@@ -935,7 +935,7 @@ namespace advmatch::binding
         value.positionId = reader.number<PositionId>();
         value.price = reader.number<Price>();
         value.side = reader.enumeration(static_cast<OrderSide>(1));
-        value.positionFilter = reader.enumeration(static_cast<observe::PositionFilter>(2));
+        value.positionFilter = reader.enumeration(static_cast<observe::PositionFilter>(3));
         value.includeInactive = reader.boolean();
         value.includeTerminal = reader.boolean();
         value.limit = readSize(reader);

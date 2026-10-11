@@ -42,6 +42,8 @@ namespace advmatch::observe
             throw std::invalid_argument("observation row/scan limits must be positive");
         }
 
+        this->refreshHistoryIndexes();
+
         if (config.indexUserOpenOrders)
         {
             this->subscribe();
@@ -72,6 +74,53 @@ namespace advmatch::observe
                     book->observationListener = nullptr;
                 }
             }
+        }
+    }
+
+    void TradingObserver::refreshHistoryIndexes()
+    {
+        const auto append = [](auto& rows, HistoryKey key)
+        {
+            // Normal commands append in time order; imported timestamps remain ordered too.
+            const auto where = std::lower_bound(rows.begin(), rows.end(), key);
+            rows.insert(where, key);
+        };
+        while (this->indexedOrder < this->matching.orders.size())
+        {
+            const auto* node = this->matching.orders[this->indexedOrder++];
+            if (!node) continue;
+            const auto& order = node->basicOrder;
+            append(this->historyOrders[order.userId], {order.getCreatedTimestamp(), order.orderId});
+            if (node->contractParticipant && order.getFilledQuantity() != 0)
+            {
+                this->executedPositions.insert(node->contractParticipant->position->positionId);
+            }
+        }
+        const auto& conditional = this->matching.getConditionalOrderEngine();
+        if (this->changingConditional)
+        {
+            const auto& previous = *this->changingConditional;
+            const auto current = conditional.query(previous.conditionalOrderId);
+            if (current && current->request.timestamp != previous.request.timestamp)
+            {
+                auto& rows = this->historyConditionals[previous.request.userId];
+                const HistoryKey key{previous.request.timestamp, previous.conditionalOrderId};
+                const auto where = std::lower_bound(rows.begin(), rows.end(), key);
+                if (where != rows.end() && *where == key) rows.erase(where);
+                append(rows, {current->request.timestamp, current->conditionalOrderId});
+            }
+            this->changingConditional.reset();
+        }
+        while (this->indexedConditional < conditional.size())
+        {
+            const auto value = conditional.query(++this->indexedConditional);
+            if (value) append(this->historyConditionals[value->request.userId], {value->request.timestamp, value->conditionalOrderId});
+        }
+        const auto& contracts = this->matching.getContractEngine();
+        while (this->indexedPosition + 1 < contracts.nextPositionId)
+        {
+            const auto position = this->position(++this->indexedPosition);
+            if (position) append(this->historyPositions[position->userId], {position->createdTimestamp, position->positionId});
         }
     }
 
@@ -161,6 +210,14 @@ namespace advmatch::observe
 
     void TradingObserver::notifyChanged() noexcept
     {
+        try
+        {
+            this->refreshHistoryIndexes();
+        }
+        catch (...)
+        {
+            this->executionIndexHealthy = false;
+        }
         if (++this->revision == 0)
         {
             this->session = nextSession.fetch_add(1, std::memory_order_relaxed);
@@ -185,6 +242,10 @@ namespace advmatch::observe
         }
         try
         {
+            if (const auto* modify = std::get_if<commands::ModifyConditionalOrder>(&command))
+            {
+                this->changingConditional = this->matching.getConditionalOrderEngine().query(modify->conditionalOrderId);
+            }
             if (!this->config.indexUserOpenOrders)
             {
                 this->globalRevision = this->revision;
@@ -264,6 +325,9 @@ namespace advmatch::observe
             case ReadKind::Balances:
             case ReadKind::UserOpenOrders:
             case ReadKind::Orders:
+            case ReadKind::OrdersNewest:
+            case ReadKind::PositionsNewest:
+            case ReadKind::ConditionalOrdersNewest:
             case ReadKind::Positions:
             case ReadKind::AccountPositions:
             case ReadKind::ConditionalOrders:
@@ -522,7 +586,7 @@ namespace advmatch::observe
         {
             page.state = ReadState::SourceFaulted;
         }
-        else if (query.kind > ReadKind::TradingStatus || query.positionFilter > PositionFilter::Trading || query.limit == 0 || query.limit > this->config.maxRows || query.scanBudget == 0 || query.scanBudget > this->config.maxScan)
+        else if (query.kind > ReadKind::TradesNewest || query.positionFilter > PositionFilter::ClosedExecuted || (query.positionFilter == PositionFilter::ClosedExecuted && query.kind != ReadKind::PositionsNewest) || query.limit == 0 || query.limit > this->config.maxRows || query.scanBudget == 0 || query.scanBudget > this->config.maxScan)
         {
             page.state = ReadState::InvalidQuery;
         }
@@ -532,7 +596,7 @@ namespace advmatch::observe
         }
         else if (query.cursor.started)
         {
-            const bool tape = query.kind == ReadKind::Trades || query.kind == ReadKind::ContractEvents;
+            const bool tape = query.kind == ReadKind::Trades || query.kind == ReadKind::ContractEvents || query.kind >= ReadKind::OrdersNewest;
             if (query.cursor.session != page.stamp.session || query.cursor.identity != identity(query) ||
                 (!tape && (query.cursor.sequence != page.stamp.sequence || query.cursor.revision != page.stamp.revision)))
             {
@@ -647,6 +711,7 @@ namespace advmatch::observe
         if (!this->inCommand) this->notifyChanged();
         try
         {
+            this->refreshHistoryIndexes();
             for (const auto& trade : trades)
             {
                 for (const auto id : {trade.makerOrderId, trade.takerOrderId})
@@ -654,6 +719,10 @@ namespace advmatch::observe
                     const auto* node = this->matching.findNode(id);
                     if (node)
                     {
+                        if (node->contractParticipant)
+                        {
+                            this->executedPositions.insert(node->contractParticipant->position->positionId);
+                        }
                         this->userRevisions[node->basicOrder.userId] = this->revision;
                         this->symbolRevisions[node->basicOrder.symbolId] = this->revision;
                     }
@@ -670,6 +739,7 @@ namespace advmatch::observe
         catch (...)
         {
             this->globalRevision = this->revision;
+            this->executionIndexHealthy = false;
         }
 
         for (const auto& trade : trades)

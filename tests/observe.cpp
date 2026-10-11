@@ -259,6 +259,72 @@ namespace
         CHECK(observer.readBatch(tooMuch).state == ReadState::InvalidQuery);
     }
 
+    void newestHistory()
+    {
+        Fixture fixture;
+        CHECK(fixture.order(1, OrderSide::Bid, 80, 1, 3));
+        CHECK(fixture.order(1, OrderSide::Bid, 81, 1, 1));
+        CHECK(fixture.order(1, OrderSide::Bid, 82, 1, 2));
+        TradingObserver observer(fixture.state.assets, fixture.state.users, fixture.state.symbols, fixture.state.matching, fixture.config);
+        ObservationQuery query;
+        query.kind = ReadKind::OrdersNewest;
+        query.userId = 1;
+        query.limit = 1;
+        query.scanBudget = 1;
+        const auto orders = all<OrderView>(observer, query);
+        CHECK(orders.size() == 3 && orders[0].orderId == 1 && orders[1].orderId == 3 && orders[2].orderId == 2);
+        auto first = observer.read(query);
+        CHECK(fixture.order(1, OrderSide::Bid, 83, 1, 4));
+        observer.notifyChanged();
+        query.cursor = first.page.next;
+        const auto next = observer.read(query);
+        CHECK(next.page.state == ReadState::Success && next.rows<OrderView>()[0].orderId == 3);
+        query.cursor = {};
+        CHECK(observer.read(query).rows<OrderView>()[0].orderId == 4);
+
+        CHECK(fixture.state.symbols.createSymbol("PERP", SymbolType::Perpetual, 1, 2));
+        ContractSpec spec;
+        spec.makerFeeRate = 0;
+        spec.takerFeeRate = 0;
+        spec.liquidationFeeRate = 0;
+        spec.firstFundingTimestamp = 1000;
+        CHECK(fixture.state.matching.addContractBook(2, spec, 100, 0));
+        ContractOrderOptions options;
+        options.marginMode = MarginMode::Cross;
+        const auto ask = fixture.state.matching.placeContractOrder(2, 2, OrderSide::Ask, OrderType::Limit, TimeInForce::GTC, 100, 2, 5, options, fixture.trades);
+        const auto bid = fixture.state.matching.placeContractOrder(1, 2, OrderSide::Bid, OrderType::Limit, TimeInForce::GTC, 100, 2, 5, options, fixture.trades);
+        CHECK(ask && bid);
+        observer.recordBatch(1, fixture.trades, {});
+        const auto empty = fixture.state.matching.placeContractOrder(1, 2, OrderSide::Bid, OrderType::Limit, TimeInForce::GTC, 80, 1, 5, options, fixture.trades);
+        CHECK(empty && fixture.state.matching.cancelOrder(1, empty.orderId, 5));
+        options.reduceOnly = true;
+        options.positionId = ask.positionId;
+        CHECK(fixture.state.matching.placeContractOrder(2, 2, OrderSide::Bid, OrderType::Limit, TimeInForce::GTC, 100, 2, 5, options, fixture.trades));
+        options.positionId = bid.positionId;
+        options.priceLimit = 100;
+        CHECK(fixture.state.matching.placeContractOrder(1, 2, OrderSide::Ask, OrderType::Market, TimeInForce::IOC, 0, 2, 5, options, fixture.trades));
+        observer.recordBatch(2, fixture.trades, {});
+        query = {};
+        query.kind = ReadKind::PositionsNewest;
+        query.userId = 1;
+        query.positionFilter = PositionFilter::ClosedExecuted;
+        query.limit = 1;
+        query.scanBudget = 1;
+        const auto closed = all<PositionView>(observer, query);
+        CHECK(closed.size() == 1 && closed[0].positionId == bid.positionId && closed[0].closed);
+        CHECK(closed[0].paidFees == 0 && closed[0].realizedPnL == 0 && closed[0].updatedTimestamp == closed[0].createdTimestamp);
+        observer.rebuildOpenOrderIndex();
+        CHECK(all<PositionView>(observer, query).size() == 1);
+        // Rebuilding from retained order fills must work without the recent trade tape.
+        ObservationConfig detachedConfig;
+        TradingObserver restored(fixture.state.assets, fixture.state.users, fixture.state.symbols, fixture.state.matching, detachedConfig);
+        CHECK(all<PositionView>(restored, query).size() == 1);
+        query = {};
+        query.kind = ReadKind::OrdersNewest;
+        query.userId = 1;
+        CHECK(all<OrderView>(observer, query)[0].reduceOnly);
+    }
+
     void contractsAndBatches()
     {
         Fixture fixture;
@@ -584,6 +650,7 @@ int main()
     bookAndIndex(OrderBookImplementation::Radix);
     bookAndIndex(OrderBookImplementation::IndexedTree);
     managersAndBuffers();
+    newestHistory();
     contractsAndBatches();
     cacheConcurrency();
     consumerIntegration();

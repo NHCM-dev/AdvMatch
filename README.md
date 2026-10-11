@@ -1,4 +1,4 @@
-# AdvMatch 2.0.0
+# AdvMatch 2.0.1
 
 English · [简体中文](README.zh-CN.md)
 
@@ -36,7 +36,7 @@ For the Java SDK:
 .\java\gradlew.bat -p java :advmatch:build :advmatch:runExample
 ```
 
-The SDK is `java/advmatch/build/libs/advmatch-2.0.0.jar`, including native libraries for the build platform. Use `-PskipNativeBuild` when compatible native libraries are already built.
+The SDK is `java/advmatch/build/libs/advmatch-2.0.1.jar`, including native libraries for the build platform. Use `-PskipNativeBuild` when compatible native libraries are already built.
 
 To build and test Linux amd64 libraries alongside Windows and bundle both in one Java SDK JAR:
 

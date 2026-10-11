@@ -90,6 +90,132 @@ namespace advmatch::observe
 
         switch (query.kind)
         {
+            case ReadKind::OrdersNewest:
+            case ReadKind::PositionsNewest:
+            {
+                if (!this->executionIndexHealthy)
+                {
+                    page.state = ReadState::IndexUnavailable;
+                    return;
+                }
+                UserId userId = query.userId;
+                AccountId accountId = query.accountId;
+                if (accountId != 0)
+                {
+                    const auto* account = this->retainedAccount(accountId);
+                    if (!account || (userId != 0 && userId != account->getUserId()))
+                    {
+                        page.state = ReadState::NotFound;
+                        return;
+                    }
+                    userId = account->getUserId();
+                }
+                if (query.kind == ReadKind::OrdersNewest)
+                {
+                    auto& output = detail::rows<OrderView>(result);
+                    const auto visit = [&](OrderId id)
+                    {
+                        const auto value = this->order(id);
+                        if (!value || !detail::matchesOrder(*value, query)) return false;
+                        output.push_back(*value);
+                        return true;
+                    };
+                    if (userId == 0) detail::scanNewest(this->matching.orders.size(), query, page, visit);
+                    else if (const auto found = this->historyOrders.find(userId); found != this->historyOrders.end())
+                        detail::scanHistoryIndex(found->second, query, page, visit);
+                    return;
+                }
+                auto& output = detail::rows<PositionView>(result);
+                if (accountId == 0 && userId != 0)
+                {
+                    const auto* owner = this->users.getUser(userId);
+                    if (!owner)
+                    {
+                        page.state = ReadState::NotFound;
+                        return;
+                    }
+                    accountId = owner->getContractAccount().getAccountId();
+                }
+                const auto visit = [&](PositionId id)
+                {
+                    const auto value = this->position(id, accountId);
+                    if (!value || !detail::matchesPosition(*value, query) ||
+                        (query.positionFilter == PositionFilter::ClosedExecuted && !this->executedPositions.contains(id))) return false;
+                    output.push_back(*value);
+                    return true;
+                };
+                if (userId == 0) detail::scanNewest(contracts.nextPositionId - 1, query, page, visit);
+                else if (const auto found = this->historyPositions.find(userId); found != this->historyPositions.end())
+                    detail::scanHistoryIndex(found->second, query, page, visit);
+                return;
+            }
+            case ReadKind::ConditionalOrdersNewest:
+            {
+                auto& output = detail::rows<ConditionalOrderView>(result);
+                const auto& engine = this->matching.getConditionalOrderEngine();
+                const auto visit = [&](ConditionalOrderId id)
+                {
+                    const auto value = engine.query(id);
+                    if (!value || (query.userId != 0 && value->request.userId != query.userId) ||
+                        (query.symbolId != 0 && value->request.symbolId != query.symbolId) ||
+                        (query.orderId != 0 && value->conditionalOrderId != query.orderId) ||
+                        (query.price != 0 && value->request.triggerPrice != query.price) ||
+                        (!query.includeTerminal && value->status != ConditionalOrderStatus::Waiting)) return false;
+                    const auto* owner = this->users.getUser(value->request.userId);
+                    const auto account = owner ? (value->request.contractOptions ? owner->getContractAccount().getAccountId() : owner->getSpotAccount().getAccountId()) : 0;
+                    if (query.accountId != 0 && account != query.accountId) return false;
+                    output.push_back(*value);
+                    return true;
+                };
+                UserId userId = query.userId;
+                if (query.accountId != 0)
+                {
+                    const auto* account = this->retainedAccount(query.accountId);
+                    if (!account || (userId != 0 && userId != account->getUserId()))
+                    {
+                        page.state = ReadState::NotFound;
+                        return;
+                    }
+                    userId = account->getUserId();
+                }
+                if (!this->executionIndexHealthy)
+                {
+                    page.state = ReadState::IndexUnavailable;
+                    return;
+                }
+                if (userId == 0) detail::scanNewest(engine.size(), query, page, visit);
+                else if (const auto found = this->historyConditionals.find(userId); found != this->historyConditionals.end())
+                    detail::scanHistoryIndex(found->second, query, page, visit);
+                return;
+            }
+            case ReadKind::TradesNewest:
+            {
+                auto& output = detail::rows<TradeView>(result);
+                const auto oldest = this->nextTradeId - std::min<std::uint64_t>(this->nextTradeId - 1, this->trades.size());
+                if (this->trades.empty() || this->nextTradeId == 1) return;
+                if (query.cursor.started && query.cursor.anchor != 0 && query.cursor.anchor < oldest)
+                {
+                    page.state = ReadState::CursorExpired;
+                    return;
+                }
+                detail::scanNewest(this->nextTradeId - 1, query, page, [&](std::uint64_t id)
+                {
+                    if (id < oldest) return false;
+                    const auto& value = this->trades[(id - 1) % this->trades.size()];
+                    if ((query.symbolId != 0 && query.symbolId != value.symbolId) ||
+                        (query.userId != 0 && query.userId != value.makerUserId && query.userId != value.takerUserId) ||
+                        (query.accountId != 0 && query.accountId != value.makerAccountId && query.accountId != value.takerAccountId) ||
+                        (query.orderId != 0 && query.orderId != value.trade.makerOrderId && query.orderId != value.trade.takerOrderId)) return false;
+                    output.push_back(value);
+                    return true;
+                });
+                if (page.next.anchor < oldest)
+                {
+                    page.next.anchor = 0;
+                    page.hasMore = false;
+                }
+                return;
+            }
             case ReadKind::TradingStatus:
                 detail::point(result, this->matching.getTradingControlEngine().query(query.symbolId));
                 return;

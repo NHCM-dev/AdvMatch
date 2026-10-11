@@ -118,6 +118,14 @@ public final class BindingIntegrationTest
             var ask = exchange.submit(new PlaceOrder(2, 1, OrderSide.Ask, OrderType.Limit, TimeInForce.GTC, 100, 10, 1)).join();
             var bid = exchange.submit(new PlaceOrder(1, 1, OrderSide.Bid, OrderType.Limit, TimeInForce.GTC, 100, 3, 2)).join();
             check(bid.result().accepted() && bid.result().filled() == 3);
+            var newestQuery = new ObservationQuery().withUserId(1).withLimit(1).withScanBudget(1);
+            var recentOrders = exchange.submit(new ReadOrdersNewest(newestQuery)).join();
+            check(recentOrders.page().state() == ReadState.Success && recentOrders.values().getFirst().orderId() == bid.id());
+            check(exchange.submit(new ReadPositionsNewest(newestQuery.withPositionFilter(PositionFilter.ClosedExecuted))).join().values().isEmpty());
+            check(exchange.submit(new ReadConditionalOrdersNewest(newestQuery)).join().values().isEmpty());
+            var recentTrades = exchange.submit(new ReadTradesNewest(newestQuery)).join();
+            check(recentTrades.page().state() == ReadState.Success && recentTrades.values().getFirst().trade().takerOrderId() == bid.id());
+
             var query = new ObservationQuery().withSymbolId(1).withSide(OrderSide.Ask).withKind(ReadKind.Depth);
             try (var slot = exchange.createObservationSlot(query).join())
             {
@@ -448,7 +456,10 @@ public final class BindingIntegrationTest
             stop.modify(85, 0, 3, 4).join();
             var profit = exchange.conditionalOrders().place(request.withTimestamp(4).withKind(ConditionalOrderKind.TakeProfit).withTriggerPrice(110).withOcoOrderId(stop.id())).join();
             var disposable = exchange.conditionalOrders().place(request.withTimestamp(4).withTriggerPrice(50)).join();
-            disposable.cancel(4).join();
+            stop.modify(85, 0, 3, 5).join();
+            var newest = exchange.submit(new ReadConditionalOrdersNewest(new ObservationQuery().withUserId(seller.id()))).join();
+            check(newest.values().getFirst().conditionalOrderId() == stop.id());
+            disposable.cancel(5).join();
             check(disposable.snapshot().join().status() == ConditionalOrderStatus.Cancelled);
             book.place(buyer, OrderSide.Bid, OrderType.Limit, TimeInForce.GTC, 80, 10, 5).join();
             book.place(seller, OrderSide.Ask, OrderType.Limit, TimeInForce.GTC, 85, 1, 6).join();

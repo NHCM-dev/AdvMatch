@@ -32,6 +32,17 @@ namespace advmatch::observe
         DenseMap<UserId, std::uint64_t> userRevisions;
         DenseMap<SymbolId, std::uint64_t> symbolRevisions;
         bool inCommand = false;
+        using HistoryKey = std::pair<Timestamp, std::uint64_t>;
+        DenseMap<UserId, std::vector<HistoryKey>> historyOrders;
+        DenseMap<UserId, std::vector<HistoryKey>> historyPositions;
+        DenseMap<UserId, std::vector<HistoryKey>> historyConditionals;
+        std::optional<ConditionalOrderView> changingConditional;
+        std::uint64_t indexedConditional = 0;
+        std::uint64_t indexedOrder = 0;
+        std::uint64_t indexedPosition = 0;
+        void refreshHistoryIndexes();
+        DenseSet<PositionId> executedPositions;
+        bool executionIndexHealthy = true;
         DenseMap<UserId, DenseSet<OrderId>> userOrders;
         std::size_t restingOrderCount = 0;
         bool indexHealthy = false;
@@ -66,7 +77,7 @@ namespace advmatch::observe
 
         void notifyChanged() noexcept;
         void notifyCommand(const TradingCommand& command) noexcept;
-        void endCommand() noexcept { this->inCommand = false; }
+        void endCommand() noexcept { this->inCommand = false; this->changingConditional.reset(); }
         bool changed(const ObservationQuery& query, const ReadStamp& known) const;
         ObservationBatch readChanged(std::span<const ObservationQuery> queries, std::span<const ReadStamp> known) const;
         void rebuildOpenOrderIndex();

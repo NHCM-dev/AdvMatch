@@ -71,14 +71,19 @@ namespace advmatch::observe
         Audit,
         UserRisk,
         SpotFeeBalance,
-        TradingStatus
+        TradingStatus,
+        OrdersNewest,
+        PositionsNewest,
+        ConditionalOrdersNewest,
+        TradesNewest
     };
 
     enum class PositionFilter : std::uint8_t
     {
         All,
         Open,
-        Trading
+        Trading,
+        ClosedExecuted
     };
 
     struct ReadStamp
