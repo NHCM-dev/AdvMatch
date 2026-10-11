@@ -14,6 +14,7 @@ namespace advmatch
     class UserManager
     {
         friend class observe::TradingObserver;
+        friend class ::advmatch::StateSnapshotCodec;
         AccountManager accountManager;
         NodeHashMap<UserId, User> users;
         // IDs are issued locally and never reused. Pointer slots provide direct

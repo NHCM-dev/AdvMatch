@@ -21,6 +21,8 @@ namespace advmatch
         void append(const JournalRecord& record) override;
         void sync() override;
         void publishSnapshot(CommandSequence sequence, std::span<const std::byte> payload) override;
+        void archiveRecords(const std::vector<JournalRecord>& records) override;
+        void replayArchive(CommandSequence afterSequence, const std::function<void(const JournalRecord&)>& visitor) override;
         void resetJournalThrough(CommandSequence sequence) override;
     };
 }

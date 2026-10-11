@@ -11,6 +11,7 @@ namespace advmatch
     class AssetManager
     {
         friend class observe::TradingObserver;
+        friend class ::advmatch::StateSnapshotCodec;
         NodeHashMap<AssetId, Asset> assets;
         DenseMap<std::string, AssetId> assetsByName;
         AssetId nextAssetId = 1;

@@ -12,6 +12,7 @@ namespace advmatch
 
     class SpotSettleEngine final : public SettleEngine, public MatchPolicy
     {
+        friend class ::advmatch::StateSnapshotCodec;
         SpotAccountLedger& accountLedger;
         MatchingEngine* matching;
         DenseMap<AssetId, Balance> fees;

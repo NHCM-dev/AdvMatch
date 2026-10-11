@@ -134,7 +134,8 @@ namespace advmatch
         std::vector<std::pair<CommandSequence, std::filesystem::path>> snapshots() const
         {
             std::vector<std::pair<CommandSequence, std::filesystem::path>> entries;
-            for (const auto& entry : std::filesystem::directory_iterator(this->config.directory))
+            for (const auto& folder : {this->config.directory, this->config.directory / "snapshots"})
+            for (const auto& entry : std::filesystem::directory_iterator(folder))
             {
                 const std::string name = entry.path().filename().string();
                 if (!name.starts_with("snapshot-") || !name.ends_with(".bin"))
@@ -158,7 +159,8 @@ namespace advmatch
         : impl(std::make_unique<Impl>(config))
     {
         persistenceCheck(!config.directory.empty() && config.retainedCheckpoints > 0 && config.maxRecordBytes > 0 && config.maxRecordBytes <= std::numeric_limits<std::uint32_t>::max(), "invalid file persistence configuration", PersistenceFailure::InvalidConfiguration);
-        std::filesystem::create_directories(config.directory);
+        std::filesystem::create_directories(config.directory / "snapshots");
+        std::filesystem::create_directories(config.directory / "archive");
         const auto lockPath = config.directory / "writer.lock";
 #ifdef _WIN32
         this->impl->lock = CreateFileW(lockPath.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
@@ -196,6 +198,15 @@ namespace advmatch
         const auto entries = this->impl->snapshots();
         const auto headPath = this->impl->config.directory / "checkpoint.head";
         CommandSequence required = 0;
+        if (!std::filesystem::exists(headPath))
+        {
+            for (const auto& [sequence, path] : entries)
+            {
+                persistenceCheck(path.parent_path() != this->impl->config.directory / "snapshots",
+                                 "required state snapshot manifest is missing");
+            }
+        }
+
         if (std::filesystem::exists(headPath))
         {
             persistenceCheck(std::filesystem::file_size(headPath) == 20, "invalid checkpoint manifest size");
@@ -318,7 +329,7 @@ namespace advmatch
     void FilePersistenceStore::publishSnapshot(CommandSequence sequence, std::span<const std::byte> payload)
     {
         persistenceCheck(sequence >= this->impl->publishedThrough && payload.size() <= this->impl->config.maxSnapshotBytes, "snapshot boundary/size violates configured limit", PersistenceFailure::InvalidConfiguration);
-        const auto destination = this->impl->config.directory / ("snapshot-" + std::to_string(sequence) + ".bin");
+        const auto destination = this->impl->config.directory / "snapshots" / ("snapshot-" + std::to_string(sequence) + ".bin");
         auto temporary = destination;
         temporary += ".tmp";
         BinaryWriter header;
@@ -360,6 +371,71 @@ namespace advmatch
         for (std::size_t index = this->impl->config.retainedCheckpoints; index < entries.size(); ++index)
         {
             std::filesystem::remove(entries[index - this->impl->config.retainedCheckpoints].second);
+        }
+    }
+
+    void FilePersistenceStore::archiveRecords(const std::vector<JournalRecord>& records)
+    {
+        if (records.empty()) return;
+        const auto directory = this->impl->config.directory / "archive";
+        const auto destination = directory / ("segment-" + std::to_string(records.front().sequence) + "-" + std::to_string(records.back().sequence) + ".wal");
+        const auto temporary = destination.string() + ".tmp";
+        {
+            std::unique_ptr<FILE, decltype(&std::fclose)> file(openFile(temporary, true), &std::fclose);
+            persistenceCheck(file != nullptr, "cannot create history segment", PersistenceFailure::Io);
+            for (const auto& record : records)
+            {
+                BinaryWriter header;
+                header.number(JournalMagic); header.number(FormatVersion); header.enumeration(record.type);
+                header.number<std::uint8_t>(0); header.number(record.sequence);
+                header.number<std::uint32_t>(static_cast<std::uint32_t>(record.payload.size()));
+                header.number(crc32c(header.view(), record.payload));
+                writeFile(file.get(), header.view()); writeFile(file.get(), record.payload);
+            }
+            flushFile(file.get());
+        }
+        publishFile(temporary, destination);
+    }
+
+    void FilePersistenceStore::replayArchive(CommandSequence afterSequence, const std::function<void(const JournalRecord&)>& visitor)
+    {
+        std::vector<std::pair<CommandSequence, std::filesystem::path>> segments;
+        for (const auto& entry : std::filesystem::directory_iterator(this->impl->config.directory / "archive"))
+        {
+            const auto name = entry.path().filename().string();
+            if (!name.starts_with("segment-") || !name.ends_with(".wal")) continue;
+            const auto separator = name.find('-', 8);
+            const auto start = std::stoull(name.substr(8, separator - 8));
+            const auto end = std::stoull(name.substr(separator + 1, name.size() - separator - 5));
+            if (end <= afterSequence) continue;
+            segments.emplace_back(start, entry.path());
+        }
+        std::sort(segments.begin(), segments.end());
+        CommandSequence lastSequence = afterSequence;
+        JournalRecordType lastType = JournalRecordType::Commit;
+        for (const auto& [start, path] : segments)
+        {
+            std::unique_ptr<FILE, decltype(&std::fclose)> file(openFile(path, false), &std::fclose);
+            persistenceCheck(file != nullptr, "cannot read history segment", PersistenceFailure::Io);
+            for (;;)
+            {
+                std::array<std::byte, JournalHeaderSize> header{};
+                const auto size = std::fread(header.data(), 1, header.size(), file.get());
+                if (size == 0) { persistenceCheck(!std::ferror(file.get()), "history read failed", PersistenceFailure::Io); break; }
+                persistenceCheck(size == header.size(), "truncated history header");
+                BinaryReader reader(header);
+                persistenceCheck(reader.number<std::uint32_t>() == JournalMagic && reader.number<std::uint16_t>() == FormatVersion, "invalid history header");
+                const auto type = reader.enumeration(JournalRecordType::Commit);
+                persistenceCheck(reader.number<std::uint8_t>() == 0, "invalid history flags");
+                const auto sequence = reader.number<CommandSequence>();
+                const auto length = reader.number<std::uint32_t>(); const auto checksum = reader.number<std::uint32_t>();
+                persistenceCheck(length <= this->impl->config.maxRecordBytes, "history record exceeds limit");
+                JournalRecord record{type, sequence, std::vector<std::byte>(length)};
+                persistenceCheck(std::fread(record.payload.data(), 1, length, file.get()) == length, "truncated history record");
+                persistenceCheck(crc32c(std::span(header).first(JournalHeaderSize - 4), record.payload) == checksum, "history checksum mismatch");
+                if (sequence < lastSequence || (sequence == lastSequence && (type == lastType || lastType == JournalRecordType::Commit))) continue;
+                if (sequence > afterSequence) visitor(record); lastSequence = sequence; lastType = type;
+            }
         }
     }
 

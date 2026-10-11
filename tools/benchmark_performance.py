@@ -87,7 +87,7 @@ def main():
     if options.sweep:
         cases = [(f"cpp_spot_p{producers}_r{ring}_b{batch}", [binary("tps"), "--orders", str(options.orders), "--producers", str(producers), "--ring-size", str(ring), "--batch-size", str(batch), *spinning], "tps") for producers in (1, 2, 4, 8) for ring in (32, 1024, 4096) for batch in (256, 1024)]
     if options.java:
-        jar = ROOT / "java/advmatch/build/libs/advmatch-1.4.0.jar"
+        jar = ROOT / "java/advmatch/build/libs/advmatch-2.0.0.jar"
         if not jar.is_file():
             raise RuntimeError("Build the Java JAR before measurement")
         java = str(Path(os.environ["JAVA_HOME"]) / "bin/java.exe") if os.name == "nt" and "JAVA_HOME" in os.environ else "java"

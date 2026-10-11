@@ -12,6 +12,7 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <stdexcept>
 #include <utility>
 
 namespace advmatch
@@ -43,6 +44,8 @@ namespace advmatch
     {
         friend class observe::TradingObserver;
         friend class MatchingEngine;
+        friend class StateSnapshotCodec;
+        OrderBookImplementation snapshotImplementation = OrderBookImplementation::Radix;
         mutable observe::OrderBookListener* observationListener = nullptr;
 
         virtual const PriceLevel* observedBestLevel(OrderSide side) const noexcept = 0;
@@ -78,6 +81,9 @@ namespace advmatch
 
     public:
         virtual ~OrderBook() = default;
+
+        // Restore a validated resting order without matching or financial side effects.
+        virtual void restoreResting(OrderNode&) { throw std::logic_error("Order book cannot restore snapshots"); }
 
         virtual void setMatchPolicy(MatchPolicy* policy) noexcept = 0;
 

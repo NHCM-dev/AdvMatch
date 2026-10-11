@@ -20,6 +20,7 @@ namespace advmatch
 
     class TradingRuleEngine
     {
+        friend class ::advmatch::StateSnapshotCodec;
         friend class audit::AuditEngine;
         MatchingEngine& matching;
         using UserStates = NodeHashMap<UserId, TradingRiskState>;

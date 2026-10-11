@@ -15,6 +15,7 @@ namespace advmatch
     class SymbolManager
     {
         friend class observe::TradingObserver;
+        friend class ::advmatch::StateSnapshotCodec;
         struct SymbolKey
         {
             SymbolType type;

@@ -2,27 +2,15 @@
 // Created by NHCM on 2026/10/6.
 //
 
-#include "BasicOrderFactory.h"
+#include "BasicOrderChecker.h"
 
-#include "advmatch/trading/Asset.h"
+#include "advmatch/util/Utils.h"
 
 namespace advmatch
 {
-    CreateOrderResult BasicOrderFactory::createOrder(OrderId orderId, UserId userId, SymbolId symbolId,
-        OrderSide orderSide, OrderType orderType, TimeInForce timeInForce,
-        Price price, Quantity quantity, Timestamp timestamp)
-    {
-        PlaceOrderState state = basicCheck(orderSide, orderType, timeInForce, price, quantity, timestamp);
-        if (state != PlaceOrderState::Success)
-        {
-            return CreateOrderResult(state);
-        }
-        BasicOrder order = BasicOrder(orderId, userId, symbolId, orderSide, orderType, timeInForce, price, quantity, timestamp);
-        return CreateOrderResult(state, order);
-    }
-
     [[nodiscard]]
-    PlaceOrderState BasicOrderFactory::basicCheck(OrderSide orderSide, OrderType orderType, TimeInForce timeInForce, Price price, Quantity quantity, Timestamp timestamp) const
+    PlaceOrderState BasicOrderChecker::basicCheck(OrderSide orderSide, OrderType orderType, TimeInForce timeInForce, Price price,
+                                                  Quantity quantity, Timestamp timestamp) const
     {
         if (orderSide != OrderSide::Bid && orderSide != OrderSide::Ask)
         {
@@ -32,7 +20,8 @@ namespace advmatch
         {
             return PlaceOrderState::InvalidOrderType;
         }
-        if (timeInForce != TimeInForce::GTC && timeInForce != TimeInForce::IOC && timeInForce != TimeInForce::FOK && timeInForce != TimeInForce::PostOnly)
+        if (timeInForce != TimeInForce::GTC && timeInForce != TimeInForce::IOC && timeInForce != TimeInForce::FOK &&
+            timeInForce != TimeInForce::PostOnly)
         {
             return PlaceOrderState::InvalidTimeInForce;
         }
@@ -60,9 +49,10 @@ namespace advmatch
     }
 
     [[nodiscard]]
-    MKTOverflowBidResult BasicOrderFactory::checkMKTOverflowBid(BasicOrder& order, OrderBook* orderBook) const
+    MKTOverflowBidResult BasicOrderChecker::checkMKTOverflowBid(OrderSide side, OrderType type, Quantity quantity,
+                                                                const OrderBook* orderBook) const
     {
-        if (order.orderType != OrderType::Market || order.orderSide != OrderSide::Bid)
+        if (type != OrderType::Market || side != OrderSide::Bid)
         {
             return {PlaceOrderState::Success, -1};
         }
@@ -71,9 +61,9 @@ namespace advmatch
             return {PlaceOrderState::InvalidOrderBook, -1};
         }
         Balance estimatedMarketBuyBalance = -1;
-        if (order.orderType == OrderType::Market && order.orderSide == OrderSide::Bid)
+        if (type == OrderType::Market && side == OrderSide::Bid)
         {
-            auto cost = orderBook->estimateMarketBuyCost(order.getQuantity());
+            auto cost = orderBook->estimateMarketBuyCost(quantity);
             if (!cost)
             {
                 return {PlaceOrderState::Overflow, -1};
@@ -84,4 +74,4 @@ namespace advmatch
 
         return {PlaceOrderState::Success, estimatedMarketBuyBalance};
     }
-} // advmatch
+} // namespace advmatch

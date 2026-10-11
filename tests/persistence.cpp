@@ -140,7 +140,7 @@ namespace
             CHECK(engine.execute(commands::CreateAsset{"Third", "OTHER", 0}).result.entityId == 3);
             engine.checkpoint();
             std::size_t files = 0;
-            for (const auto& entry : std::filesystem::directory_iterator(directory.path))
+            for (const auto& entry : std::filesystem::directory_iterator(directory.path / "snapshots"))
             {
                 files += entry.path().extension() == ".bin";
             }
@@ -347,6 +347,7 @@ namespace
     struct MemoryState
     {
         std::vector<JournalRecord> records;
+        std::vector<JournalRecord> archive;
         std::optional<StoredSnapshot> snapshot;
         JournalRecordType failAppend = static_cast<JournalRecordType>(0);
         bool failSync = false;
@@ -399,6 +400,19 @@ namespace
         void publishSnapshot(CommandSequence sequence, std::span<const std::byte> payload) override
         {
             this->state->snapshot = StoredSnapshot{sequence, {payload.begin(), payload.end()}};
+        }
+
+        void archiveRecords(const std::vector<JournalRecord>& records) override
+        {
+            this->state->archive.insert(this->state->archive.end(), records.begin(), records.end());
+        }
+
+        void replayArchive(CommandSequence afterSequence, const std::function<void(const JournalRecord&)>& visitor) override
+        {
+            for (const auto& record : this->state->archive)
+            {
+                if (record.sequence > afterSequence) visitor(record);
+            }
         }
 
         void resetJournalThrough(CommandSequence) override
@@ -498,7 +512,7 @@ namespace
             engine.checkpoint();
             CHECK(engine.execute(commands::CreateUser{}).result);
             engine.checkpoint();
-            latest = directory.path / "snapshot-2.bin";
+            latest = directory.path / "snapshots" / "snapshot-2.bin";
             engine.close();
         }
 
@@ -648,7 +662,7 @@ namespace
             PersistentTradingEngine engine(config);
             CHECK(engine.execute(commands::CreateUser{}).result.entityId == 1);
             CHECK(engine.execute(commands::CreateUser{}).result.entityId == 2);
-            CHECK(std::filesystem::exists(directory.path / "snapshot-2.bin"));
+            CHECK(std::filesystem::exists(directory.path / "snapshots" / "snapshot-2.bin"));
             CHECK(std::filesystem::file_size(directory.path / "journal.wal") != 0);
             engine.close();
         }
@@ -686,7 +700,21 @@ namespace
             engine.close();
         }
 
-        std::filesystem::remove(directory.path / "snapshot-4.bin");
+        std::filesystem::remove(directory.path / "snapshots" / "snapshot-4.bin");
+        expectError(PersistenceFailure::CorruptData, [&] { PersistentTradingEngine engine(config); });
+    }
+
+    void missingStateManifest()
+    {
+        TemporaryDirectory directory("missing-state-manifest");
+        auto config = directory.config();
+        {
+            PersistentTradingEngine engine(config);
+            CHECK(engine.execute(commands::CreateUser{}).result);
+            engine.checkpoint();
+            engine.close();
+        }
+        std::filesystem::remove(directory.path / "checkpoint.head");
         expectError(PersistenceFailure::CorruptData, [&] { PersistentTradingEngine engine(config); });
     }
 
@@ -714,6 +742,111 @@ namespace
         CHECK(!engine.getMatchingEngine().bestAsk(1));
         CHECK(engine.getUserManager().getUser(3)->getSpotAccount().queryActiveBalance(1) == 10);
         engine.close();
+    }
+
+    void conditionalSnapshotKeepsModifiedTriggerPriority()
+    {
+        TemporaryDirectory directory("conditional-priority");
+        const auto config = directory.config();
+        ConditionalOrderId first = 0, second = 0;
+        {
+            PersistentTradingEngine engine(config);
+            prepare(engine);
+            CHECK(engine.execute(commands::AddSpotBook{1, OrderBookImplementation::IndexedTree}).result);
+            CHECK(engine.execute(commands::UpdateBalance{1, 1, 100}).result);
+            CHECK(engine.execute(commands::UpdateBalance{3, 2, 10000}).result);
+            CHECK(engine.execute(commands::UpdateBalance{5, 2, 10000}).result);
+            ConditionalOrderRequest request;
+            request.userId = 2; request.symbolId = 1; request.side = OrderSide::Bid;
+            request.triggerPrice = 99; request.quantity = 1; request.timestamp = 1;
+            first = engine.execute(commands::PlaceConditionalOrder{request}).result.entityId;
+            request.triggerPrice = 100; request.timestamp = 2;
+            second = engine.execute(commands::PlaceConditionalOrder{request}).result.entityId;
+            CHECK(first && second);
+            CHECK(engine.execute(commands::ModifyConditionalOrder{2, first, 100, 0, 1, 3}).result);
+            engine.checkpoint(); engine.close();
+        }
+        PersistentTradingEngine restored(config);
+        CHECK(restored.replayedCommands() == 0);
+        CHECK(restored.execute(order(1, OrderSide::Ask, 103, 10, 10)).result);
+        CHECK(restored.execute(order(1, OrderSide::Ask, 100, 1, 11)).result);
+        CHECK(restored.execute(order(3, OrderSide::Bid, 100, 1, 12)).result);
+        const auto& conditional = restored.getMatchingEngine().getConditionalOrderEngine();
+        CHECK(conditional.query(first)->status == ConditionalOrderStatus::Activated);
+        CHECK(conditional.query(second)->status == ConditionalOrderStatus::Activated);
+        CHECK(conditional.query(second)->orderId < conditional.query(first)->orderId);
+        CHECK(restored.getMatchingEngine().getAuditEngine().report(restored.getAssetManager()).consistent);
+    }
+
+    void legacyReplaySnapshotMigratesOnce()
+    {
+        TemporaryDirectory directory("legacy-image");
+        auto config = directory.config();
+        config.checkpointEveryCommands = 0;
+        CommandSequence final = 0;
+        {
+            PersistentTradingEngine engine(config);
+            prepare(engine);
+            CHECK(engine.execute(commands::UpdateBalance{1, 1, 123}).result);
+            final = engine.lastSequence(); engine.close();
+        }
+        {
+            FilePersistenceStore store(config);
+            std::vector<JournalRecord> records;
+            store.replay([&](const JournalRecord& record) { records.push_back(record); });
+            BinaryWriter image;
+            image.number<std::uint32_t>(0x524D4441); image.number<std::uint16_t>(1); image.number<std::uint64_t>(final);
+            for (std::size_t i = 0; i < records.size(); i += 2)
+            {
+                image.number(records[i].sequence);
+                image.number<std::uint32_t>(static_cast<std::uint32_t>(records[i].payload.size())); image.bytes(records[i].payload);
+                image.number<std::uint32_t>(static_cast<std::uint32_t>(records[i + 1].payload.size())); image.bytes(records[i + 1].payload);
+            }
+            store.publishSnapshot(final, image.view()); store.resetJournalThrough(final);
+        }
+        {
+            PersistentTradingEngine migrated(config);
+            CHECK(migrated.replayedCommands() == final);
+            CHECK(migrated.getUserManager().getUser(1)->getSpotAccount().queryActiveBalance(1) == 123);
+            migrated.close();
+        }
+        PersistentTradingEngine fast(config);
+        CHECK(fast.replayedCommands() == 0 && fast.lastSequence() == final);
+        std::size_t seen = 0; fast.visitCommitted(0, [&](const CommittedCommand&) { ++seen; });
+        CHECK(seen == final);
+    }
+
+    void boundedStateSnapshotRecovery()
+    {
+        TemporaryDirectory directory("bounded-state");
+        auto config = directory.config();
+        config.flushPolicy = FlushPolicy::Batch;
+        config.checkpointEveryCommands = 1000;
+        CommandSequence final = 0;
+        std::uint64_t expectedHash = 0;
+        {
+            PersistentTradingEngine engine(config);
+            prepare(engine);
+            CHECK(engine.execute(commands::AddSpotBook{1}).result);
+            for (int i = 0; i < 20000; ++i) CHECK(engine.execute(commands::UpdateBalance{1, 1, 1}).result);
+            engine.checkpoint();
+            for (int i = 0; i < 5; ++i) CHECK(engine.execute(commands::UpdateBalance{1, 1, 1}).result);
+            final = engine.lastSequence();
+            expectedHash = engine.getMatchingEngine().getAuditEngine().report(engine.getAssetManager()).stateHash;
+            engine.close();
+        }
+        const auto start = std::chrono::steady_clock::now();
+        PersistentTradingEngine recovered(config);
+        CHECK(recovered.lastSequence() == final && recovered.replayedCommands() == 5);
+        CHECK(recovered.getMatchingEngine().getAuditEngine().report(recovered.getAssetManager()).stateHash == expectedHash);
+        std::size_t commands = 0;
+        recovered.visitCommitted(0, [&](const CommittedCommand&) { ++commands; });
+        CHECK(commands == final);
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start).count();
+        std::size_t recent = 0;
+        recovered.visitCommitted(final - 2, [&](const CommittedCommand&) { ++recent; });
+        CHECK(recent == 2);
+        std::printf("State recovery: %llu history commands, 5 replayed; restore plus full outbox scan %lld ms\n", static_cast<unsigned long long>(final), static_cast<long long>(elapsed));
     }
 
     void conservationDiagnostics()
@@ -887,6 +1020,7 @@ int main(int argc, char** argv)
         abruptExit(std::filesystem::path(argv[2]));
     }
 
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     spotRecovery();
     gatewayRequestRecovery();
     reorderedGatewayTimestamps();
@@ -903,8 +1037,12 @@ int main(int argc, char** argv)
     crashRecovery();
     ownerAndIdleFlush();
     checkpointBoundaries();
+    missingStateManifest();
     oversizedCommit();
     blockedLiquidationRecovery();
+    conditionalSnapshotKeepsModifiedTriggerPriority();
+    legacyReplaySnapshotMigratesOnce();
+    boundedStateSnapshotRecovery();
     conservationDiagnostics();
     std::puts("Persistence tests passed");
 }

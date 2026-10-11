@@ -42,6 +42,11 @@ namespace advmatch
         }
 
     public:
+        void restoreResting(OrderNode& node) override
+        {
+            this->append(node);
+        }
+
         void setMatchPolicy(MatchPolicy* policy) noexcept override
         {
             this->matchPolicy = policy;

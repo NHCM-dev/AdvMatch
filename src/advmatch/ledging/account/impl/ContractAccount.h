@@ -30,6 +30,7 @@ namespace advmatch
     class ContractAccount : public Account
     {
         friend class observe::TradingObserver;
+        friend class ::advmatch::StateSnapshotCodec;
         NodeHashMap<AssetId, CrossMarginState> crossMargins;
         // These maps index stable Position nodes; never borrow addresses of
         // index entries across insertion/erasure.
@@ -122,6 +123,7 @@ namespace advmatch
     class StandardContractAccount final : public ContractAccount
     {
         friend class observe::TradingObserver;
+        friend class ::advmatch::StateSnapshotCodec;
         // Owning pools never move Position objects. Only pointer indexes rehash.
         std::unique_ptr<PositionPool> ownedPositionPool;
         PositionPool* positionPool;

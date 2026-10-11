@@ -17,6 +17,7 @@ namespace advmatch
     // fixed-width radix indexes (at most 64 branches), never a full order scan.
     class ConditionalOrderEngine
     {
+        friend class ::advmatch::StateSnapshotCodec;
         struct Node;
         struct Bucket
         {

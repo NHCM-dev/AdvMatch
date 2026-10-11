@@ -6,6 +6,7 @@
 
 namespace advmatch
 {
+    class StateSnapshotCodec;
     using UserId = std::uint64_t;
     using AccountId = std::uint64_t;
     using AssetId = std::uint32_t;

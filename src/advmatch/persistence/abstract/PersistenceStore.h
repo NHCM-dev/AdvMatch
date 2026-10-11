@@ -18,6 +18,13 @@ namespace advmatch
         virtual void append(const JournalRecord& record) = 0;
         virtual void sync() = 0;
         virtual void publishSnapshot(CommandSequence sequence, std::span<const std::byte> payload) = 0;
+        // Backends must durably archive covered records before publishing a state snapshot.
+        // Older custom backends fail closed until they implement this contract.
+        virtual void archiveRecords(const std::vector<JournalRecord>& records)
+        {
+            if (!records.empty()) throw PersistenceError(PersistenceFailure::InvalidConfiguration, "persistence backend does not support durable history archives");
+        }
+        virtual void replayArchive(CommandSequence afterSequence, const std::function<void(const JournalRecord&)>& visitor) {}
         virtual void resetJournalThrough(CommandSequence sequence) = 0;
     };
 }

@@ -24,6 +24,7 @@ namespace advmatch
 
     struct Symbol
     {
+        friend class ::advmatch::StateSnapshotCodec;
         Symbol(std::string name, SymbolId symbolId, SymbolType symbolType, AssetId baseAssetId, AssetId quoteAssetId)
             : name(std::move(name)), symbolId(symbolId), symbolType(symbolType), baseAssetId(baseAssetId),
               quoteAssetId(quoteAssetId)

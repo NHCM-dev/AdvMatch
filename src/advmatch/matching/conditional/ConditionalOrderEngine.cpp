@@ -52,7 +52,7 @@ namespace advmatch
             return ConditionalOrderState::InvalidTrigger;
         }
 
-        const auto state = this->matching.orderFactory.basicCheck(request.side, request.type, request.timeInForce, request.price, request.quantity, request.timestamp);
+        const auto state = this->matching.orderChecker.basicCheck(request.side, request.type, request.timeInForce, request.price, request.quantity, request.timestamp);
         if (state != PlaceOrderState::Success)
         {
             return state == PlaceOrderState::InvalidTimestamp ? ConditionalOrderState::InvalidTimestamp : ConditionalOrderState::InvalidOrder;

@@ -11,6 +11,7 @@ namespace advmatch
 
     class User
     {
+        friend class ::advmatch::StateSnapshotCodec;
         AccountManager* const accountManager;
         SpotAccount* const spotAccount;
         ContractAccount* const contractAccount;

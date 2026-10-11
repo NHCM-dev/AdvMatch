@@ -30,7 +30,7 @@ namespace advmatch
         // increase globally. High-bit IDs use a 15-bit gateway namespace and a
         // 48-bit counter; out-of-order arrivals are accepted within the retained
         // window. Eviction advances that namespace's retirement watermark;
-        // expired IDs are rejected, never executed again. WAL/checkpoint replay
+        // expired IDs are rejected, never executed again. WAL recovery and state snapshots
         // reconstructs both the cache and watermarks.
         CommandReceipt execute(const TradingCommand& command, std::uint64_t requestId = 0);
         void flush();
@@ -39,7 +39,7 @@ namespace advmatch
         void close();
         void setEventSink(PersistentEventSink* sink);
 
-        // Durable outbox read: includes archived checkpoint records plus WAL,
+        // Durable outbox read: includes immutable history segments plus WAL,
         // ordered by sequence. Store your external delivery cursor separately.
         // Callbacks must not mutate/reenter this engine. Reads are O(history).
         void visitCommitted(CommandSequence afterSequence, const std::function<void(const CommittedCommand&)>& visitor);
@@ -51,6 +51,7 @@ namespace advmatch
         const TradeBuffer& getTrades() const noexcept;
         CommandSequence lastSequence() const noexcept;
         CommandSequence durableThrough() const noexcept;
+        std::uint64_t replayedCommands() const noexcept;
         bool isFaulted() const noexcept;
     };
 }

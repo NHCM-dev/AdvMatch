@@ -7,7 +7,7 @@ public record PersistenceConfig(boolean enabled, String directory, FlushPolicy f
 {
     public PersistenceConfig()
     {
-        this(true, "data/advmatch", FlushPolicy.EveryCommand, 256L, 10L, 0L, 2L, true, TailRecovery.TruncateIncomplete, 1048576L, 4294967296L, 10000L, true);
+        this(true, "data/advmatch", FlushPolicy.EveryCommand, 256L, 10L, 10000L, 2L, true, TailRecovery.TruncateIncomplete, 1048576L, 4294967296L, 10000L, true);
     }
 
     public PersistenceConfig withEnabled(boolean value)

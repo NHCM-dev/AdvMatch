@@ -1,4 +1,4 @@
-# AdvMatch 1.4.0
+# AdvMatch 2.0.0
 
 [English](README.md) · 简体中文
 
@@ -17,6 +17,8 @@ Java SDK 支持共享状态订阅和认证网络传输，多个应用可连接�
 
 [有界读取、请求调度与持久化请求 ID](docs/subscriptions-performance.md)
 
+[WAL、状态快照与恢复](docs/persistence.md)
+
 ## 构建
 
 需要 C++20 编译器、**CMake 3.24+**、Ninja 和 Git；Java 接入需要 **JDK 21**。首次构建会下载依赖。
@@ -33,7 +35,7 @@ Linux / macOS 使用 `./build.sh release`。脚本执行构建与测试，releas
 .\java\gradlew.bat -p java :advmatch:build :advmatch:runExample
 ```
 
-产物为 `java/advmatch/build/libs/advmatch-1.4.0.jar`，包含构建平台的原生库。已有兼容原生库时可加 `-PskipNativeBuild`。
+产物为 `java/advmatch/build/libs/advmatch-2.0.0.jar`，包含构建平台的原生库。已有兼容原生库时可加 `-PskipNativeBuild`。
 
 同时构建并测试 Windows 与 Linux amd64，将两个平台原生库打入同一个 Java SDK JAR：
 

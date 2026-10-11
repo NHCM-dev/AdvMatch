@@ -17,7 +17,7 @@
 #include <vector>
 
 #include "advmatch/management/SymbolManager.h"
-#include "advmatch/trading/factory/impl/BasicOrderFactory.h"
+#include "advmatch/trading/checker/BasicOrderChecker.h"
 #include "conditional/ConditionalOrderEngine.h"
 #include "rules/TradingRuleEngine.h"
 #include "control/TradingControlEngine.h"
@@ -33,6 +33,7 @@ namespace advmatch
     class MatchingEngine
     {
         friend class observe::TradingObserver;
+        friend class ::advmatch::StateSnapshotCodec;
         mutable observe::OrderBookListener* observationListener = nullptr;
         std::size_t orderBookCount = 0;
         struct BookServices
@@ -76,7 +77,7 @@ namespace advmatch
         SpotAccountLedger accountLedger;
         SpotRiskEngine riskEngine;
         SpotSettleEngine settleEngine;
-        BasicOrderFactory orderFactory = BasicOrderFactory();
+        BasicOrderChecker orderChecker;
 
         // IDs are monotonically allocated from one, so id - 1 is a direct O(1)
         // index. The pool owns stable-address nodes; the vector only indexes

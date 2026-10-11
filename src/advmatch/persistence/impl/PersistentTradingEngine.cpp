@@ -1,6 +1,7 @@
 #include "PersistentTradingEngine.h"
 #include "../codec/CommandCodec.h"
 #include "FilePersistenceStore.h"
+#include "../codec/StateSnapshotCodec.h"
 #include "advmatch/matching/contracts/ContractEngine.h"
 #include "advmatch/api/command/validation/TradingCommandValidator.h"
 
@@ -13,6 +14,8 @@ namespace advmatch
 {
     namespace
     {
+        constexpr std::uint32_t StateImageMagic = 0x544D4441;
+        constexpr std::uint16_t StateImageVersion = 1;
         constexpr std::uint32_t ReplayImageMagic = 0x524D4441;
         constexpr std::uint16_t ReplayImageVersion = 1;
 
@@ -131,6 +134,7 @@ namespace advmatch
         CommandSequence sequence = 0;
         CommandSequence durable = 0;
         CommandSequence checkpointSequence = 0;
+        std::uint64_t replayedCommands = 0;
         std::chrono::steady_clock::time_point lastFlush = std::chrono::steady_clock::now();
         PersistentEventSink* sink = nullptr;
         std::optional<std::thread::id> owner;
@@ -138,6 +142,7 @@ namespace advmatch
         bool closed = false;
         bool busy = false;
         bool eventAllocationFailed = false;
+        bool legacySnapshot = false;
 
         explicit Impl(PersistenceConfig config, std::unique_ptr<PersistenceStore> store)
             : config(std::move(config)), store(std::move(store))
@@ -276,7 +281,10 @@ namespace advmatch
             const auto envelope = decodeCommand(intent);
             const auto result = this->run(envelope.command, envelope.requestId);
             const auto actual = encodeCommit(result, this->trades, this->events);
-            persistenceCheck(std::ranges::equal(actual, commit), "replayed result/trades/events differ; engine schema migration required", PersistenceFailure::ReplayMismatch);
+            if (!std::ranges::equal(actual, commit))
+            {
+                throw PersistenceError(PersistenceFailure::ReplayMismatch, "replay mismatch at sequence " + std::to_string(sequence) + ", command " + std::to_string(envelope.command.index()) + ", actual state " + std::to_string(result.state));
+            }
             this->remember(envelope.requestId, sequence, intent, result);
             this->sequence = sequence;
         }
@@ -328,17 +336,50 @@ namespace advmatch
         {
             if (auto snapshot = this->store->loadSnapshot())
             {
-                readImage(*snapshot, [&](CommandSequence sequence, auto intent, auto commit)
+                BinaryReader reader(snapshot->payload);
+                const auto magic = reader.number<std::uint32_t>();
+                if (magic == StateImageMagic)
                 {
-                    persistenceCheck(intent.size() <= this->config.maxRecordBytes && commit.size() <= this->config.maxRecordBytes, "checkpoint record exceeds configured limit");
-                    this->applyPair(sequence, intent, commit);
-                });
+                    persistenceCheck(reader.number<std::uint16_t>() == StateImageVersion, "unsupported state snapshot version", PersistenceFailure::UnsupportedVersion);
+                    persistenceCheck(reader.number<CommandSequence>() == snapshot->sequence, "state snapshot sequence mismatch");
+                    StateSnapshotCodec::read(reader, this->state);
+                    this->highestRequestId = reader.number<std::uint64_t>();
+                    auto count = reader.count(10);
+                    for (std::size_t i = 0; i < count; ++i)
+                    {
+                        const auto space = reader.number<std::uint16_t>();
+                        this->retiredRequests.emplace(space, reader.number<std::uint64_t>());
+                    }
+                    count = reader.count(24);
+                    for (std::size_t i = 0; i < count; ++i)
+                    {
+                        const auto id = reader.number<std::uint64_t>(); const auto sequence = reader.number<CommandSequence>();
+                        const auto bytes = reader.bytes(reader.number<std::uint32_t>());
+                        std::vector<std::byte> intent(bytes.begin(), bytes.end());
+                        auto result = decodeResult(reader.bytes(reader.number<std::uint32_t>()));
+                        this->requests.emplace(id, Request{sequence, std::move(intent), result}); this->requestOrder.push_back(id);
+                    }
+                    reader.finish();
+                    this->sequence = snapshot->sequence;
+                }
+                else
+                {
+                    persistenceCheck(magic == ReplayImageMagic, "unknown checkpoint format");
+                    this->legacySnapshot = true;
+                    readImage(*snapshot, [&](CommandSequence sequence, auto intent, auto commit)
+                    {
+                        persistenceCheck(intent.size() <= this->config.maxRecordBytes && commit.size() <= this->config.maxRecordBytes, "checkpoint record exceeds configured limit");
+                        this->applyPair(sequence, intent, commit);
+                        ++this->replayedCommands;
+                    });
+                }
                 this->checkpointSequence = snapshot->sequence;
             }
 
             const auto pending = this->scanJournal(this->checkpointSequence, [&](CommandSequence sequence, auto intent, auto commit)
             {
                 this->applyPair(sequence, intent, commit);
+                ++this->replayedCommands;
             });
             if (pending && pending->sequence <= this->checkpointSequence)
             {
@@ -368,6 +409,7 @@ namespace advmatch
 
             this->events.clear();
             this->trades.clear();
+            if (this->legacySnapshot) this->checkpoint();
         }
 
         void sync()
@@ -396,33 +438,46 @@ namespace advmatch
 
         void checkpoint()
         {
-            if (!this->store || this->sequence == this->checkpointSequence)
+            if (!this->store || (this->sequence == this->checkpointSequence && !this->legacySnapshot))
             {
                 return;
             }
 
             this->sync();
-            BinaryWriter image;
-            image.number(ReplayImageMagic);
-            image.number(ReplayImageVersion);
-            image.number<std::uint64_t>(this->sequence);
-            CommandSequence copied = 0;
+            // Preserve historical outbox records separately; startup never reads these segments.
+            std::vector<JournalRecord> archived;
             auto copy = [&](CommandSequence sequence, auto intent, auto commit)
             {
-                persistenceCheck(sequence == ++copied, "checkpoint source sequence gap");
-                persistenceCheck(image.view().size() <= this->config.maxSnapshotBytes && intent.size() + commit.size() + 16 <= this->config.maxSnapshotBytes - image.view().size(), "checkpoint exceeds configured size", PersistenceFailure::InvalidConfiguration);
-                writePair(image, sequence, intent, commit);
+                archived.push_back({JournalRecordType::Intent, sequence, {intent.begin(), intent.end()}});
+                archived.push_back({JournalRecordType::Commit, sequence, {commit.begin(), commit.end()}});
             };
-            if (auto snapshot = this->store->loadSnapshot())
+            if (this->legacySnapshot)
             {
-                persistenceCheck(snapshot->sequence == this->checkpointSequence, "checkpoint changed outside this session");
+                auto snapshot = this->store->loadSnapshot();
+                persistenceCheck(snapshot.has_value(), "missing legacy checkpoint during migration");
                 readImage(*snapshot, copy);
             }
-
             const auto pending = this->scanJournal(this->checkpointSequence, copy);
-            persistenceCheck(!pending && copied == this->sequence, "checkpoint contains uncommitted/gapped commands");
+            persistenceCheck(!pending, "cannot snapshot uncommitted journal");
+            this->store->archiveRecords(archived);
+            BinaryWriter image;
+            image.number(StateImageMagic); image.number(StateImageVersion); image.number(this->sequence);
+            StateSnapshotCodec::write(image, this->state);
+            image.number(this->highestRequestId);
+            image.number<std::uint64_t>(this->retiredRequests.size());
+            for (const auto& [space, retired] : this->retiredRequests) { image.number(space); image.number(retired); }
+            image.number<std::uint64_t>(this->requestOrder.size());
+            for (auto id : this->requestOrder)
+            {
+                const auto& request = this->requests.at(id);
+                image.number(id); image.number(request.sequence);
+                image.number<std::uint32_t>(static_cast<std::uint32_t>(request.intent.size())); image.bytes(request.intent);
+                const auto result = encodeResult(request.result);
+                image.number<std::uint32_t>(static_cast<std::uint32_t>(result.size())); image.bytes(result);
+            }
             this->store->publishSnapshot(this->sequence, image.view());
             this->checkpointSequence = this->sequence;
+            this->legacySnapshot = false;
             if (this->config.pruneJournalAfterCheckpoint)
             {
                 this->store->resetJournalThrough(this->sequence);
@@ -609,10 +664,24 @@ namespace advmatch
                     }
                 }
             };
-            if (auto snapshot = this->impl->store->loadSnapshot())
+            CommandSequence archivedThrough = std::min(afterSequence, this->impl->checkpointSequence);
+            std::optional<JournalRecord> intent;
+            this->impl->store->replayArchive(afterSequence, [&](const JournalRecord& record)
             {
-                readImage(*snapshot, visit);
-            }
+                if (record.sequence > this->impl->checkpointSequence) return;
+                if (record.type == JournalRecordType::Intent)
+                {
+                    persistenceCheck(!intent && record.sequence == archivedThrough + 1, "archive sequence gap");
+                    intent = record;
+                }
+                else
+                {
+                    persistenceCheck(intent && intent->sequence == record.sequence, "archive intent/commit mismatch");
+                    visit(record.sequence, intent->payload, record.payload);
+                    archivedThrough = record.sequence; intent.reset();
+                }
+            });
+            persistenceCheck(!intent && archivedThrough == this->impl->checkpointSequence, "required history archive is missing");
 
             const auto pending = this->impl->scanJournal(this->impl->checkpointSequence, visit);
             persistenceCheck(!pending, "uncommitted live journal during outbox visit");
@@ -665,6 +734,11 @@ namespace advmatch
     CommandSequence PersistentTradingEngine::durableThrough() const noexcept
     {
         return this->impl->durable;
+    }
+
+    std::uint64_t PersistentTradingEngine::replayedCommands() const noexcept
+    {
+        return this->impl->replayedCommands;
     }
 
     bool PersistentTradingEngine::isFaulted() const noexcept

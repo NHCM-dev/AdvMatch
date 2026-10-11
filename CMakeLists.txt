@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(AdvMatch VERSION 1.4.0 LANGUAGES C CXX)
+project(AdvMatch VERSION 2.0.0 LANGUAGES C CXX)
 
 if(POLICY CMP0167)
     cmake_policy(SET CMP0167 NEW)
@@ -266,9 +266,8 @@ add_library(advmatch_core STATIC
     src/advmatch/trading/Symbol.h
     src/advmatch/trading/futures/Position.cpp
     src/advmatch/trading/futures/Position.h
-    src/advmatch/trading/factory/OrderFactory.h
-    src/advmatch/trading/factory/impl/BasicOrderFactory.cpp
-    src/advmatch/trading/factory/impl/BasicOrderFactory.h
+    src/advmatch/trading/checker/BasicOrderChecker.cpp
+    src/advmatch/trading/checker/BasicOrderChecker.h
     src/advmatch/matching/riskengines/RiskEngine.h
     src/advmatch/matching/riskengines/impl/SpotRiskEngine.cpp
     src/advmatch/matching/riskengines/impl/SpotRiskEngine.h

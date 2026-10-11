@@ -16,6 +16,7 @@ namespace advmatch::audit
 {
     class AuditEngine
     {
+        friend class ::advmatch::StateSnapshotCodec;
         const MatchingEngine& matching;
         DenseMap<AssetId, WideBalance> externalFlows;
 

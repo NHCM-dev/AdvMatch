@@ -20,6 +20,7 @@ namespace advmatch
     class ContractEngine
     {
         friend class observe::TradingObserver;
+        friend class ::advmatch::StateSnapshotCodec;
         friend class MatchingEngine;
         friend class audit::AuditEngine;
         ContractState beginCommand(SymbolId symbolId, Timestamp timestamp);

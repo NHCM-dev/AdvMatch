@@ -47,6 +47,7 @@ namespace advmatch
 
     struct BasicOrder
     {
+        friend class ::advmatch::StateSnapshotCodec;
     private:
         Price price;
         Quantity requestedQuantity;
@@ -56,7 +57,7 @@ namespace advmatch
                    OrderSide orderSide, OrderType orderType, TimeInForce timeInForce,
                    Price price, Quantity quantity, Timestamp timestamp);
 
-        friend class BasicOrderFactory;
+        friend struct OrderNode;
     public:
         const OrderId orderId;
         const UserId userId;

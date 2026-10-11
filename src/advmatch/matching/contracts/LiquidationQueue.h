@@ -25,6 +25,7 @@ namespace advmatch
     class LiquidationQueue
     {
         friend class observe::TradingObserver;
+        friend class ::advmatch::StateSnapshotCodec;
         LiquidationLink* head = nullptr;
         LiquidationLink* tail = nullptr;
         std::size_t count = 0;

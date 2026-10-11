@@ -13,6 +13,7 @@ namespace advmatch
     // work; exchange-wide resume visits books to re-evaluate waiting triggers.
     class TradingControlEngine
     {
+        friend class ::advmatch::StateSnapshotCodec;
         MatchingEngine& matching;
         TradingHalt exchangeHalt;
 

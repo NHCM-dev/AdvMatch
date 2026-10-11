@@ -19,6 +19,7 @@ namespace advmatch
     class AccountManager
     {
         friend class observe::TradingObserver;
+        friend class ::advmatch::StateSnapshotCodec;
         struct AccountPair
         {
             AccountId spotAccountId;

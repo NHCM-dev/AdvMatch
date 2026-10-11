@@ -95,6 +95,7 @@ namespace advmatch
         this->bookServices.resize(this->orderBooks.size());
         this->bookUpdateTimestamps.resize(this->orderBooks.size());
         this->orderBooks[symbolId - 1] = createOrderBook(symbolId, &this->contracts->getSettleEngine(), implementation);
+        this->orderBooks[symbolId - 1]->snapshotImplementation = implementation;
         this->orderBooks[symbolId - 1]->observationListener = this->observationListener;
         ++this->orderBookCount;
         this->bookServices[symbolId - 1] = {&this->contracts->getRiskEngine(), &this->contracts->getLedger(), &this->contracts->getSettleEngine()};
@@ -147,6 +148,7 @@ namespace advmatch
         }
 
         book = createOrderBook(symbolId, &this->settleEngine, implementation);
+        book->snapshotImplementation = implementation;
         book->observationListener = this->observationListener;
         ++this->orderBookCount;
         this->bookServices.resize(this->orderBooks.size());
@@ -260,21 +262,21 @@ namespace advmatch
             this->orders.resize(id, nullptr);
         }
 
-        CreateOrderResult orderResult = this->orderFactory.createOrder(id, userId, symbolId, side, type, timeInForce, price, quantity, timestamp);
-        if (!orderResult)
+        const PlaceOrderState basicState = this->orderChecker.basicCheck(side, type, timeInForce, price, quantity, timestamp);
+        if (basicState != PlaceOrderState::Success)
         {
-            return reject(orderResult.state);
+            return reject(basicState);
         }
 
         MKTOverflowBidResult mktBidResult = contract ? MKTOverflowBidResult{PlaceOrderState::Success, 0}
-            : this->orderFactory.checkMKTOverflowBid(*orderResult.content, book);
+            : this->orderChecker.checkMKTOverflowBid(side, type, quantity, book);
         if (mktBidResult.first != PlaceOrderState::Success)
         {
             return reject(mktBidResult.first);
         }
 
         OrderNode* node = this->orderPool.emplace(
-            *orderResult.content,
+            id, userId, symbolId, side, type, timeInForce, price, quantity, timestamp,
             *user, contract ? static_cast<Account&>(user->getContractAccount()) : static_cast<Account&>(user->getSpotAccount()),
             *symbol, symbol->baseAssetId, symbol->quoteAssetId);
 
@@ -320,7 +322,7 @@ namespace advmatch
             const PriceLevel* level = book->observedBestLevel(opposingSide);
             if (level && this->contracts->getSettleEngine().matchesLiquidationRetry(*level->head, *node, level->price))
             {
-                // Factory, timestamp and risk checks already passed. This is
+                // Basic, timestamp and risk checks already passed. This is
                 // the same failed internal market IOC, with zero reservation:
                 // retain its cancelled history/participant reference but avoid
                 // attach/detach and pointless zero-value ledger operations.

@@ -12,6 +12,7 @@ namespace advmatch
 
     class ContractSettleEngine final : public SettleEngine, public MatchPolicy
     {
+        friend class ::advmatch::StateSnapshotCodec;
         ContractAccountLedger& accountLedger;
         MatchingEngine& matching;
         PositionPlan makerPlan;

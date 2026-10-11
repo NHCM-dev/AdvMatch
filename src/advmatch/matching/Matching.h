@@ -26,6 +26,15 @@ namespace advmatch
     // remain valid for the complete engine lifetime.
     struct OrderNode
     {
+        OrderNode(OrderId orderId, UserId userId, SymbolId symbolId, OrderSide side, OrderType type,
+                  TimeInForce timeInForce, Price price, Quantity quantity, Timestamp timestamp,
+                  User& user, Account& account, const Symbol& symbol, AssetId baseAssetId, AssetId quoteAssetId)
+            : basicOrder(orderId, userId, symbolId, side, type, timeInForce, price, quantity, timestamp),
+              user(&user), account(&account), symbol(&symbol), baseAssetId(baseAssetId), quoteAssetId(quoteAssetId),
+              reservationAssetId(side == OrderSide::Bid ? quoteAssetId : baseAssetId)
+        {
+        }
+
         OrderNode(const BasicOrder& value, User& user, Account& account, const Symbol& symbol, AssetId baseAssetId,
                   AssetId quoteAssetId)
             : basicOrder(value), user(&user), account(&account), symbol(&symbol), baseAssetId(baseAssetId),

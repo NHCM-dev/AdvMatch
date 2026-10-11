@@ -1,6 +1,6 @@
 #include "advmatch/matching/MatchingEngine.h"
 #include "advmatch/ledging/ledgers/impl/SpotAccountLedger.h"
-#include "advmatch/trading/factory/impl/BasicOrderFactory.h"
+#include "advmatch/trading/checker/BasicOrderChecker.h"
 
 #include <cstdlib>
 
@@ -35,13 +35,19 @@ int main()
 
     SpotRiskEngine riskEngine;
     SpotAccountLedger accountLedger;
-    BasicOrderFactory orderFactory;
-    CreateOrderResult createdOrder = orderFactory.createOrder(100, buyerId, symbol->symbolId, OrderSide::Bid,
-                                                              OrderType::Limit, TimeInForce::GTC, 10, 2, 0);
-    CHECK(createdOrder);
-    OrderNode riskNode(*createdOrder.content, *buyer, buyer->getSpotAccount(), *symbol,
-                       symbol->baseAssetId,
-                       symbol->quoteAssetId);
+    BasicOrderChecker checker;
+    CHECK(checker.basicCheck(OrderSide::Bid, OrderType::Limit, TimeInForce::GTC, 10, 2, 0)
+          == PlaceOrderState::Success);
+    CHECK(checker.basicCheck(OrderSide::Bid, OrderType::Limit, TimeInForce::GTC, 0, 2, 0)
+          == PlaceOrderState::InvalidPrice);
+    CHECK(checker.basicCheck(OrderSide::Ask, OrderType::Market, TimeInForce::GTC, 0, 2, 0)
+          == PlaceOrderState::InvalidTimeInForce);
+    CHECK(checker.basicCheck(OrderSide::Ask, OrderType::Limit, TimeInForce::GTC, 10, 0, 0)
+          == PlaceOrderState::InvalidQuantity);
+    CHECK(checker.checkMKTOverflowBid(OrderSide::Bid, OrderType::Market, 2, nullptr).first
+          == PlaceOrderState::InvalidOrderBook);
+    OrderNode riskNode(100, buyerId, symbol->symbolId, OrderSide::Bid, OrderType::Limit, TimeInForce::GTC,
+                       10, 2, 0, *buyer, buyer->getSpotAccount(), *symbol, symbol->baseAssetId, symbol->quoteAssetId);
     const auto riskDecision = riskEngine.checkPlaceOrder(riskNode, 0);
     CHECK(riskDecision && riskDecision.requiredReservationBalance == 20);
     CHECK(buyer->getSpotAccount().queryActiveBalance(2) == 1000);
